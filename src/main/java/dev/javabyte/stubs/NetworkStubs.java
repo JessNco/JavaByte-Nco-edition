@@ -69,6 +69,10 @@ final class NetworkStubs {
         });
 
         stubs.on("java/net/Socket", "<init>", ctx -> socket(network, ctx));
+        // Every route to a TLS socket factory leads to the simulated one.
+        stubs.on("javax/net/ssl/SSLContext", "getSocketFactory", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
+        stubs.on("javax/net/ssl/SSLSocketFactory", "getDefault", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
+        stubs.on("javax/net/ssl/HttpsURLConnection", "getDefaultSSLSocketFactory", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
         stubs.on("java/net/ServerSocket", "<init>", ctx -> {
             vm.events.add("net", "listen", "port", ctx.argCount() > 0 ? ctx.arg(0) : "unbound");
             return new PhantomObject("java/net/ServerSocket");

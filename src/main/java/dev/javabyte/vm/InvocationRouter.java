@@ -191,7 +191,7 @@ public final class InvocationRouter {
             vm.events.addOnce(owner, "gap", "missing-class", "class", owner);
             return new PhantomObject(owner);
         }
-        if (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(args)) {
+        if (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(owner, desc)) {
             traceHostCall(owner, "<init>", desc, args);
             return vm.host.construct(owner, desc, args);
         }
@@ -285,7 +285,7 @@ public final class InvocationRouter {
             vm.events.addOnce(owner + name + desc, "policy", "phantom-call", "method", owner + '.' + name + desc);
             return neutralResult(desc);
         }
-        if (vm.policy.allows(owner, name, desc) && !touchesFileSystem(args)) {
+        if (vm.policy.allows(owner, name, desc) && !touchesFileSystem(owner, desc)) {
             traceHostCall(owner, name, desc, args);
             return vm.host.invoke(owner, name, desc, receiver, args, special);
         }
@@ -320,18 +320,22 @@ public final class InvocationRouter {
         }
     }
 
+    /** JDK classes that merely remember a file for a launch which is itself simulated. */
+    private static final java.util.Set<String> FILE_INERT_OWNERS =
+            java.util.Set.of("java/lang/ProcessBuilder", "java/lang/ProcessBuilder$Redirect");
+
     /**
-     * A JDK method that accepts a file or path would act on the real disk. Simulated file
+     * A JDK method declared to take a file or path would act on the real disk. Simulated file
      * objects are real {@code File}/{@code Path} subclasses, so this check stops them leaking
      * into any allow-listed API that happens to have a file-taking overload.
+     *
+     * <p>The declared parameter types are what count. A file passed where {@code Object} is
+     * declared (added to a list, appended to a string) is only being stored or printed.
      */
-    private static boolean touchesFileSystem(Object[] args) {
-        for (Object arg : args) {
-            if (arg instanceof java.io.File || arg instanceof java.nio.file.Path) {
-                return true;
-            }
-        }
-        return false;
+    private static boolean touchesFileSystem(String owner, String desc) {
+        String parameters = desc.substring(0, desc.indexOf(')'));
+        boolean takesFile = parameters.contains("Ljava/io/File;") || parameters.contains("Ljava/nio/file/Path;");
+        return takesFile && !FILE_INERT_OWNERS.contains(owner);
     }
 
     private static boolean isMirror(Object value) {

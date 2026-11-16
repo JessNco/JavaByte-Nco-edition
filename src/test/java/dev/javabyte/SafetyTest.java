@@ -54,6 +54,13 @@ class SafetyTest {
     }
 
     @Test
+    void simulatedTlsSocketOverridesEverySocketMethod() {
+        assertEquals(List.of(), notOverridden(java.net.Socket.class, dev.javabyte.env.SimSslSocket.class),
+                "an inherited Socket method could open a real connection");
+        assertEquals(List.of(), notOverridden(javax.net.ssl.SSLSocket.class, dev.javabyte.env.SimSslSocket.class));
+    }
+
+    @Test
     void defaultPolicyKeepsDangerousMembersOut() {
         HostPolicy policy = HostPolicy.defaults();
         assertTrue(policy.allows("java/lang/String", "length", "()I"));

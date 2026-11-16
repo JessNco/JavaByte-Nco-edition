@@ -205,6 +205,10 @@ javax/net/ssl/X509TrustManager
 javax/net/ssl/KeyManager
 javax/net/ssl/HostnameVerifier
 javax/net/ssl/SSLSession
+javax/net/ssl/SSLParameters
+javax/net/ssl/SNIServerName
+javax/net/ssl/SNIHostName
+javax/net/ssl/SNIMatcher
 javax/net/ssl/SSLContext#getInstance,init,getProtocol
 javax/net/ssl/*Exception
 

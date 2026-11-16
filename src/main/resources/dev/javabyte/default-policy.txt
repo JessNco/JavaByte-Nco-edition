@@ -117,8 +117,8 @@ java/util/stream/**
 !java/util/Timer
 !java/util/ServiceLoader
 !java/util/ServiceLoader$*
-!java/util/ResourceBundle
-!java/util/PropertyResourceBundle
+# Bundle lookup searches the class path; a stub serves bundles from the sample instead.
+!java/util/ResourceBundle#getBundle,clearCache
 !java/util/prefs/**
 !java/util/logging/**
 !java/util/spi/**
@@ -157,6 +157,11 @@ java/io/FilterOutputStream
 java/io/PushbackInputStream
 java/io/SequenceInputStream
 java/io/ObjectOutputStream
+# Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard.
+java/io/ObjectInputStream
+java/io/ObjectInput
+java/io/ObjectOutput
+java/io/ObjectStreamClass
 java/io/Reader
 java/io/Writer
 java/io/BufferedReader

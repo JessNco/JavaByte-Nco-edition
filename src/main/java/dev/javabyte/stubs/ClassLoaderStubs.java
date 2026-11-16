@@ -124,7 +124,9 @@ final class ClassLoaderStubs {
         if (bytes == null) {
             throw ctx.raise(new NullPointerException("defineClass called without class bytes"));
         }
-        return vm.defineClass(requestedName, bytes, via);
+        // Only a real loader object can be asked for further classes later.
+        Object loader = ctx.receiver instanceof dev.javabyte.model.PhantomObject ? null : ctx.receiver;
+        return vm.defineClass(requestedName, bytes, via, loader);
     }
 
     /**

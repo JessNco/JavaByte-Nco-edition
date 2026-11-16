@@ -61,10 +61,18 @@ public final class VirtualMachine {
     private volatile String hostCallInProgress;
     private Throwable escapingGuestException;
 
+    /** Sample class loaders that have defined classes, newest first. */
+    private final java.util.Deque<Object> guestLoaders = new java.util.ArrayDeque<>();
+    private final java.util.Set<String> resolving = new java.util.HashSet<>();
+    /** Names that could not be resolved, with the number of defined classes at the time. */
+    private final java.util.Map<String, Integer> unresolved = new java.util.HashMap<>();
+    private int definedClassCount;
+
     public VirtualMachine(EmulatorConfig config, EventLog events, Artifacts artifacts) {
         this.config = config;
         this.events = events;
         this.artifacts = artifacts;
+        dev.javabyte.host.SerializationGuard.install();
         this.policy = HostPolicy.defaults();
         config.policy.allow.forEach(policy::allow);
         config.policy.deny.forEach(policy::deny);
@@ -79,6 +87,7 @@ public final class VirtualMachine {
         this.scheduler = new Scheduler(this);
         this.env = new GuestEnvironment(this);
         classes.setLoadListener((cls, origin) -> hooks.attach(cls));
+        classes.setMissingClassResolver(this::loadThroughGuestLoaders);
         events.setCallerSupplier(this::callerLocation);
     }
 
@@ -310,6 +319,18 @@ public final class VirtualMachine {
      * @param via which API the sample used, for the report
      */
     public GuestClass defineClass(String requestedName, byte[] bytes, String via) {
+        return defineClass(requestedName, bytes, via, null);
+    }
+
+    /**
+     * @param loader the sample's class loader object that is defining the class, or null. It is
+     *               remembered so that classes this one refers to can be requested from it later.
+     */
+    public GuestClass defineClass(String requestedName, byte[] bytes, String via, Object loader) {
+        if (loader != null && !guestLoaders.contains(loader)) {
+            guestLoaders.addFirst(loader);
+        }
+        definedClassCount++;
         String name;
         try {
             name = new ClassReader(bytes).getClassName();
@@ -334,6 +355,44 @@ public final class VirtualMachine {
             throw raise(new ClassFormatError(name));
         }
         return cls;
+    }
+
+    /**
+     * Reproduces implicit class loading. On a real JVM, when a class defined by a custom loader
+     * first refers to another class, the JVM asks that loader for it. Loaders that decrypt and
+     * define classes on demand depend on this, so an unknown class name is offered to the
+     * sample's loaders before it is declared missing.
+     *
+     * @return true if a loader defined the class
+     */
+    private boolean loadThroughGuestLoaders(String internalName) {
+        if (guestLoaders.isEmpty() || internalName.startsWith("[") || !resolving.add(internalName)) {
+            return false;
+        }
+        try {
+            Integer failedAt = unresolved.get(internalName);
+            // Retry a failed name only after more classes have been defined since.
+            if ((failedAt != null && failedAt == definedClassCount) || host.findClass(internalName) != null) {
+                return false;
+            }
+            for (Object loader : new ArrayList<>(guestLoaders)) {
+                try {
+                    router.invokeVirtual("java/lang/ClassLoader", "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;",
+                            loader, new Object[] {internalName.replace('/', '.')});
+                } catch (GuestThrow notFound) {
+                    continue; // this loader does not know the class
+                }
+                if (classes.contains(internalName)) {
+                    events.addOnce("implicit:" + internalName, "class", "implicit-load", "name", internalName,
+                            "loader", types.nameOf(loader));
+                    return true;
+                }
+            }
+            unresolved.put(internalName, definedClassCount);
+            return false;
+        } finally {
+            resolving.remove(internalName);
+        }
     }
 
     public static String sha256(byte[] data) {

@@ -93,6 +93,7 @@ class SafetyTest {
         assertEquals("C:\\Users\\admin\\Downloads\\a.txt", fs.absolute("a.txt"));
         assertEquals("C:\\Users\\admin\\b.txt", fs.absolute("..\\b.txt"));
         assertEquals("C:\\Temp\\x", fs.absolute("C:/Temp//x/"));
+        assertEquals("C:\\Temp\\x", fs.absolute("/C:/Temp/x"), "URL-style path with a leading slash");
         assertEquals("x.bin", fs.name("C:\\Temp\\x.bin"));
         assertEquals("C:\\Temp", fs.parent("C:\\Temp\\x.bin"));
         assertEquals("C:\\", fs.parent("C:\\Temp"));

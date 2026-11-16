@@ -46,7 +46,7 @@ final class CryptoObservers {
         if (result instanceof byte[] output && output.length > 0) {
             ctx.vm.events.addOnce("out:" + VirtualMachine.sha256(output), "crypto", "cipher-output",
                     "algorithm", ((Cipher) ctx.receiver).getAlgorithm(), "size", output.length,
-                    "preview", Values.preview(output, 120));
+                    "preview", Values.preview(output, 512));
         }
         return result;
     }

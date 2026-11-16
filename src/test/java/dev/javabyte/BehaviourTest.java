@@ -133,6 +133,23 @@ class BehaviourTest {
     }
 
     @Test
+    void classesReferencedByALoadedClassAreRequestedFromItsLoader() throws Exception {
+        java.util.Map<String, byte[]> encrypted = new java.util.HashMap<>();
+        for (Class<?> hidden : List.of(dev.javabyte.guest.LazyFirst.class, dev.javabyte.guest.LazySecond.class)) {
+            byte[] bytes = Fixtures.classBytes(hidden);
+            for (int i = 0; i < bytes.length; i++) {
+                bytes[i] ^= 0x33;
+            }
+            encrypted.put("enc/" + hidden.getName() + ".bin", bytes);
+        }
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, encrypted, dev.javabyte.guest.LazyLoader.class)));
+        assertEquals(List.of("first+second"), Fixtures.stdout(report), Fixtures.outcomes(report));
+        assertEquals(2, Fixtures.events(report, "class", "define").size(), Fixtures.outcomes(report));
+        assertEquals("dev/javabyte/guest/LazySecond",
+                field(Fixtures.events(report, "class", "implicit-load"), 0, "name"), Fixtures.outcomes(report));
+    }
+
+    @Test
     void indirectProcessLaunchesAreInterceptedLikeDirectOnes() throws Exception {
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), Reflective.class)));
         List<Object> commands = Fixtures.events(report, "process", "exec").stream()

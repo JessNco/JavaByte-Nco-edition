@@ -16,9 +16,11 @@ import java.nio.channels.FileChannel;
 public final class SimFileInputStream extends FileInputStream {
 
     private final ByteArrayInputStream in;
+    private final byte[] data;
 
     public SimFileInputStream(byte[] data) {
         super(new FileDescriptor());
+        this.data = data;
         this.in = new ByteArrayInputStream(data);
     }
 
@@ -32,5 +34,19 @@ public final class SimFileInputStream extends FileInputStream {
     @Override public long skip(long n) { return in.skip(n); }
     @Override public int available() { return in.available(); }
     @Override public void close() { /* nothing to release */ }
-    @Override public FileChannel getChannel() { throw new UnsupportedOperationException("virtual file has no channel"); }
+
+    @Override
+    public FileChannel getChannel() {
+        return new SimFileChannel(new SimFileChannel.Storage() {
+            @Override
+            public byte[] bytes() {
+                return data;
+            }
+
+            @Override
+            public void replace(byte[] bytes) {
+                throw new java.nio.channels.NonWritableChannelException();
+            }
+        }, data.length - in.available());
+    }
 }

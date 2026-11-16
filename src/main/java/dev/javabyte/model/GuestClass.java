@@ -254,7 +254,8 @@ public final class GuestClass {
      */
     private void layoutFields() {
         Object[] inherited = superClass == null ? new Object[0] : superClass.fieldDefaultsTemplate();
-        List<Object> defaults = new ArrayList<>(List.of(inherited));
+        // Arrays.asList, not List.of: reference fields default to null, which List.of rejects.
+        List<Object> defaults = new ArrayList<>(java.util.Arrays.asList(inherited));
         List<Object> staticValues = new ArrayList<>();
         for (FieldNode field : node.fields) {
             String key = field.name + ':' + field.desc;

@@ -5,8 +5,10 @@ package dev.javabyte.host;
  *
  * <p>Contract for exceptions: a <em>checked</em> exception thrown by a stub is delivered to the
  * guest program, because stubs model APIs that declare such exceptions (a missing file raises
- * {@code FileNotFoundException}). An <em>unchecked</em> exception is treated as a defect in the
- * emulator and stops the run, unless it was created with {@link CallContext#raise}.
+ * {@code FileNotFoundException}). An <em>unchecked</em> exception not created with
+ * {@link CallContext#raise} is also delivered, since it usually mirrors what the JDK would throw
+ * for the same bad argument, but it is additionally recorded as a gap so that a real defect in
+ * a stub is visible in the report.
  */
 @FunctionalInterface
 public interface Stub {

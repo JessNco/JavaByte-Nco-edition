@@ -150,7 +150,9 @@ public final class TypeSystem {
             return Object.class;
         }
         Class<?> host = vm.host.findClass(internalNameOrDescriptor);
-        return host != null ? host : Object.class;
+        // A class that policy blocks outright can only ever be represented by phantom objects,
+        // which a correctly typed array would refuse to store.
+        return host != null && vm.policy.knowsClass(internalNameOrDescriptor) ? host : Object.class;
     }
 
     public Class<?> primitiveClass(Type type) {

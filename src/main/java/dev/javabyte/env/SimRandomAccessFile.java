@@ -97,6 +97,21 @@ public final class SimRandomAccessFile implements StandIn {
         return skipped;
     }
 
+    public java.nio.channels.FileChannel getChannel() {
+        return new SimFileChannel(new SimFileChannel.Storage() {
+            @Override
+            public byte[] bytes() {
+                return data;
+            }
+
+            @Override
+            public void replace(byte[] bytes) {
+                data = bytes;
+                dirty = true;
+            }
+        }, position);
+    }
+
     public void close() {
         if (dirty) {
             fs.write(path, data);

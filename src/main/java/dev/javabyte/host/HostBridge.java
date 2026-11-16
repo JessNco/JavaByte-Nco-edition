@@ -265,6 +265,15 @@ public final class HostBridge {
             // lambda behind the proxy threw the inner one.
             return fromHostFailure(wrapped.getCause());
         }
+        if (cause instanceof UnsupportedOperationException && cause.getStackTrace().length > 0
+                && cause.getStackTrace()[0].getClassName().startsWith("dev.javabyte.env.")) {
+            // A simulation declined an operation it does not model. The guest still gets the
+            // exception, but the report must show that this was the emulator's limit, not the
+            // sample's environment.
+            StackTraceElement origin = cause.getStackTrace()[0];
+            vm.events.addOnce("sim:" + origin, "gap", "unsupported",
+                    "detail", origin.getClassName() + '.' + origin.getMethodName() + ": " + cause.getMessage());
+        }
         return vm.raiseKeepingTrace(cause);
     }
 

@@ -67,6 +67,25 @@ public final class Basics {
         }
     }
 
+    /** A reference field in a superclass: its null default is inherited into subclass layouts. */
+    static class Named {
+        String name;
+        Object extra;
+
+        Named(String name) {
+            this.name = name;
+        }
+    }
+
+    static class Tagged extends Named {
+        String tag = "t";
+        long weight = 7L;
+
+        Tagged(String name) {
+            super(name);
+        }
+    }
+
     enum Colour {
         RED, GREEN, BLUE;
 
@@ -214,7 +233,9 @@ public final class Basics {
                 return "anon:" + counter;
             }
         };
-        System.out.println(anonymous + " " + (anonymous instanceof Shape) + " " + Colour.valueOf("GREEN").ordinal());
+        Tagged tagged = new Tagged("n");
+        System.out.println(anonymous + " " + (anonymous instanceof Shape) + " " + Colour.valueOf("GREEN").ordinal()
+                + " " + tagged.name + tagged.extra + tagged.tag + tagged.weight);
     }
 
     static void exceptions() {

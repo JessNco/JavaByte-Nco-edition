@@ -74,6 +74,10 @@ public final class VirtualFileSystem {
     /** Applies the emulated OS's separator and removes duplicate and trailing separators. */
     public String normalise(String path) {
         String p = windows ? path.replace('/', '\\') : path;
+        if (windows && p.length() >= 3 && p.charAt(0) == separator && p.charAt(2) == ':' && Character.isLetter(p.charAt(1))) {
+            // "/C:/dir", the form a file: URL's path takes, is accepted by Windows as "C:\dir".
+            p = p.substring(1);
+        }
         StringBuilder out = new StringBuilder(p.length());
         for (int i = 0; i < p.length(); i++) {
             char c = p.charAt(i);

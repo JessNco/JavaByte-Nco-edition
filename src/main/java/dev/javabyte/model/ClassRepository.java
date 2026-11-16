@@ -30,10 +30,19 @@ public final class ClassRepository {
     private final Map<String, byte[]> resources = new LinkedHashMap<>();
     private final List<String> unparseable = new ArrayList<>();
     private BiConsumer<GuestClass, String> onLoad = (cls, origin) -> {};
+    private java.util.function.Predicate<String> missingClassResolver = name -> false;
 
     /** Called whenever a class is parsed; the VM uses it to attach hooks and trace flags. */
     public void setLoadListener(BiConsumer<GuestClass, String> listener) {
         this.onLoad = listener;
+    }
+
+    /**
+     * Sets the callback tried when a class is not known. It may define the class (by asking the
+     * sample's own class loaders) and returns true if the class now exists.
+     */
+    public void setMissingClassResolver(java.util.function.Predicate<String> resolver) {
+        this.missingClassResolver = resolver;
     }
 
     /**
@@ -57,7 +66,9 @@ public final class ClassRepository {
                     continue;
                 }
                 byte[] data = zip.readAllBytes();
-                if (name.endsWith(".class") && !name.startsWith("META-INF/versions/")) {
+                // Requiring the class-file magic keeps decoy entries (obfuscators add thousands of
+                // one-byte ".class" files to confuse tools) from being reported as broken classes.
+                if (name.endsWith(".class") && !name.startsWith("META-INF/versions/") && hasClassMagic(data)) {
                     addClassBytes(name.substring(0, name.length() - ".class".length()), data, origin);
                 }
                 // Classes are also kept as resources: loaders read their own .class files as data.
@@ -68,6 +79,11 @@ public final class ClassRepository {
             }
         }
         return manifest;
+    }
+
+    private static boolean hasClassMagic(byte[] data) {
+        return data.length > 8 && (data[0] & 0xFF) == 0xCA && (data[1] & 0xFF) == 0xFE
+                && (data[2] & 0xFF) == 0xBA && (data[3] & 0xFF) == 0xBE;
     }
 
     /** Registers one class file under an explicit internal name. First definition wins. */
@@ -96,7 +112,15 @@ public final class ClassRepository {
         }
         byte[] data = classBytes.get(internalName);
         if (data == null) {
-            return null;
+            if (!missingClassResolver.test(internalName)) {
+                return null;
+            }
+            // The resolver may already have parsed the class while defining it.
+            cls = loaded.get(internalName);
+            data = classBytes.get(internalName);
+            if (cls != null || data == null) {
+                return cls;
+            }
         }
         try {
             ClassNode node = new ClassNode();

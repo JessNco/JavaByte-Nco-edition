@@ -98,6 +98,18 @@ final class ReflectionStubs {
             return Proxy.newProxyInstance(vm.shells.loader(), interfaces.toArray(Class<?>[]::new), handler);
         });
 
+        // Resource bundles are read from the sample's own archive, never from the class path.
+        stubs.on("java/util/ResourceBundle", "getBundle", ctx -> {
+            String path = ctx.stringArg(0).replace('.', '/') + ".properties";
+            byte[] data = vm.classes.resource(path);
+            vm.events.addOnce("bundle:" + path, "resource", "read", "name", path, "found", data != null);
+            if (data == null) {
+                throw ctx.raise(new java.util.MissingResourceException(
+                        "Can't find bundle for base name " + ctx.arg(0), ctx.stringArg(0), ""));
+            }
+            return new java.util.PropertyResourceBundle(new ByteArrayInputStream(data));
+        });
+
         stubs.on("java/lang/Enum", "valueOf", ctx -> {
             if (!(ctx.arg(0) instanceof GuestClass guest)) {
                 return ctx.proceed();
@@ -189,9 +201,10 @@ final class ReflectionStubs {
                 String dotted = cls.dottedName();
                 return dotted.substring(Math.max(dotted.lastIndexOf('.'), dotted.lastIndexOf('$')) + 1);
             }
-            case "getPackageName": {
+            case "getPackageName", "getPackage": {
                 String dotted = cls.dottedName();
-                return dotted.contains(".") ? dotted.substring(0, dotted.lastIndexOf('.')) : "";
+                String packageName = dotted.contains(".") ? dotted.substring(0, dotted.lastIndexOf('.')) : "";
+                return ctx.name.equals("getPackage") ? new dev.javabyte.env.SimPackage(packageName) : packageName;
             }
             case "newInstance":
                 return vm.instantiate(cls.name, "()V", new Object[0]);
@@ -268,7 +281,7 @@ final class ReflectionStubs {
                 return new Annotation[0];
             case "getClasses", "getDeclaredClasses":
                 return new Object[0];
-            case "getPackage", "getComponentType", "componentType", "getDeclaringClass", "getEnclosingClass",
+            case "getComponentType", "componentType", "getDeclaringClass", "getEnclosingClass",
                     "getAnnotation", "getSigners", "getEnclosingMethod":
                 return null;
             default:
@@ -359,6 +372,9 @@ final class ReflectionStubs {
 
     /** {@code Class.getResource} resolves relative names against the class's package. */
     private static String resolveResourceName(String classInternalName, String name) {
+        if (name == null) {
+            throw VirtualMachine.current().raise(new NullPointerException("resource name"));
+        }
         if (name.startsWith("/")) {
             return name.substring(1);
         }

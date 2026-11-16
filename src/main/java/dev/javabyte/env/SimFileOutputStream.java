@@ -67,6 +67,18 @@ public final class SimFileOutputStream extends FileOutputStream {
 
     @Override
     public FileChannel getChannel() {
-        throw new UnsupportedOperationException("virtual file has no channel");
+        return new SimFileChannel(new SimFileChannel.Storage() {
+            @Override
+            public byte[] bytes() {
+                return buffer.toByteArray();
+            }
+
+            @Override
+            public void replace(byte[] bytes) {
+                buffer.reset();
+                buffer.writeBytes(bytes);
+                dirty = true;
+            }
+        }, buffer.size());
     }
 }

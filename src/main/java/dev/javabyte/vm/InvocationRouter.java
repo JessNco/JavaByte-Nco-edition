@@ -299,12 +299,20 @@ public final class InvocationRouter {
             throw intentional;
         } catch (RuntimeException | Error unchecked) {
             // A stub that called back into guest code (running a Runnable, say) sees the guest's
-            // exception in raw form. Anything else unchecked is a defect in the stub and must
-            // surface as one rather than be handed to the sample.
+            // exception in raw form.
             if (vm.isGuestOrigin(unchecked)) {
                 throw new GuestThrow(unchecked);
             }
-            throw unchecked;
+            if (unchecked instanceof Error) {
+                throw unchecked;
+            }
+            // Otherwise the stub itself failed, typically on an argument the real API would also
+            // reject (a null name, a wrong type). The guest receives the exception, as it would
+            // from the JDK, and the failure is listed as a gap so a defect cannot hide.
+            StackTraceElement origin = unchecked.getStackTrace().length > 0 ? unchecked.getStackTrace()[0] : null;
+            vm.events.addOnce("stub:" + context.signature() + origin, "gap", "stub-exception",
+                    "stub", context.signature(), "exception", unchecked.toString(), "at", String.valueOf(origin));
+            throw vm.raise(unchecked);
         } catch (Exception checked) {
             // By contract, a checked exception from a stub is the simulated API's own failure,
             // unless guest code threw it during a callback, in which case its trace is kept.

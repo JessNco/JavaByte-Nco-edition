@@ -49,6 +49,7 @@ public final class ShellFactory {
     private static final String STATE = Type.getInternalName(InstanceState.class);
     private static final String STATE_DESC = Type.getDescriptor(InstanceState.class);
     private static final String STATE_FIELD = "javabyte$stateField";
+    private static final String FACTORY_METHOD = "javabyte$create";
 
     /** How the non-guest path of a trampoline finishes. */
     private enum Fallback { SUPER_CLASS, SUPER_INTERFACE, ABSTRACT }
@@ -68,10 +69,16 @@ public final class ShellFactory {
 
     private final VirtualMachine vm;
     private final Loader loader = new Loader(ShellFactory.class.getClassLoader());
+    private final Map<Class<?>, GuestClass> guestByShell = new java.util.HashMap<>();
     private int counter;
 
     public ShellFactory(VirtualMachine vm) {
         this.vm = vm;
+    }
+
+    /** The guest class a generated shell class stands for, or null if it is not a shell. */
+    public GuestClass guestFor(Class<?> shell) {
+        return guestByShell.get(shell);
     }
 
     /** The loader that defines shells; also used for JDK proxies created on the guest's behalf. */
@@ -119,7 +126,7 @@ public final class ShellFactory {
         }
         ShellDispatch.beginConstruction(state);
         try {
-            ShellInstance created = (ShellInstance) constructor.newInstance(hostArgs);
+            ShellInstance created = (ShellInstance) newShell(shell, constructor, hostArgs);
             created.javabyte$bind(state);
             if (created instanceof Throwable throwable) {
                 vm.stampTrace(throwable);
@@ -135,6 +142,18 @@ public final class ShellFactory {
         } finally {
             ShellDispatch.endConstruction();
         }
+    }
+
+    /**
+     * Creates the shell object. Reflection refuses to construct a class flagged as an enum, so
+     * an enum shell is created through its generated static factory method instead.
+     */
+    private static Object newShell(Class<?> shell, Constructor<?> constructor, Object[] hostArgs)
+            throws ReflectiveOperationException {
+        if (!shell.isEnum()) {
+            return constructor.newInstance(hostArgs);
+        }
+        return shell.getMethod(FACTORY_METHOD, constructor.getParameterTypes()).invoke(null, hostArgs);
     }
 
     private static Constructor<?> findConstructor(Class<?> cls, String desc) {
@@ -166,8 +185,13 @@ public final class ShellFactory {
         Class<?> parentShell = guest.superClass() == null ? null : shellFor(guest.superClass());
         try {
             String name = "dev/javabyte/shell/gen/" + guest.name.replaceAll("[^A-Za-z0-9_$]", "_") + "$Shell" + counter++;
-            byte[] bytes = parentShell == null ? generate(name, base, interfaces) : generateChild(name, parentShell, interfaces);
-            return loader.define(name.replace('/', '.'), bytes);
+            // A top-level enum's shell is marked as an enum itself, so JDK code that asks a
+            // class for its constants (EnumMap, EnumSet) gets an answer.
+            boolean asEnum = parentShell == null && base == Enum.class && guest.isEnum();
+            byte[] bytes = parentShell == null ? generate(name, base, interfaces, asEnum) : generateChild(name, parentShell, interfaces);
+            Class<?> shell = loader.define(name.replace('/', '.'), bytes);
+            guestByShell.put(shell, guest);
+            return shell;
         } catch (LinkageError | RuntimeException e) {
             // Some JDK types cannot be subclassed from outside (package-private abstract
             // methods, for instance). Falling back to a plain object loses JDK interop for this
@@ -261,7 +285,7 @@ public final class ShellFactory {
 
     // ------------------------------------------------------------------ generation
 
-    private byte[] generate(String name, Class<?> base, List<Class<?>> interfaces) {
+    private byte[] generate(String name, Class<?> base, List<Class<?>> interfaces, boolean asEnum) {
         // COMPUTE_FRAMES asks ASM to merge types at branch joins, which by default loads classes
         // by name. The only joins here are in trampolines whose two arms leave an empty stack,
         // so "Object" is always an adequate answer and avoids loading anything.
@@ -277,8 +301,13 @@ public final class ShellFactory {
             interfaceNames.add(Type.getInternalName(iface));
         }
         interfaceNames.add(Type.getInternalName(ShellInstance.class));
-        writer.visit(V17, ACC_PUBLIC | ACC_SUPER, name, null, baseName, interfaceNames.toArray(String[]::new));
+        writer.visit(V17, ACC_PUBLIC | ACC_SUPER | (asEnum ? ACC_ENUM : 0), name, null, baseName,
+                interfaceNames.toArray(String[]::new));
         writer.visitField(ACC_PRIVATE, STATE_FIELD, STATE_DESC, null, null).visitEnd();
+        if (asEnum) {
+            emitEnumValues(writer, name);
+            emitFactories(writer, name, base);
+        }
 
         emitStateAccessors(writer, name);
         emitConstructors(writer, base, baseName);
@@ -335,6 +364,48 @@ public final class ShellFactory {
             base = base.getSuperclass();
         }
         return base;
+    }
+
+    /**
+     * Emits {@code public static Shell[] values()}, which is how the JDK obtains an enum's
+     * constants. It asks the interpreter to run the guest enum's own {@code values()}.
+     */
+    private static void emitEnumValues(ClassWriter writer, String name) {
+        String arrayType = "[L" + name + ";";
+        MethodVisitor method = writer.visitMethod(ACC_PUBLIC | ACC_STATIC, "values", "()" + arrayType, null, null);
+        method.visitCode();
+        method.visitLdcInsn(Type.getObjectType(name));
+        method.visitMethodInsn(INVOKESTATIC, DISPATCH, "enumValues", "(Ljava/lang/Class;)[Ljava/lang/Object;", false);
+        method.visitTypeInsn(CHECKCAST, arrayType);
+        method.visitInsn(ARETURN);
+        method.visitMaxs(0, 0);
+        method.visitEnd();
+    }
+
+    /** One static {@code javabyte$create(args)} per constructor; see {@link #newShell}. */
+    private static void emitFactories(ClassWriter writer, String name, Class<?> base) {
+        for (Constructor<?> constructor : base.getDeclaredConstructors()) {
+            int modifiers = constructor.getModifiers();
+            if (!(Modifier.isPublic(modifiers) || Modifier.isProtected(modifiers))) {
+                continue;
+            }
+            String desc = Type.getConstructorDescriptor(constructor);
+            Type[] argTypes = Type.getArgumentTypes(desc);
+            MethodVisitor method = writer.visitMethod(ACC_PUBLIC | ACC_STATIC | ACC_SYNTHETIC, FACTORY_METHOD,
+                    Type.getMethodDescriptor(Type.getObjectType(name), argTypes), null, null);
+            method.visitCode();
+            method.visitTypeInsn(NEW, name);
+            method.visitInsn(DUP);
+            int local = 0; // static method: arguments start at slot 0
+            for (Type argType : argTypes) {
+                method.visitVarInsn(argType.getOpcode(ILOAD), local);
+                local += argType.getSize();
+            }
+            method.visitMethodInsn(INVOKESPECIAL, name, "<init>", desc, false);
+            method.visitInsn(ARETURN);
+            method.visitMaxs(0, 0);
+            method.visitEnd();
+        }
     }
 
     private static void emitStateAccessors(ClassWriter writer, String name) {

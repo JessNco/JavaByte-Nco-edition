@@ -79,6 +79,25 @@ public final class ShellDispatch {
     }
 
     /**
+     * The constants of a guest enum as an array typed with its shell class. Called by the
+     * generated {@code values()} of an enum shell when the JDK asks for the enum's constants.
+     */
+    public static Object[] enumValues(Class<?> shell) {
+        Object[] typed = (Object[]) java.lang.reflect.Array.newInstance(shell, 0);
+        VirtualMachine vm = VirtualMachine.current();
+        dev.javabyte.model.GuestClass guest = vm == null ? null : vm.shells.guestFor(shell);
+        if (guest == null) {
+            return typed;
+        }
+        try {
+            Object[] constants = (Object[]) vm.router.invokeStatic(guest.name, "values", "()[L" + guest.name + ';', new Object[0]);
+            return java.util.Arrays.copyOf(constants, constants.length, typed.getClass().asSubclass(Object[].class));
+        } catch (GuestThrow thrown) {
+            throw sneakyThrow(vm.markGuestOrigin(thrown.asThrowable()));
+        }
+    }
+
+    /**
      * Corrects the text of an inherited {@code toString()}. JDK implementations such as
      * {@code Throwable.toString()} print {@code getClass().getName()}, which for a shell is the
      * generated class. The guest must see its own class name there instead.

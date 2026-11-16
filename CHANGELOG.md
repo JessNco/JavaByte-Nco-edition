@@ -6,6 +6,7 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- `EnumMap`, `EnumSet` and other JDK enum utilities work with enums defined by the sample.
 - Dynamic proxies for interfaces defined by the sample.
 - `schemaVersion` in the report.
 - Config validation for rule patterns and numeric limits.

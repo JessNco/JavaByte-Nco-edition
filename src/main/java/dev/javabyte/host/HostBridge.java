@@ -100,11 +100,11 @@ public final class HostBridge {
         Class<?>[] parameterTypes = method.getParameterTypes();
         Object[] hostArgs = new Object[args.length];
         for (int i = 0; i < args.length; i++) {
-            hostArgs[i] = Values.toHost(args[i], parameterTypes[i]);
+            hostArgs[i] = toHostArgument(args[i], parameterTypes[i]);
         }
         vm.enterHostCall(owner, name);
         try {
-            return Values.fromHost(invokeAccessibly(method, receiver, hostArgs), method.getReturnType());
+            return fromHostResult(invokeAccessibly(method, receiver, hostArgs), method.getReturnType());
         } catch (InvocationTargetException e) {
             throw fromHostFailure(e.getCause());
         } catch (IllegalArgumentException | IllegalAccessException e) {
@@ -114,6 +114,28 @@ public final class HostBridge {
         } finally {
             vm.exitHostCall();
         }
+    }
+
+    /**
+     * Converts one argument for a real JDK call. Beyond the primitive conversions, a guest class
+     * mirror is replaced by its generated shell class where the JDK wants a {@code Class}: that
+     * is the nearest real class there is, and for enums it behaves like the enum itself.
+     */
+    private Object toHostArgument(Object value, Class<?> parameterType) {
+        if (parameterType == Class.class && value instanceof dev.javabyte.model.GuestClass guest) {
+            Class<?> shell = vm.shells.shellFor(guest);
+            return shell != null ? shell : value;
+        }
+        return Values.toHost(value, parameterType);
+    }
+
+    /** The reverse: a shell class coming back from the JDK is shown to the guest as its own class. */
+    private Object fromHostResult(Object value, Class<?> declaredType) {
+        if (value instanceof Class<?> cls) {
+            dev.javabyte.model.GuestClass guest = vm.shells.guestFor(cls);
+            return guest != null ? guest : value;
+        }
+        return Values.fromHost(value, declaredType);
     }
 
     private Object invokeAccessibly(Method method, Object receiver, Object[] hostArgs)
@@ -226,7 +248,7 @@ public final class HostBridge {
         Class<?>[] parameterTypes = constructor.getParameterTypes();
         Object[] hostArgs = new Object[args.length];
         for (int i = 0; i < args.length; i++) {
-            hostArgs[i] = Values.toHost(args[i], parameterTypes[i]);
+            hostArgs[i] = toHostArgument(args[i], parameterTypes[i]);
         }
         vm.enterHostCall(owner, "<init>");
         try {

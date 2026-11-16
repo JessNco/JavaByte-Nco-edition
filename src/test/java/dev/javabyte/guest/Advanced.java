@@ -154,6 +154,8 @@ public final class Advanced {
         }
     }
 
+    enum Level { LOW, MID, HIGH }
+
     interface Greeter {
         String greet(String who);
 
@@ -291,6 +293,18 @@ public final class Advanced {
         sorted.put(new Dog("Zed"), 1);
         sorted.put(new Dog("Ace"), 2);
         HashSet<Op> ops = new HashSet<>(List.of(Op.MUL, Op.ADD, Op.MUL));
+        java.util.EnumMap<Level, String> byLevel = new java.util.EnumMap<>(Level.class);
+        byLevel.put(Level.HIGH, "h");
+        byLevel.put(Level.LOW, "l");
+        java.util.EnumMap<Op, Integer> byOp = new java.util.EnumMap<>(Op.class);
+        byOp.put(Op.MUL, 2);
+        byOp.put(Op.ADD, 1);
+        java.util.EnumSet<Level> some = java.util.EnumSet.of(Level.HIGH, Level.LOW);
+        java.util.EnumSet<Level> rest = java.util.EnumSet.complementOf(some);
+        System.out.println(byLevel + " " + byLevel.containsKey(Level.MID) + " " + byOp.keySet() + byOp.get(Op.MUL) + " "
+                + some + rest + java.util.EnumSet.allOf(Level.class).size() + java.util.EnumSet.range(Level.LOW, Level.MID)
+                + java.util.EnumSet.noneOf(Op.class).isEmpty() + " " + Level.valueOf("MID").compareTo(Level.HIGH)
+                + Enum.valueOf(Level.class, "LOW") + Level.HIGH.getDeclaringClass().getSimpleName());
         System.out.println(out + greeter.twice("Al") + sorted.firstKey().name + sorted.values() + " " + ops.size()
                 + Op.valueOf("MUL").getDeclaringClass().getSimpleName() + " " + (Op.ADD.compareTo(Op.MUL) < 0)
                 + " " + sorted.firstKey().describe());

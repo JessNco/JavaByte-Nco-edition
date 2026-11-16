@@ -57,8 +57,8 @@ final class SystemStubs {
         stubs.on(system, "nanoTime", ctx -> env.clock.nanoTime());
         stubs.on(system, "lineSeparator", ctx -> env.lineSeparator());
         stubs.on(system, "exit", ctx -> exit(vm, ctx.intArg(0)));
-        stubs.on(system, "load", ctx -> loadLibrary(vm, ctx.stringArg(0)));
-        stubs.on(system, "loadLibrary", ctx -> loadLibrary(vm, ctx.stringArg(0)));
+        stubs.on(system, "load", ctx -> loadLibrary(vm, ctx.stringArg(0), false));
+        stubs.on(system, "loadLibrary", ctx -> loadLibrary(vm, ctx.stringArg(0), true));
         stubs.on(system, "mapLibraryName", ctx -> env.windows ? ctx.stringArg(0) + ".dll" : "lib" + ctx.stringArg(0) + ".so");
         stubs.on(system, "getSecurityManager", ctx -> null);
         stubs.on(system, "setSecurityManager", ctx -> null);
@@ -98,19 +98,41 @@ final class SystemStubs {
      * payload the sample has just dropped, so it is saved and its JNI surface is described:
      * that tells the analyst which native methods it implements and how it binds them.
      */
-    private static Object loadLibrary(VirtualMachine vm, String library) {
-        byte[] data = vm.env.files.isFile(library) ? vm.env.files.node(library).data : null;
-        dev.javabyte.report.NativeLibraryInfo info = data == null ? null : dev.javabyte.report.NativeLibraryInfo.parse(data);
-        if (info != null) {
-            vm.natives.libraryLoaded(library, info);
+    private static Object loadLibrary(VirtualMachine vm, String requested, boolean byName) {
+        String library = byName ? findOnLibraryPath(vm, requested) : requested;
+        byte[] data = library != null && vm.env.files.isFile(library) ? vm.env.files.node(library).data : null;
+        if (data == null) {
+            // Failing as a JVM would matters: libraries that bundle their own native code try
+            // the system first and only unpack their copy once that attempt has failed.
+            vm.events.add("native", "load-library", "library", requested, "presentOnVirtualDisk", false,
+                    "result", "UnsatisfiedLinkError, as on a machine without the library");
+            throw vm.raise(new UnsatisfiedLinkError(byName
+                    ? "no " + requested + " in java.library.path" : "Can't load library: " + requested));
         }
+        dev.javabyte.report.NativeLibraryInfo info = dev.javabyte.report.NativeLibraryInfo.parse(data);
         vm.events.add("native", "load-library", "library", library,
-                "presentOnVirtualDisk", data != null,
-                "sha256", data == null ? null : VirtualMachine.sha256(data),
-                "size", data == null ? null : data.length,
+                "presentOnVirtualDisk", true,
+                "sha256", VirtualMachine.sha256(data),
+                "size", data.length,
                 "format", info == null ? null : info.format + ' ' + info.architecture,
                 "binding", info == null ? null : info.binding(),
-                "file", data == null ? null : vm.artifacts.save("native", vm.env.files.name(library), data));
+                "file", vm.artifacts.save("native", vm.env.files.name(library), data));
+        // After the event, so that anything a plugin reports while emulating the library's
+        // start-up code appears below the load it belongs to.
+        vm.natives.libraryLoaded(library, info, data);
+        return null;
+    }
+
+    /** Resolves a bare library name the way {@code System.loadLibrary} does; null if not found. */
+    private static String findOnLibraryPath(VirtualMachine vm, String name) {
+        String fileName = vm.env.windows ? name + ".dll" : "lib" + name + ".so";
+        String separator = vm.env.properties.getProperty("path.separator");
+        for (String directory : vm.env.properties.getProperty("java.library.path", "").split(java.util.regex.Pattern.quote(separator))) {
+            String candidate = vm.env.files.join(directory, fileName);
+            if (!directory.isEmpty() && vm.env.files.isFile(candidate)) {
+                return candidate;
+            }
+        }
         return null;
     }
 
@@ -131,7 +153,7 @@ final class SystemStubs {
                 case "exit", "halt":
                     return exit(vm, ctx.intArg(0));
                 case "load", "loadLibrary":
-                    return loadLibrary(vm, ctx.stringArg(0));
+                    return loadLibrary(vm, ctx.stringArg(0), ctx.name.equals("loadLibrary"));
                 case "exec":
                     return ProcessStubs.exec(vm, ctx.args);
                 case "addShutdownHook": {

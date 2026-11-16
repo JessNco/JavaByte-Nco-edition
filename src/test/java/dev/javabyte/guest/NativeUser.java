@@ -9,7 +9,11 @@ public final class NativeUser {
     static native int scramble(int value);
 
     public static void main(String[] args) {
-        System.loadLibrary("scrambler");
+        try {
+            System.loadLibrary("scrambler");
+        } catch (UnsatisfiedLinkError notInstalled) {
+            System.out.println("library missing");
+        }
         System.out.println("scrambled " + scramble(7));
     }
 }

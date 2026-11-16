@@ -25,4 +25,11 @@ public interface EmulatorPlugin {
      * @param settings the plugin's section of the config; never null
      */
     void install(VirtualMachine vm, Map<String, Object> settings);
+
+    /**
+     * Called once when the run is over, whatever its outcome. A plugin that holds something
+     * outside the JVM (a helper process, a temporary directory) releases it here.
+     */
+    default void close() {
+    }
 }

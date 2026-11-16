@@ -155,16 +155,19 @@ in which a thread waited for another could hang or see wrong results, so it was 
 
 ## Native code
 
-Native methods cannot be interpreted, and embedding a CPU emulator was judged out of scope: it
-would be a second project of comparable size. Instead the emulator makes the hand-over precise.
+Native methods cannot be interpreted. JavaByte handles them in two tiers, described fully in
+[NATIVE.md](NATIVE.md).
 
-- Every library the sample loads is parsed (PE, ELF) for its architecture and exported JNI
-  functions, saved, and reported. A library exporting only `JNI_OnLoad` binds its methods at
-  load time, the mark of a native obfuscator.
-- Each native call is reported with its arguments and, when a loaded library exports the
-  matching JNI symbol, the library that implements it.
-- `vm.natives` lets a plugin supply a native method: recorded answers, a Java
-  re-implementation, or a bridge to an external native emulator.
+The core always makes the hand-over precise: each loaded library is parsed for its
+architecture and exported JNI functions, saved, and reported, and each native call is reported
+with its arguments and the library that implements it.
+
+Execution is delegated to an optional plugin rather than built in. Embedding a CPU emulator
+and a model of Windows would be a second project of comparable size, and good open-source ones
+exist. The `native-bridge` plugin drives Speakeasy (on Unicorn) in a helper process. The
+design rule is that the helper owns memory and registers while JavaByte owns every Java
+object: JNI calls made by native code come back as callbacks and go through the ordinary call
+router, so policy applies to native code's use of Java exactly as it does to bytecode.
 
 ## Configuration and reporting
 
@@ -224,6 +227,7 @@ Treat JavaByte as strong containment for analysis, and still run it somewhere di
 | `env` | The simulated machine: disk, network, processes, clock, executors |
 | `report` | Events, artifacts and the report |
 | `plugin` | Extension point for family-specific behaviour |
+| `nativebridge` | Optional plugin: native code in a CPU emulator via a helper process |
 
 ## Adding a stub
 

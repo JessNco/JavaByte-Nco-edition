@@ -18,6 +18,7 @@ Every change should keep all tests passing on Java 17, 21 and 25. CI runs all th
 | `EscapeTest` | Containment: about eighty escape attempts, checked on the real machine |
 | `SafetyTest` | Structure: simulated classes override everything; key policy exclusions |
 | `NativeTest` | Native reporting, plugin handlers, library parsing |
+| `NativeBridgeTest` | Native code in the CPU emulator. Skipped unless `JAVABYTE_BRIDGE_PYTHON` is set; see docs/NATIVE.md |
 
 The quickest way to find an interpreter bug is to add code to a fixture in
 `src/test/java/dev/javabyte/guest/` (`Basics`, `Advanced`, `Concurrency`). Those programs are
@@ -97,7 +98,11 @@ constant kind, a new bootstrap method in the JDK) may need support in `IndyLinke
 mvn versions:display-dependency-updates
 ```
 
-There are four: ASM, Jackson (YAML), picocli and JUnit. Raise the version property in
+There are four Java ones: ASM, Jackson (YAML), picocli and JUnit. The optional native bridge
+has its own, pinned in `scripts/native-bridge-requirements.txt`; after changing it, run
+`NativeBridgeTest`.
+
+For the Java ones: Raise the version property in
 `pom.xml`, run the tests, and note the change in `CHANGELOG.md`.
 
 ### Releasing

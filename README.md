@@ -145,10 +145,11 @@ are in [docs/SELFTEST.md](docs/SELFTEST.md).
 
 ## Known limitations
 
-- **Native code is not executed.** JavaByte describes each native library (format, architecture,
-  exported JNI functions, whether it registers methods at load time), saves it, and reports every
-  native call with its arguments. The machine code itself needs a native tool. A plugin can
-  supply a native method's behaviour through `vm.natives`.
+- **Native code needs the optional bridge.** By default JavaByte describes each native
+  library and reports native calls without running them. The `native-bridge` plugin runs
+  64-bit Windows DLLs in a CPU emulator (Speakeasy and Unicorn) and reports the Windows API
+  calls they make. Other platforms' libraries are described only. See
+  [docs/NATIVE.md](docs/NATIVE.md).
 - **No real parallelism.** Guest threads are interleaved, with working locks, `wait`/`notify`
   and pre-emption, but only one runs at a time. A bug that needs two threads to execute at the
   same instant cannot occur. Sleeps take no real time, so timing measurements see virtual time.
@@ -190,6 +191,7 @@ The tests include:
 | [docs/CONFIG.md](docs/CONFIG.md) | Every config option |
 | [AGENTS.md](AGENTS.md) | Driving the tool from an AI agent or a script; report fields |
 | [docs/DESIGN.md](docs/DESIGN.md) | How it works and why |
+| [docs/NATIVE.md](docs/NATIVE.md) | Native libraries and the optional CPU-emulator bridge |
 | [docs/SELFTEST.md](docs/SELFTEST.md) | Results against real malware |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |
 | [CHANGELOG.md](CHANGELOG.md) | What changed between versions |

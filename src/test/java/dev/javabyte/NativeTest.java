@@ -28,7 +28,7 @@ class NativeTest {
     @Test
     void nativeCallIsReportedAndReturnsZeroByDefault() throws Exception {
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), NativeUser.class)));
-        assertEquals(List.of("scrambled 0"), Fixtures.stdout(report), Fixtures.outcomes(report));
+        assertEquals(List.of("library missing", "scrambled 0"), Fixtures.stdout(report), Fixtures.outcomes(report));
         assertEquals("dev/javabyte/guest/NativeUser.scramble(I)I",
                 Fixtures.events(report, "native", "call").get(0).data().get("method"));
         assertEquals("scrambler", Fixtures.events(report, "native", "load-library").get(0).data().get("library"));
@@ -39,7 +39,7 @@ class NativeTest {
         EmulatorConfig config = Fixtures.config(Fixtures.jar(temp, Map.of(), NativeUser.class));
         config.plugins.put("test-native", Map.of("factor", 6));
         Report report = Fixtures.run(config);
-        assertEquals(List.of("scrambled 42"), Fixtures.stdout(report), Fixtures.outcomes(report));
+        assertEquals(List.of("library missing", "scrambled 42"), Fixtures.stdout(report), Fixtures.outcomes(report));
         assertTrue(Fixtures.events(report, "native", "call").isEmpty(), "a handled call is not an unemulated one");
     }
 

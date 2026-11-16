@@ -46,7 +46,7 @@ Everything here also works for a person; it is just written as a procedure.
    | An environment check stops the sample early | Add a `hooks` entry forcing the check's result |
    | Outcome `no-entry-point` | Use `type: method` with a class from `mainCandidates`, or `type: clinit-sweep` |
    | `gap.missing-class` for a library | Add the library jar to `classpath` |
-   | `native.call` events and little else | The logic is in native code; report the library details from `native.load-library` and stop |
+   | `native.call` events and little else | The logic is in native code. For a 64-bit Windows DLL, rerun with the `native-bridge` plugin (docs/NATIVE.md); otherwise report the library details from `native.load-library` |
    | `thread.stopped` with "would block forever", or outcome `blocked` | That thread was waiting for something no other thread provides, often a network reply; supply it |
 
 5. **Stop** when a further run adds nothing new, and summarise.
@@ -82,6 +82,9 @@ Useful single events:
 - `net.send`: `endpoint`, `preview`, `file`.
 - `native.load-library`: `library`, `format`, `binding` (how it attaches to Java), `sha256`, `file`.
 - `native.call`: `method`, `firstArguments`, `implementedBy`. The call was not executed.
+- With the native bridge: `native.api` (Windows API calls made by native code),
+  `native.register-natives` (methods bound at load time), `native.jni-call` (Java called from
+  native code).
 
 ## Exit codes
 

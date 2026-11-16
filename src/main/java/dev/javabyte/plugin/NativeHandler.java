@@ -14,6 +14,12 @@ import dev.javabyte.vm.VirtualMachine;
 public interface NativeHandler {
 
     /**
+     * Returned by a handler that turns out not to cover this call after all. The emulator then
+     * reports the call as not emulated, exactly as if no handler had been registered.
+     */
+    Object NOT_HANDLED = new Object();
+
+    /**
      * @param receiver {@code this} for instance methods, null for static ones
      * @param args     arguments in interpreter representation (int-like values are Integers)
      * @return the result in interpreter representation; ignored for void methods

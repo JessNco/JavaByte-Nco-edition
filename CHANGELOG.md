@@ -6,6 +6,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Optional `native-bridge` plugin: runs 64-bit Windows JNI libraries in a CPU emulator
+  (Speakeasy and Unicorn) and reports their Windows API calls. See docs/NATIVE.md.
+- `EmulatorPlugin.close()` and `NativeHandler.NOT_HANDLED` for plugin authors.
 - `EnumMap`, `EnumSet` and other JDK enum utilities work with enums defined by the sample.
 - Dynamic proxies for interfaces defined by the sample.
 - `schemaVersion` in the report.
@@ -14,6 +17,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Package documentation, contributing guide, CI workflow.
 
 ### Changed
+- `System.load` and `System.loadLibrary` now fail with `UnsatisfiedLinkError` when the library
+  is not on the virtual disk, as a JVM would. Libraries that unpack their own native code
+  depend on that failure.
 - A guest thread that can never be woken now ends with outcome `blocked` (was `sleep-budget`).
 - Generated shell classes mirror the sample's class hierarchy.
 - Dependencies: ASM 9.11.1, Jackson 2.23.0, picocli 4.7.7, JUnit 5.14.4.

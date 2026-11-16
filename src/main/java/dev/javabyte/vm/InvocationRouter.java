@@ -298,8 +298,11 @@ public final class InvocationRouter {
     private Object callNative(GuestMethod method, Object receiver, Object[] args) {
         dev.javabyte.plugin.NativeHandler handler = vm.natives.find(method);
         if (handler != null) {
-            vm.events.addOnce(method.id, "native", "handled", "method", method.id);
-            return handler.call(vm, method, receiver, args);
+            Object result = handler.call(vm, method, receiver, args);
+            if (result != dev.javabyte.plugin.NativeHandler.NOT_HANDLED) {
+                vm.events.addOnce(method.id, "native", "handled", "method", method.id);
+                return result;
+            }
         }
         vm.events.addOnce(method.id, "native", "call", "method", method.id,
                 "firstArguments", args.length == 0 ? null : describeArgs(args),

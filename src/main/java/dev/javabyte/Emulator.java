@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.jar.Manifest;
 import java.util.regex.Pattern;
@@ -68,9 +69,12 @@ public final class Emulator {
         EventLog events = new EventLog(config.limits.maxEventsPerCategory, trace);
         VirtualMachine vm = new VirtualMachine(config, events, new Artifacts(outputDirectory));
         BuiltinStubs.install(vm);
+        List<EmulatorPlugin> installed = new ArrayList<>();
         for (EmulatorPlugin plugin : ServiceLoader.load(EmulatorPlugin.class)) {
             if (config.plugins.containsKey(plugin.id())) {
-                plugin.install(vm, config.plugins.get(plugin.id()));
+                Map<String, Object> settings = config.plugins.get(plugin.id());
+                plugin.install(vm, settings == null ? Map.of() : settings);
+                installed.add(plugin);
                 events.add("lifecycle", "plugin-installed", "id", plugin.id());
             }
         }
@@ -115,6 +119,13 @@ public final class Emulator {
             finish(vm, config);
         } catch (RuntimeException e) {
             vm.events.add("gap", "finish-failed", "error", e.toString());
+        }
+        for (EmulatorPlugin plugin : installed) {
+            try {
+                plugin.close();
+            } catch (RuntimeException e) {
+                events.add("gap", "plugin-close-failed", "id", plugin.id(), "error", e.toString());
+            }
         }
         report.complete();
         if (outputDirectory != null) {

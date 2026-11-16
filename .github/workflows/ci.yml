@@ -26,3 +26,24 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn --batch-mode --no-transfer-progress verify
+
+  # The optional native bridge needs Python packages, so it is tested in its own job. The main
+  # job above stays free of anything but Java.
+  native-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Create the bridge environment
+        run: scripts/setup-native-bridge.sh "$RUNNER_TEMP/bridge-venv"
+      - name: Run the bridge tests
+        env:
+          JAVABYTE_BRIDGE_PYTHON: ${{ runner.temp }}/bridge-venv/bin/python
+        run: mvn --batch-mode --no-transfer-progress verify -Dtest=NativeBridgeTest -Dsurefire.failIfNoSpecifiedTests=false

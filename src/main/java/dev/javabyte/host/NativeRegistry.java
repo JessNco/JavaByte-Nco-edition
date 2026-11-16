@@ -43,8 +43,22 @@ public final class NativeRegistry {
         return null;
     }
 
-    public void libraryLoaded(String name, NativeLibraryInfo info) {
-        loaded.put(name, info);
+    private final List<java.util.function.BiConsumer<String, byte[]>> loadListeners = new ArrayList<>();
+
+    /** Registers a callback for each library the sample loads; plugins use it to emulate the library. */
+    public void onLibraryLoaded(java.util.function.BiConsumer<String, byte[]> listener) {
+        loadListeners.add(listener);
+    }
+
+    /**
+     * @param info description of the library, or null if its format was not recognised
+     * @param data the library's bytes
+     */
+    public void libraryLoaded(String name, NativeLibraryInfo info, byte[] data) {
+        if (info != null) {
+            loaded.put(name, info);
+        }
+        loadListeners.forEach(listener -> listener.accept(name, data));
     }
 
     /** Name of a loaded library that exports the JNI symbol for this method, or null. */

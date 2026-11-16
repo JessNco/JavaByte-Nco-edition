@@ -1,0 +1,4 @@
+# Python packages for the optional native bridge. See docs/NATIVE.md.
+speakeasy-emulator==1.5.11
+# The Unicorn binding Speakeasy depends on imports pkg_resources, removed in setuptools 81.
+setuptools<81

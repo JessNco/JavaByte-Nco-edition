@@ -6,3 +6,4 @@ samples/
 *.class
 .idea/
 *.iml
+.venv-native-bridge/

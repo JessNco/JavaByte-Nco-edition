@@ -134,6 +134,13 @@ java/util/stream/**
 !java/util/concurrent/Phaser
 !java/util/concurrent/Exchanger
 !java/util/concurrent/SubmissionPublisher
+# Fork/join tasks run on the common pool's threads when forked.
+!java/util/concurrent/RecursiveTask
+!java/util/concurrent/RecursiveAction
+!java/util/concurrent/CountedCompleter
+# JVM-wide defaults: changing them would alter the emulator itself for the rest of the run.
+!java/util/Locale#setDefault
+!java/util/TimeZone#setDefault
 # Formatter and Scanner have overloads that open files by name.
 !java/util/Formatter#<init>(Ljava/lang/String;)V
 !java/util/Formatter#<init>(Ljava/lang/String;Ljava/lang/String;)V
@@ -193,10 +200,40 @@ java/io/*Exception
 
 # ---------------------------------------------------------------- cryptography
 javax/crypto/**
-java/security/**
-!java/security/SecureClassLoader
-!java/security/Policy
-!java/security/AccessControlContext
+# java.security is listed class by class rather than as a tree. The package also holds classes
+# that fetch over the network (certificate revocation, domain key stores) or change JVM-wide
+# state (provider registration), and a wildcard would let those in.
+java/security/MessageDigest
+java/security/DigestInputStream
+java/security/DigestOutputStream
+java/security/SecureRandom
+java/security/Key
+java/security/PublicKey
+java/security/PrivateKey
+java/security/KeyPair
+java/security/KeyPairGenerator
+java/security/KeyFactory
+java/security/KeyRep
+java/security/Signature
+java/security/AlgorithmParameters
+java/security/AlgorithmParameterGenerator
+java/security/Principal
+java/security/Provider
+java/security/Security#getProvider,getProviders,getAlgorithms,getProperty
+java/security/AccessController#doPrivileged
+java/security/PrivilegedAction
+java/security/PrivilegedExceptionAction
+java/security/ProtectionDomain
+java/security/CodeSource
+java/security/KeyStore
+java/security/KeyStore$*
+java/security/*Exception
+java/security/spec/**
+java/security/interfaces/**
+java/security/cert/Certificate
+java/security/cert/X509Certificate
+java/security/cert/CertificateFactory
+java/security/cert/*Exception
 javax/security/auth/x500/**
 javax/security/cert/**
 # TLS configuration objects are inert until a socket is opened, and sockets are simulated.

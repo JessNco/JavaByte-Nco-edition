@@ -78,6 +78,14 @@ final class SystemStubs {
         installManagement(vm);
 
         stubs.on("java/lang/Object", "getClass", ctx -> classOf(vm, ctx.receiver));
+        // The no-argument form writes to the real System.err; send it to the guest's instead,
+        // where it is captured. The overloads that take a stream need no help.
+        stubs.on("java/lang/Throwable", "printStackTrace", "()V", ctx -> {
+            if (ctx.receiver instanceof Throwable throwable) {
+                throwable.printStackTrace(env.stderr);
+            }
+            return null;
+        });
     }
 
     private static Object exit(VirtualMachine vm, int status) {

@@ -91,6 +91,9 @@ final class FileStubs {
         stubs.on("java/io/PrintWriter", "<init>", ctx -> isPathArg(ctx.arg(0))
                 ? new PrintWriter(new OutputStreamWriter(openOutput(fs, path(ctx.arg(0)), false), charsetArg(ctx, 1)))
                 : ctx.proceed());
+        stubs.on("java/util/Formatter", "<init>", ctx -> ctx.argCount() > 0 && isPathArg(ctx.arg(0))
+                ? new java.util.Formatter(new PrintStream(openOutput(fs, path(ctx.arg(0)), false), false, charsetArg(ctx, 1)))
+                : ctx.proceed());
         stubs.on("java/util/Scanner", "<init>", ctx -> ctx.arg(0) instanceof File || ctx.arg(0) instanceof Path
                 ? new Scanner(openInput(fs, path(ctx.arg(0))), charsetArg(ctx, 1)) : ctx.proceed());
 
@@ -201,6 +204,12 @@ final class FileStubs {
 
     private static Object files(VirtualMachine vm, VirtualFileSystem fs, CallContext ctx) throws IOException {
         String first = ctx.argCount() > 0 && ctx.arg(0) instanceof Path p ? p.toString() : null;
+        boolean pathFree = ctx.name.startsWith("createTemp") || ctx.name.equals("copy");
+        if (first == null && !pathFree) {
+            // Every other Files method takes a path first; null (or a path object the emulator
+            // could not provide) fails the way the real method would.
+            throw ctx.raise(new NullPointerException("path"));
+        }
         switch (ctx.name) {
             case "exists", "isReadable", "isExecutable":
                 return fs.exists(first) ? 1 : 0;

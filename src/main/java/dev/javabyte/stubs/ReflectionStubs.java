@@ -534,6 +534,10 @@ final class ReflectionStubs {
         if (ctx.receiver instanceof Field real) {
             String owner = Type.getInternalName(real.getDeclaringClass());
             Type type = Type.getType(real.getType());
+            if ((isGetter || isSetter) && !Modifier.isPublic(real.getModifiers())) {
+                // Reading JDK internals would need setAccessible, which is never honoured.
+                return vm.router.blocked(owner, real.getName(), "()" + type.getDescriptor(), "field");
+            }
             if (isGetter) {
                 Object value = Modifier.isStatic(real.getModifiers())
                         ? vm.fields.getHostStatic(owner, real.getName(), type.getDescriptor())

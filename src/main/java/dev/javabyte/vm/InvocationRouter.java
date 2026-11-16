@@ -289,7 +289,58 @@ public final class InvocationRouter {
             traceHostCall(owner, name, desc, args);
             return vm.host.invoke(owner, name, desc, receiver, args, special);
         }
+        String viaReceiver = receiver == null ? null : allowedSupertype(receiver.getClass(), name, desc);
+        if (viaReceiver != null && !touchesFileSystem(viaReceiver, desc)) {
+            traceHostCall(viaReceiver, name, desc, args);
+            return vm.host.invoke(viaReceiver, name, desc, receiver, args, special);
+        }
         return blocked(owner, name, desc, "method");
+    }
+
+    private final java.util.Map<String, java.util.Optional<String>> receiverCache = new java.util.HashMap<>();
+
+    /**
+     * Finds an allow-listed class or interface of the receiver that has the method.
+     *
+     * <p>Bytecode may name a class the policy does not list while the object in hand is of an
+     * allowed type: a stub answers {@code new FileWriter(...)} with a plain
+     * {@code OutputStreamWriter}, yet the call site still says {@code FileWriter.append}. The
+     * guest could make the same call by naming the allowed supertype, so honouring it here
+     * grants nothing new.
+     *
+     * @return the internal name to call through, or null
+     */
+    private String allowedSupertype(Class<?> receiverClass, String name, String desc) {
+        return receiverCache.computeIfAbsent(receiverClass.getName() + '.' + name + desc, key -> {
+            java.util.Deque<Class<?>> work = new java.util.ArrayDeque<>(java.util.List.of(receiverClass));
+            java.util.Set<Class<?>> visited = new java.util.HashSet<>();
+            while (!work.isEmpty()) {
+                Class<?> current = work.poll();
+                if (!visited.add(current)) {
+                    continue;
+                }
+                String internalName = Type.getInternalName(current);
+                if (java.lang.reflect.Modifier.isPublic(current.getModifiers()) && vm.host.findClass(internalName) != null
+                        && vm.policy.allows(internalName, name, desc) && declares(current, name, desc)) {
+                    return java.util.Optional.of(internalName);
+                }
+                if (current.getSuperclass() != null) {
+                    work.add(current.getSuperclass());
+                }
+                work.addAll(java.util.List.of(current.getInterfaces()));
+            }
+            return java.util.Optional.empty();
+        }).orElse(null);
+    }
+
+    private static boolean declares(Class<?> cls, String name, String desc) {
+        String parameters = desc.substring(0, desc.indexOf(')') + 1);
+        for (java.lang.reflect.Method method : cls.getMethods()) {
+            if (method.getName().equals(name) && Type.getMethodDescriptor(method).startsWith(parameters)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Object runStub(Stub stub, CallContext context) {

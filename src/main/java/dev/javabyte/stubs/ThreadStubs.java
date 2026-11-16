@@ -128,6 +128,11 @@ final class ThreadStubs {
         if (ctx.name.equals("delayedExecutor") || ctx.name.equals("defaultExecutor")) {
             return new SimExecutor();
         }
+        if (ctx.name.equals("orTimeout") || ctx.name.equals("completeOnTimeout")) {
+            // These arm a timer on a JDK background thread. Virtual time never reaches a real
+            // deadline, so leaving the future untouched is the faithful answer.
+            return ctx.receiver;
+        }
         if (ctx.name.endsWith("Async") && ctx.receiver != null) {
             // foo Async(fn[, executor]) -> foo(fn): drop the suffix and any trailing executor.
             Type[] types = Type.getArgumentTypes(ctx.desc);

@@ -86,7 +86,7 @@ public final class Hooks {
         return pattern.matcher(shortForm).matches() || pattern.matcher(shortForm + desc).matches();
     }
 
-    /** Dots in class names are accepted as slashes so either naming style works in config. */
+    /** Converts a glob to a regular expression: {@code *} is any text, {@code ?} one character. */
     static Pattern glob(String glob) {
         StringBuilder regex = new StringBuilder();
         for (char c : glob.toCharArray()) {

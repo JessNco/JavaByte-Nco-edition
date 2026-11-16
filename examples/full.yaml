@@ -1,0 +1,93 @@
+# Every section of a JavaByte config, with illustrative values.
+# Print the real defaults with:  javabyte defaults
+sample: sample.jar
+
+classpath:                      # extra jars to interpret alongside the sample
+  - libs/bundled-library.jar
+
+entryPoints:
+  - type: main                  # class defaults to the manifest's Main-Class
+    args: ["--silent"]
+  - type: method                # call one method directly
+    class: com.example.Decoder
+    method: decode
+    descriptor: (Ljava/lang/String;)Ljava/lang/String;
+    args: ["ZW5jb2RlZA=="]
+  - type: clinit-sweep          # run static initialisers only
+    include: ["com/example/*"]
+
+limits:
+  maxInstructions: 2000000000
+  timeoutSeconds: 120
+  maxCallDepth: 1500
+  maxSleeps: 40
+  maxTasks: 512
+
+environment:
+  os: windows
+  userName: admin
+  hostName: DESKTOP-4QK7B2M
+  samplePath: 'C:\Users\admin\Downloads\invoice.jar'
+  clockStart: '2024-03-01T09:00:00Z'
+  properties:
+    user.language: de
+  env:
+    COMPUTERNAME: WORKSTATION-7
+  directories:
+    - 'C:\Program Files\SomeProduct'
+  files:
+    - path: 'C:\Users\admin\AppData\Roaming\app\settings.ini'
+      text: "mode=1\n"
+    - path: 'C:\Users\admin\Documents\data.bin'
+      base64: AAECAwQ=
+
+network:
+  mode: respond                 # or offline
+  defaultAddress: 203.0.113.10
+  dns:
+    c2.example.test: 198.51.100.20
+  http:
+    - url: 'c2\.example\.test/gate'
+      status: 200
+      headers: { Content-Type: text/plain }
+      body: "sleep 60"
+  sockets:
+    - endpoint: '198\.51\.100\.20:4444'
+      text: "PING\n"
+
+processes:
+  - command: 'whoami'
+    stdout: "desktop\\admin\n"
+  - command: 'reg query'
+    exitCode: 1
+
+policy:
+  allow:
+    - java/awt/Point            # only side-effect-free members belong here
+  deny:
+    - java/util/Random
+  onBlocked: phantom            # phantom | throw | abort
+
+hooks:
+  - method: 'com/example/Checks.isSandbox()Z'
+    action: return
+    value: false
+  - method: 'com/example/Net.*'
+    action: trace
+
+trace:
+  strings: static               # static | all | none
+  methods: ['com/example/Crypto.*']
+  instructions: []
+  hostCalls: false
+
+threads:
+  mode: deferred                # deferred | inline
+  periodicRuns: 1
+  runShutdownHooks: true
+
+output:
+  directory: javabyte-out
+  dumpDefinedClasses: true
+  dumpDroppedFiles: true
+  console: text                 # text | json | quiet

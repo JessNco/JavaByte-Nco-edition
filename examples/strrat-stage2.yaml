@@ -1,0 +1,16 @@
+# Following a sample that installs itself and relaunches.
+#
+# A first run with defaults showed STRRAT copying itself to %APPDATA% and starting the copy.
+# The copy behaves differently because it finds itself at the installed path. This config
+# places the sample there, so the run continues where the first one ended.
+sample: samples/7a4f3b8e31e43bf030fa3f42e38e1d8cb613d326831bc9c27cfae3475cba6ff6/7a4f3b8e31e43bf030fa3f42e38e1d8cb613d326831bc9c27cfae3475cba6ff6.jar
+
+environment:
+  samplePath: 'C:\Users\admin\AppData\Roaming\7a4f3b8e31e43bf030fa3f42e38e1d8cb613d326831bc9c27cfae3475cba6ff6.jar'
+
+limits:
+  timeoutSeconds: 90
+  maxSleeps: 6          # the C2 loop retries forever; a few rounds are enough
+
+output:
+  directory: out/strrat-stage2

@@ -1,0 +1,16 @@
+# Following a sample that relaunches itself with arguments.
+#
+# The first run reported:  javaw.exe -cp <sample> net.fabric.uedHelper -restarted
+# Passing the same argument makes this run take the path the child process would.
+sample: samples/965ef0037754c4d7ac2d4ba952706bace68012485fe4202494c2f4b09f8dc152/965ef0037754c4d7ac2d4ba952706bace68012485fe4202494c2f4b09f8dc152.jar
+
+entryPoints:
+  - type: main
+    args: ["-restarted"]
+
+limits:
+  timeoutSeconds: 90
+  maxSleeps: 6
+
+output:
+  directory: out/silentnet-restarted

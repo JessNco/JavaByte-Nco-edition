@@ -38,6 +38,9 @@ public final class ConfigLoader {
 
     /** Loads a config file, then applies {@code key.path=value} overrides in order. */
     public static EmulatorConfig load(Path file, List<String> overrides) throws IOException {
+        if (file != null && !Files.isRegularFile(file)) {
+            throw new ConfigException("Config file not found: " + file);
+        }
         JsonNode tree = file == null ? YAML.createObjectNode() : YAML.readTree(Files.newBufferedReader(file));
         if (tree == null || tree.isMissingNode() || tree.isNull()) {
             tree = YAML.createObjectNode();

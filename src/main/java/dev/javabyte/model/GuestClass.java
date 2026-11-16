@@ -38,6 +38,8 @@ public final class GuestClass {
     public final String origin;
 
     public InitState initState = InitState.UNINITIALISED;
+    /** The guest thread running the static initialiser, while {@link #initState} is IN_PROGRESS. */
+    public Object initialisingThread;
 
     private final Map<String, GuestMethod> methods = new LinkedHashMap<>();
     private final Map<String, GuestMethod> virtualCache = new HashMap<>();

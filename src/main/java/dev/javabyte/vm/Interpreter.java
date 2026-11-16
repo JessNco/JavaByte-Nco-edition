@@ -65,11 +65,15 @@ public final class Interpreter {
             frame.locals[slot] = args[i];
             slot += method.argTypes[i].getSize();
         }
+        // The stack is captured once: after a thread switch "the current stack" is another
+        // thread's, and this frame must be removed from the one it was pushed on.
+        java.util.List<Frame> stack = vm.currentStack();
+        int depth = stack.size();
         vm.pushFrame(frame);
         try {
             return run(frame);
         } finally {
-            vm.popFrame();
+            vm.popFrame(stack, depth);
         }
     }
 
@@ -437,12 +441,18 @@ public final class Interpreter {
                             stack[sp - 1] = value != null && vm.types.isInstance(value, ((TypeInsnNode) insn).desc) ? 1 : 0;
                             break;
                         }
-                        case MONITORENTER: case MONITOREXIT:
-                            // Guest code runs on one thread, so monitors can never be contended.
-                            if (stack[--sp] == null) {
+                        case MONITORENTER: case MONITOREXIT: {
+                            Object lock = stack[--sp];
+                            if (lock == null) {
                                 throw vm.raise(new NullPointerException("Cannot enter synchronized block because value is null"));
                             }
+                            if (op == MONITORENTER) {
+                                vm.scheduler.monitorEnter(lock);
+                            } else {
+                                vm.scheduler.monitorExit(lock);
+                            }
                             break;
+                        }
 
                         default:
                             throw new IllegalStateException("Unsupported opcode " + op + " in " + method.id);

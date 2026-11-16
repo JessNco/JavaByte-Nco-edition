@@ -180,6 +180,7 @@ public final class Emulator {
                 guarded(vm, report, "(shutdown hooks)", vm.scheduler::runShutdownHooks);
             }
         } finally {
+            vm.scheduler.shutdown();
             vm.unbind();
         }
     }

@@ -218,7 +218,19 @@ public final class InvocationRouter {
         if (method.traceCalls) {
             vm.events.writeTrace("-> " + method.id + describeArgs(args));
         }
-        Object result = vm.interpreter.execute(method, receiver, args);
+        Object result;
+        if (method.isSynchronized) {
+            // A synchronized method holds its receiver's monitor (its class's, if static).
+            Object lock = method.isStatic ? method.owner : receiver;
+            vm.scheduler.monitorEnter(lock);
+            try {
+                result = vm.interpreter.execute(method, receiver, args);
+            } finally {
+                vm.scheduler.monitorExit(lock);
+            }
+        } else {
+            result = vm.interpreter.execute(method, receiver, args);
+        }
         if (method.traceCalls) {
             vm.events.writeTrace("<- " + method.id + " = " + Values.describe(result));
         }
@@ -521,12 +533,16 @@ public final class InvocationRouter {
                     return new PlainObject(new InstanceState(state));
                 }
                 return jdkBase ? NOT_HANDLED : gap("clone() of " + state.type.name, desc);
-            case "notify()V", "notifyAll()V", "finalize()V":
+            case "finalize()V":
                 return null;
-            case "wait()V", "wait(J)V", "wait(JI)V":
-                // With one thread nothing can ever call notify() while we wait. Returning is
-                // permitted by the specification (spurious wake-up); queued tasks get a turn first.
-                vm.scheduler.yieldToOthers("Object.wait");
+            case "notify()V", "notifyAll()V":
+                vm.scheduler.objectNotify(receiver, name.equals("notifyAll"));
+                return null;
+            case "wait()V":
+                vm.scheduler.objectWait(receiver, 0);
+                return null;
+            case "wait(J)V", "wait(JI)V":
+                vm.scheduler.objectWait(receiver, (Long) args[0]);
                 return null;
             default:
                 return NOT_HANDLED;

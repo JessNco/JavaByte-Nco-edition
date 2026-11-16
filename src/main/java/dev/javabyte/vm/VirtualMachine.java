@@ -54,7 +54,6 @@ public final class VirtualMachine {
 
     final Interpreter interpreter;
 
-    private final List<Frame> frames = new ArrayList<>();
     private long instructions;
     private volatile boolean cancelled;
     /** The JDK call in progress, for diagnosing a run that blocks inside real code. */
@@ -120,6 +119,7 @@ public final class VirtualMachine {
                 throw new EmulationAbort(EmulationAbort.Reason.INSTRUCTION_LIMIT,
                         "executed " + instructions + " instructions");
             }
+            scheduler.preempt();
         }
     }
 
@@ -134,10 +134,12 @@ public final class VirtualMachine {
 
     public void enterHostCall(String owner, String name) {
         hostCallInProgress = owner + '.' + name;
+        scheduler.enterHostCall();
     }
 
     public void exitHostCall() {
         hostCallInProgress = null;
+        scheduler.exitHostCall();
     }
 
     public String hostCallInProgress() {
@@ -146,34 +148,49 @@ public final class VirtualMachine {
 
     // ------------------------------------------------------------------ guest call stack
 
-    void pushFrame(Frame frame) {
-        if (frames.size() >= config.limits.maxCallDepth) {
-            throw raise(new StackOverflowError());
-        }
-        frames.add(frame);
+    /** The call stack of the guest thread that currently holds the baton. */
+    private List<Frame> frames() {
+        return scheduler.frames();
     }
 
-    void popFrame() {
-        frames.remove(frames.size() - 1);
+    void pushFrame(Frame frame) {
+        if (frames().size() >= config.limits.maxCallDepth) {
+            throw raise(new StackOverflowError());
+        }
+        frames().add(frame);
+    }
+
+    /**
+     * @param depth the stack depth before the matching push. Truncating to it, rather than
+     *              removing "the top", stays correct if an abort unwound past inner frames.
+     */
+    void popFrame(List<Frame> stack, int depth) {
+        while (stack.size() > depth) {
+            stack.remove(stack.size() - 1);
+        }
+    }
+
+    List<Frame> currentStack() {
+        return frames();
     }
 
     public int depth() {
-        return frames.size();
+        return frames().size();
     }
 
     /** The guest method currently executing, or null between entry points. */
     public GuestMethod currentMethod() {
-        return frames.isEmpty() ? null : frames.get(frames.size() - 1).method;
+        return frames().isEmpty() ? null : frames().get(frames().size() - 1).method;
     }
 
     /** Name of the guest class {@code levelsUp} frames above the current one, or null. */
     public String callerClass(int levelsUp) {
-        int index = frames.size() - 1 - levelsUp;
-        return index < 0 ? null : frames.get(index).method.owner.name;
+        int index = frames().size() - 1 - levelsUp;
+        return index < 0 ? null : frames().get(index).method.owner.name;
     }
 
     public String callerLocation() {
-        return frames.isEmpty() ? null : frames.get(frames.size() - 1).location();
+        return frames().isEmpty() ? null : frames().get(frames().size() - 1).location();
     }
 
     /**
@@ -183,9 +200,9 @@ public final class VirtualMachine {
      * from the calling class and method names found in a stack trace.
      */
     public StackTraceElement[] guestStackTrace() {
-        StackTraceElement[] trace = new StackTraceElement[frames.size()];
+        StackTraceElement[] trace = new StackTraceElement[frames().size()];
         for (int i = 0; i < trace.length; i++) {
-            Frame frame = frames.get(frames.size() - 1 - i);
+            Frame frame = frames().get(frames().size() - 1 - i);
             GuestMethod method = frame.method;
             int line = method.lines.length == 0 ? -1 : method.lines[Math.min(frame.pc, method.lines.length - 1)];
             trace[i] = new StackTraceElement(method.owner.dottedName(), method.name, method.owner.node.sourceFile, line);
@@ -245,6 +262,12 @@ public final class VirtualMachine {
 
     /** Runs static initialisation for a class if it has not run yet (JVMS 5.5). */
     public void ensureInitialised(GuestClass cls) {
+        if (cls.initState == GuestClass.InitState.IN_PROGRESS && cls.initialisingThread != scheduler.currentThread()) {
+            // Another guest thread is running the initialiser. The JVM makes this one wait,
+            // so that it never sees a half-initialised class.
+            scheduler.blockUntil(() -> cls.initState != GuestClass.InitState.IN_PROGRESS,
+                    "initialisation of " + cls.name);
+        }
         switch (cls.initState) {
             case INITIALISED, IN_PROGRESS:
                 // IN_PROGRESS on the same thread means recursive initialisation, which the JVM
@@ -255,6 +278,7 @@ public final class VirtualMachine {
             default:
                 break;
         }
+        cls.initialisingThread = scheduler.currentThread();
         cls.initState = GuestClass.InitState.IN_PROGRESS;
         if (!cls.isInterface() && cls.superClass() != null) {
             ensureInitialised(cls.superClass());

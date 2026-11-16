@@ -40,12 +40,14 @@ public final class SimFuture<V> implements RunnableScheduledFuture<V> {
         }
     }
 
+    /** Waits for the task, as a real {@code get()} would, by letting other guest threads run. */
     private void ensureRun() {
+        VirtualMachine vm = VirtualMachine.current();
+        if (vm != null && vm.scheduler.isAlive(this)) {
+            vm.scheduler.join(this);
+        }
         if (!done && !cancelled) {
-            VirtualMachine vm = VirtualMachine.current();
-            if (vm != null) {
-                vm.scheduler.runNow(this);
-            }
+            // Not scheduled (an invokeAll task, or use outside a run): run it here.
             run();
         }
     }

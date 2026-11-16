@@ -32,6 +32,21 @@ class DifferentialTest {
     }
 
     @Test
+    void multiThreadedProgramMatchesRealJvm() throws Exception {
+        java.util.List<String> expected = Fixtures.realOutput(() -> {
+            try {
+                dev.javabyte.guest.Concurrency.main(new String[0]);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.Concurrency.class)));
+        assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
+        assertEquals(0, Fixtures.events(report, "thread", "stopped").size(), "no thread should have hung: " + Fixtures.outcomes(report));
+        assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
+    }
+
+    @Test
     void stackTraceKeyedDecryptionMatchesRealJvm() throws Exception {
         List<String> expected = Fixtures.realOutput(() -> StackKeyed.main(new String[0]));
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), StackKeyed.class)));

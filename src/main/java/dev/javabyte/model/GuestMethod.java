@@ -37,6 +37,7 @@ public final class GuestMethod {
     public final boolean isStatic;
     public final boolean isNative;
     public final boolean isAbstract;
+    public final boolean isSynchronized;
 
     public final AbstractInsnNode[] code;
     /** Jump target index for the {@link JumpInsnNode} at the same index; unused elsewhere. */
@@ -69,6 +70,7 @@ public final class GuestMethod {
         this.isStatic = (node.access & Opcodes.ACC_STATIC) != 0;
         this.isNative = (node.access & Opcodes.ACC_NATIVE) != 0;
         this.isAbstract = (node.access & Opcodes.ACC_ABSTRACT) != 0;
+        this.isSynchronized = (node.access & Opcodes.ACC_SYNCHRONIZED) != 0;
 
         this.code = node.instructions.toArray();
         this.jumpTargets = new int[code.length];

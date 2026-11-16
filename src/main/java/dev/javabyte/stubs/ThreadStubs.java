@@ -9,9 +9,11 @@ import dev.javabyte.vm.VirtualMachine;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
 import org.objectweb.asm.Type;
 
@@ -45,10 +47,10 @@ final class ThreadStubs {
             return null;
         });
         stubs.on(thread, "join", ctx -> {
-            vm.scheduler.runNow(ctx.receiver);
+            vm.scheduler.join(ctx.receiver);
             return null;
         });
-        stubs.on(thread, "isAlive", ctx -> vm.scheduler.isQueued(ctx.receiver) ? 1 : 0);
+        stubs.on(thread, "isAlive", ctx -> vm.scheduler.isAlive(ctx.receiver) ? 1 : 0);
         stubs.on(thread, "yield", ctx -> yieldNow(vm, "Thread.yield"));
         stubs.on(thread, "onSpinWait", ctx -> yieldNow(vm, "Thread.onSpinWait"));
         stubs.on(thread, "interrupt", ctx -> null);
@@ -153,41 +155,65 @@ final class ThreadStubs {
      */
     private static void installBlockingCalls(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
-        stubs.on("java/util/concurrent/CountDownLatch", "await", ctx -> {
-            vm.scheduler.yieldToOthers("CountDownLatch.await");
-            return ctx.argCount() == 0 ? null : (Object) 1;
+        // wait/notify on JDK objects (guest objects are handled by the router).
+        stubs.on("java/lang/Object", "wait", ctx -> {
+            vm.scheduler.objectWait(ctx.receiver, ctx.argCount() == 0 ? 0 : (Long) ctx.arg(0));
+            return null;
         });
+        stubs.on("java/lang/Object", "notify", ctx -> notifyWaiters(vm, ctx.receiver, false));
+        stubs.on("java/lang/Object", "notifyAll", ctx -> notifyWaiters(vm, ctx.receiver, true));
+
+        stubs.on("java/util/concurrent/CountDownLatch", "await", ctx -> {
+            CountDownLatch latch = (CountDownLatch) ctx.receiver;
+            if (ctx.argCount() == 0) {
+                vm.scheduler.blockUntil(() -> latch.getCount() == 0, "CountDownLatch.await");
+                return null;
+            }
+            // Timed form: give the others one turn, then report whether the count reached zero.
+            vm.scheduler.sleep(((TimeUnit) ctx.arg(1)).toMillis((Long) ctx.arg(0)));
+            return latch.getCount() == 0 ? 1 : 0;
+        });
+        // A real lock() would park the host thread while it holds the baton.
+        stubs.on("java/util/concurrent/locks/Lock", "lock", ctx -> acquire(vm, (Lock) ctx.receiver));
+        stubs.on("java/util/concurrent/locks/Lock", "lockInterruptibly", ctx -> acquire(vm, (Lock) ctx.receiver));
         stubs.on("java/util/concurrent/locks/Condition", "await", ctx -> {
-            vm.scheduler.yieldToOthers("Condition.await");
+            // Returning early is allowed (a spurious wake-up); callers re-check their condition.
+            vm.scheduler.sleep(0);
             return ctx.returnType().getSort() == Type.VOID ? null : (Object) 1;
         });
         stubs.on("java/util/concurrent/locks/LockSupport", "park", ctx -> yieldNow(vm, "LockSupport.park"));
         stubs.on("java/util/concurrent/locks/LockSupport", "parkNanos", ctx -> yieldNow(vm, "LockSupport.parkNanos"));
         stubs.on("java/util/concurrent/BlockingQueue", "take", ctx -> {
             BlockingQueue<?> queue = (BlockingQueue<?>) ctx.receiver;
-            if (queue.isEmpty()) {
-                vm.scheduler.yieldToOthers("BlockingQueue.take");
+            vm.scheduler.blockUntil(() -> !queue.isEmpty(), "BlockingQueue.take");
+            return queue.poll();
+        });
+        stubs.on("java/util/concurrent/BlockingQueue", "poll", ctx -> {
+            BlockingQueue<?> queue = (BlockingQueue<?>) ctx.receiver;
+            if (ctx.argCount() == 2 && queue.isEmpty()) {
+                vm.scheduler.sleep(((TimeUnit) ctx.arg(1)).toMillis((Long) ctx.arg(0)));
             }
-            Object item = queue.poll();
-            if (item == null) {
-                throw wouldBlockForever("BlockingQueue.take on an empty queue");
-            }
-            return item;
+            return queue.poll();
         });
         stubs.on("java/util/concurrent/Semaphore", "acquire", ctx -> {
             Semaphore semaphore = (Semaphore) ctx.receiver;
             int permits = ctx.argCount() == 0 ? 1 : ctx.intArg(0);
-            if (!semaphore.tryAcquire(permits)) {
-                vm.scheduler.yieldToOthers("Semaphore.acquire");
-                if (!semaphore.tryAcquire(permits)) {
-                    throw wouldBlockForever("Semaphore.acquire with no permits");
-                }
-            }
+            vm.scheduler.blockUntil(() -> semaphore.tryAcquire(permits), "Semaphore.acquire");
             return null;
         });
         stubs.on("java/util/concurrent/CyclicBarrier", "await", ctx -> {
             throw wouldBlockForever("CyclicBarrier.await");
         });
+    }
+
+    private static Object notifyWaiters(VirtualMachine vm, Object target, boolean everyone) {
+        vm.scheduler.objectNotify(target, everyone);
+        return null;
+    }
+
+    private static Object acquire(VirtualMachine vm, Lock lock) {
+        vm.scheduler.blockUntil(lock::tryLock, "Lock.lock");
+        return null;
     }
 
     /** Ends only the current task, the same way an exhausted sleep budget does. */

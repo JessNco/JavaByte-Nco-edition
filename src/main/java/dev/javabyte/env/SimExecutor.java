@@ -121,7 +121,7 @@ public final class SimExecutor extends ScheduledThreadPoolExecutor {
     public boolean awaitTermination(long timeout, TimeUnit unit) {
         VirtualMachine vm = VirtualMachine.current();
         if (vm != null) {
-            vm.scheduler.yieldToOthers("awaitTermination");
+            vm.scheduler.sleep(0);
         }
         return true;
     }

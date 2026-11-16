@@ -1,0 +1,223 @@
+# JavaByte default host policy
+#
+# Guest bytecode is interpreted. When it calls into the JDK, the call runs for real ONLY if a
+# rule below allows it. Everything else is answered by a stub or blocked and reported.
+#
+# The test for adding a line here: can any member it exposes read or change something outside
+# the emulator's own memory (disk, network, processes, threads, the JVM itself)? If yes, it must
+# not be listed; give it a stub instead. Syntax is documented on dev.javabyte.host.HostPolicy.
+
+# ---------------------------------------------------------------- core language types
+java/lang/Object
+java/lang/String
+java/lang/StringBuilder
+java/lang/StringBuffer
+java/lang/AbstractStringBuilder
+java/lang/CharSequence
+java/lang/Character
+java/lang/Character$*
+java/lang/Boolean
+java/lang/Byte
+java/lang/Short
+java/lang/Integer
+java/lang/Long
+java/lang/Float
+java/lang/Double
+java/lang/Number
+java/lang/Void
+java/lang/Math
+java/lang/StrictMath
+java/lang/Enum
+java/lang/Record
+java/lang/Iterable
+java/lang/Comparable
+java/lang/Runnable
+java/lang/AutoCloseable
+java/lang/Cloneable
+java/lang/Appendable
+java/lang/Readable
+java/lang/StackTraceElement
+java/lang/ThreadLocal
+java/lang/InheritableThreadLocal
+java/lang/Throwable
+java/lang/*Exception
+java/lang/*Error
+java/lang/annotation/**
+java/lang/ref/Reference
+java/lang/ref/WeakReference
+java/lang/ref/SoftReference
+java/lang/ref/PhantomReference
+java/lang/ref/ReferenceQueue#<init>,poll
+java/lang/runtime/ObjectMethods
+
+# System, Runtime, Class, ClassLoader and Thread mix harmless and dangerous members, so they are
+# never allowed wholesale. Only members listed here run for real; the rest are stubs.
+java/lang/System#arraycopy,identityHashCode
+java/lang/Thread#<init>,getName,setName,isDaemon,setDaemon,getPriority,setPriority,getId,threadId,run
+java/lang/Thread#getThreadGroup,getUncaughtExceptionHandler,setUncaughtExceptionHandler,toString,hashCode,equals
+java/lang/Thread$UncaughtExceptionHandler
+java/lang/ThreadGroup#<init>,getName
+# A real loader object is created so it can be passed around, but every loading method is a stub.
+java/lang/ClassLoader#<init>
+java/net/URLClassLoader#<init>,getURLs
+# Building a command is harmless; start() is a stub and never launches anything.
+java/lang/ProcessBuilder#<init>,command,directory,redirectErrorStream,redirectInput,redirectOutput,redirectError,inheritIO
+java/lang/ProcessBuilder$Redirect
+java/lang/ProcessBuilder$Redirect$Type
+java/lang/Process
+
+# ---------------------------------------------------------------- reflection and method handles
+# Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed
+# through this same policy, so reflection cannot be used to reach a blocked method.
+java/lang/reflect/Array
+java/lang/reflect/Modifier
+java/lang/reflect/Member
+java/lang/reflect/Type
+java/lang/reflect/AnnotatedElement
+java/lang/reflect/InvocationHandler
+java/lang/reflect/*Exception
+java/lang/invoke/MethodHandle
+java/lang/invoke/MethodHandles
+java/lang/invoke/MethodType
+java/lang/invoke/CallSite
+java/lang/invoke/ConstantCallSite
+java/lang/invoke/MutableCallSite
+java/lang/invoke/VolatileCallSite
+java/lang/invoke/*Exception
+
+# ---------------------------------------------------------------- numbers, text, time
+java/math/**
+java/text/**
+java/time/**
+java/util/regex/**
+java/nio/charset/**
+java/nio/Buffer
+java/nio/ByteBuffer
+java/nio/CharBuffer
+java/nio/ShortBuffer
+java/nio/IntBuffer
+java/nio/LongBuffer
+java/nio/FloatBuffer
+java/nio/DoubleBuffer
+java/nio/ByteOrder
+java/nio/*Exception
+java/nio/file/*Exception
+java/nio/file/StandardOpenOption
+java/nio/file/StandardCopyOption
+java/nio/file/LinkOption
+java/nio/file/OpenOption
+java/nio/file/CopyOption
+java/nio/file/attribute/FileAttribute
+
+# ---------------------------------------------------------------- collections and utilities
+java/util/**
+java/util/function/**
+java/util/stream/**
+# Exceptions to the java/util tree: anything that starts threads, loads code or touches files.
+!java/util/Timer
+!java/util/ServiceLoader
+!java/util/ServiceLoader$*
+!java/util/ResourceBundle
+!java/util/PropertyResourceBundle
+!java/util/prefs/**
+!java/util/logging/**
+!java/util/spi/**
+# Archives are opened by a stub from the virtual disk; reading an opened archive is harmless.
+!java/util/jar/JarFile#<init>
+!java/util/zip/ZipFile#<init>
+!java/util/concurrent/ThreadPoolExecutor
+!java/util/concurrent/ScheduledThreadPoolExecutor
+!java/util/concurrent/ForkJoinPool
+!java/util/concurrent/ForkJoinTask
+!java/util/concurrent/Executors
+!java/util/concurrent/ExecutorCompletionService
+!java/util/concurrent/Phaser
+!java/util/concurrent/Exchanger
+!java/util/concurrent/SubmissionPublisher
+# Formatter and Scanner have overloads that open files by name.
+!java/util/Formatter#<init>(Ljava/lang/String;)V
+!java/util/Formatter#<init>(Ljava/lang/String;Ljava/lang/String;)V
+!java/util/Formatter#<init>(Ljava/lang/String;Ljava/lang/String;Ljava/util/Locale;)V
+!java/util/Formatter#<init>(Ljava/lang/String;Ljava/nio/charset/Charset;Ljava/util/Locale;)V
+
+# ---------------------------------------------------------------- in-memory I/O
+# Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs.
+java/io/InputStream
+java/io/OutputStream
+java/io/ByteArrayInputStream
+java/io/ByteArrayOutputStream
+java/io/DataInput
+java/io/DataOutput
+java/io/DataInputStream
+java/io/DataOutputStream
+java/io/BufferedInputStream
+java/io/BufferedOutputStream
+java/io/FilterInputStream
+java/io/FilterOutputStream
+java/io/PushbackInputStream
+java/io/SequenceInputStream
+java/io/ObjectOutputStream
+java/io/Reader
+java/io/Writer
+java/io/BufferedReader
+java/io/BufferedWriter
+java/io/InputStreamReader
+java/io/OutputStreamWriter
+java/io/StringReader
+java/io/StringWriter
+java/io/CharArrayReader
+java/io/CharArrayWriter
+java/io/PrintStream
+java/io/PrintWriter
+java/io/LineNumberReader
+java/io/PushbackReader
+java/io/Closeable
+java/io/Flushable
+java/io/Serializable
+java/io/Externalizable
+java/io/FilenameFilter
+java/io/FileFilter
+java/io/*Exception
+# PrintStream and PrintWriter overloads that open a file by name are replaced by stubs.
+!java/io/PrintStream#<init>(Ljava/lang/String;)V
+!java/io/PrintStream#<init>(Ljava/lang/String;Ljava/lang/String;)V
+!java/io/PrintStream#<init>(Ljava/lang/String;Ljava/nio/charset/Charset;)V
+!java/io/PrintWriter#<init>(Ljava/lang/String;)V
+!java/io/PrintWriter#<init>(Ljava/lang/String;Ljava/lang/String;)V
+!java/io/PrintWriter#<init>(Ljava/lang/String;Ljava/nio/charset/Charset;)V
+
+# ---------------------------------------------------------------- cryptography
+javax/crypto/**
+java/security/**
+!java/security/SecureClassLoader
+!java/security/Policy
+!java/security/AccessControlContext
+javax/security/auth/x500/**
+javax/security/cert/**
+# TLS configuration objects are inert until a socket is opened, and sockets are simulated.
+javax/net/ssl/TrustManager
+javax/net/ssl/X509TrustManager
+javax/net/ssl/KeyManager
+javax/net/ssl/HostnameVerifier
+javax/net/ssl/SSLSession
+javax/net/ssl/SSLContext#getInstance,init,getProtocol
+javax/net/ssl/*Exception
+
+# ---------------------------------------------------------------- network value types
+# Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket
+# is always a stub.
+java/net/URL
+java/net/URI
+java/net/URLEncoder
+java/net/URLDecoder
+java/net/IDN
+java/net/Proxy
+java/net/Proxy$Type
+java/net/InetAddress#getHostAddress,getHostName,getCanonicalHostName,getAddress,toString,equals,hashCode,isLoopbackAddress,isAnyLocalAddress,isSiteLocalAddress
+java/net/Inet4Address#getHostAddress,getAddress,toString,equals,hashCode
+java/net/InetSocketAddress#getHostName,getHostString,getPort,getAddress,toString,equals,hashCode,isUnresolved,createUnresolved
+java/net/SocketAddress
+java/net/*Exception
+!java/net/URL#openConnection,openStream,getContent,setURLStreamHandlerFactory
+# URL.equals and URL.hashCode resolve the host name through real DNS; stubs compare text instead.
+!java/net/URL#equals,hashCode

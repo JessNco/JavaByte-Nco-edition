@@ -1,0 +1,8 @@
+# Build output
+target/
+# Analysis output and live malware must never be committed.
+javabyte-out/
+samples/
+*.class
+.idea/
+*.iml

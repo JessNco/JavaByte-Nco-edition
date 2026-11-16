@@ -32,6 +32,7 @@ final class Inspection {
     private final List<String> unparseable;
     private final Map<String, Integer> largestResources = new LinkedHashMap<>();
     private int invokeDynamicBootstraps;
+    private final Map<String, dev.javabyte.report.NativeLibraryInfo> nativeLibraries = new LinkedHashMap<>();
 
     private Inspection(Path path, long size, List<String> unparseable) {
         this.path = path;
@@ -78,6 +79,12 @@ final class Inspection {
                 }
             }
         }
+        for (String name : repository.resourceNames()) {
+            dev.javabyte.report.NativeLibraryInfo info = dev.javabyte.report.NativeLibraryInfo.parse(repository.resource(name));
+            if (info != null) {
+                inspection.nativeLibraries.put(name, info);
+            }
+        }
         repository.resourceNames().stream()
                 .filter(name -> !name.endsWith(".class"))
                 .sorted(Comparator.comparingInt((String name) -> repository.resource(name).length).reversed())
@@ -97,6 +104,9 @@ final class Inspection {
         map.put("classLoaders", loaderClasses);
         map.put("nativeMethodCount", nativeMethods.size());
         map.put("nativeMethods", nativeMethods.stream().limit(50).toList());
+        Map<String, Object> libraries = new LinkedHashMap<>();
+        nativeLibraries.forEach((name, info) -> libraries.put(name, info.toMap()));
+        map.put("nativeLibraries", libraries);
         map.put("obfuscatedCallSites", invokeDynamicBootstraps);
         map.put("largestResources", largestResources);
         map.put("unparseableClasses", unparseable);
@@ -115,6 +125,8 @@ final class Inspection {
         text.append("Custom loaders    ").append(loaderClasses.isEmpty() ? "(none)" : String.join("; ", loaderClasses)).append('\n');
         text.append("Native methods    ").append(nativeMethods.size())
                 .append(nativeMethods.isEmpty() ? "" : "  (cannot be emulated; calls are reported)").append('\n');
+        nativeLibraries.forEach((name, info) -> text.append("  library ").append(name).append(": ")
+                .append(info.format).append(' ').append(info.architecture).append(", ").append(info.binding()).append('\n'));
         text.append("Obfuscated calls  ").append(invokeDynamicBootstraps).append(" invokedynamic sites using the sample's own bootstrap\n");
         if (!largestResources.isEmpty()) {
             text.append("Largest resources\n");

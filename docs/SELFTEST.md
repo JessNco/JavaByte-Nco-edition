@@ -80,6 +80,29 @@ taken from `fabric.mod.json`, it stopped at its first use of `net.fabricmc.loade
 which is not in the sample. The report lists the missing class as a gap. Going further needs
 the Fabric loader jar on `classpath`.
 
+### IRAHook loader protected with qProtect
+
+`f05a098fa2e1899797e42ebc396932e05ee40adb4454de37f760d87784a4b17c`
+
+A Fabric mod of four classes with 520 `invokedynamic` call sites that resolve through the
+sample's own bootstrap method, so no call target is visible statically. Run from the entry point
+named in `fabric.mod.json`: 181 call sites were linked by interpreting the bootstrap, with no
+gaps. The sample then created a directory under Discord's local storage and sent `eth_call`
+requests for an ENS name to three public Ethereum RPC endpoints, which is how this family looks
+up its next address.
+
+### Linux profile
+
+MalwareBazaar had no Java sample tagged as Linux-only, so the Linux environment was exercised
+with three cross-platform samples run under `environment.os: linux`. Ratty connected to its C2
+and skipped the registry step; the Adwind stage decrypted its config and defined its classes as
+before; STRRAT, which assumes Windows, produced paths with backslashes in file names, as it
+would on a real Linux machine. No emulator errors.
+
+### Java versions
+
+The full test suite and the STRRAT run give the same results on Java 17 and Java 21.
+
 ## Defects found and fixed during the self-test
 
 | Found on | Problem | Fix |
@@ -99,7 +122,6 @@ the Fabric loader jar on `classpath`.
 
 ## Not covered
 
-- Samples protected by obfuscators that use their own `invokedynamic` bootstrap methods. The
-  mechanism is implemented and has no test against a real sample yet.
-- Linux-targeted samples.
-- Any sample whose main logic is native.
+- A sample written only for Linux.
+- Any sample whose main logic is native. SilentNet's DLL exports only `JNI_OnLoad`, so its 98
+  native methods are bound at load time and their code was not examined.

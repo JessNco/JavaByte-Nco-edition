@@ -93,10 +93,24 @@ final class SystemStubs {
         throw new EmulationAbort(EmulationAbort.Reason.EXIT, "System.exit(" + status + ")");
     }
 
+    /**
+     * Records a library load. Native code cannot be interpreted, but the library is usually a
+     * payload the sample has just dropped, so it is saved and its JNI surface is described:
+     * that tells the analyst which native methods it implements and how it binds them.
+     */
     private static Object loadLibrary(VirtualMachine vm, String library) {
-        // Native code cannot be interpreted. The load is still worth reporting: the library is
-        // usually a dropped payload, saved with the other dropped files for separate analysis.
-        vm.events.add("native", "load-library", "library", library, "presentOnVirtualDisk", vm.env.files.isFile(library));
+        byte[] data = vm.env.files.isFile(library) ? vm.env.files.node(library).data : null;
+        dev.javabyte.report.NativeLibraryInfo info = data == null ? null : dev.javabyte.report.NativeLibraryInfo.parse(data);
+        if (info != null) {
+            vm.natives.libraryLoaded(library, info);
+        }
+        vm.events.add("native", "load-library", "library", library,
+                "presentOnVirtualDisk", data != null,
+                "sha256", data == null ? null : VirtualMachine.sha256(data),
+                "size", data == null ? null : data.length,
+                "format", info == null ? null : info.format + ' ' + info.architecture,
+                "binding", info == null ? null : info.binding(),
+                "file", data == null ? null : vm.artifacts.save("native", vm.env.files.name(library), data));
         return null;
     }
 

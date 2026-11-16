@@ -42,6 +42,8 @@ public final class VirtualMachine {
     public final ClassRepository classes = new ClassRepository();
     public final HostPolicy policy;
     public final StubRegistry stubs = new StubRegistry();
+    /** Native-method handlers from plugins, and the native libraries the sample has loaded. */
+    public final dev.javabyte.host.NativeRegistry natives = new dev.javabyte.host.NativeRegistry();
     public final HostBridge host;
     public final ShellFactory shells;
     public final TypeSystem types;

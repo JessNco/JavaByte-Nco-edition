@@ -118,12 +118,49 @@ own `loadClass`) before it is declared missing.
 
 ## Threads
 
-All guest code runs on one host thread. Starting a thread queues its body; executors, timers and
-asynchronous futures are redirected to the same queue; calls that would block (`sleep`, `join`,
-`wait`, `Future.get`) give queued tasks a turn. Sleeping advances a virtual clock instantly.
+Each guest thread (and each timer or executor job) is carried by its own host thread, so it has
+its own call stack and can be suspended anywhere. A single baton decides which carrier runs:
+exactly one executes guest code at a time and the rest are parked.
 
-This gives repeatable runs and guarantees nothing outlives the analysis. A per-task sleep budget
-ends beacon loops. The trade-off is that true parallelism is not modelled.
+The baton moves when the running thread blocks (`sleep`, `join`, `wait`, an empty queue, a held
+monitor) and after a fixed number of instructions. The second rule is pre-emption: without it a
+thread spinning on a flag would never let the thread that sets the flag run.
+
+Why a baton rather than free-running threads:
+
+- the emulator's own data structures need no locking;
+- a run is repeatable, because switch points depend only on instruction counts;
+- guest code can never run outside the emulator's control.
+
+Consequences that had to be built:
+
+- **Monitors** (`synchronized`) and `wait`/`notify` are implemented by the scheduler. A carrier
+  that blocked on a real JVM monitor would stop while holding the baton.
+- **Blocking JDK calls** (`Lock.lock`, `BlockingQueue.take`, `CountDownLatch.await`,
+  `Semaphore.acquire`, `Future.get`) are stubs that wait cooperatively for their condition.
+- **Pre-emption is suppressed underneath real JDK frames**, since the JDK code may hold one of
+  its own locks.
+- **Hang detection.** If every thread is waiting, none can be woken. The waiting thread is
+  ended and reported, which is the emulator's rendering of a thread that would hang forever.
+- **Class initialisation** by one thread makes other threads wait, as the JVM requires.
+
+Sleeping advances a virtual clock instantly, and a per-thread sleep budget ends beacon loops.
+
+An earlier version ran each thread to completion on one stack. It was simpler, but any program
+in which a thread waited for another could hang or see wrong results, so it was replaced.
+
+## Native code
+
+Native methods cannot be interpreted, and embedding a CPU emulator was judged out of scope: it
+would be a second project of comparable size. Instead the emulator makes the hand-over precise.
+
+- Every library the sample loads is parsed (PE, ELF) for its architecture and exported JNI
+  functions, saved, and reported. A library exporting only `JNI_OnLoad` binds its methods at
+  load time, the mark of a native obfuscator.
+- Each native call is reported with its arguments and, when a loaded library exports the
+  matching JNI symbol, the library that implements it.
+- `vm.natives` lets a plugin supply a native method: recorded answers, a Java
+  re-implementation, or a bridge to an external native emulator.
 
 ## Configuration and reporting
 
@@ -152,6 +189,11 @@ What the design guarantees, assuming the allow-list is sound:
   loaders are visible as "host classes".
 - Java deserialization is restricted by a JVM-wide filter to value types and keys, because
   deserializing attacker-controlled data could otherwise reach gadget classes.
+
+These properties are tested from the outside. `EscapeTest` runs a fixture that tries about
+eighty escape routes and then inspects the real machine: a canary file must not exist, a secret
+file's contents must not appear anywhere in the report, a real listening socket must have
+received no connection, and JVM-wide settings must be unchanged.
 
 What it does not guarantee:
 

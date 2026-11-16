@@ -24,7 +24,7 @@ run, and every result is available as stable JSON.
 
 ## Quick start
 
-Requirements: Maven and Java 17 or later. Development and testing were done on Java 21.
+Requirements: Maven and Java 17 or later. The test suite passes on Java 17 and Java 21.
 
 ```bash
 mvn -q package
@@ -123,32 +123,44 @@ Any value can also be set from the command line: `-s limits.timeoutSeconds=30`.
 3. **Everything else is simulated or blocked.** Processes, files, network, threads, reflection
    and class loading are replaced by stand-ins that record the attempt. Reflection and method
    handles are routed back through the same checks, so they cannot be used to get around them.
-4. **One thread.** Guest threads are queued and run on a single emulator thread. Nothing the
-   sample starts can outlive the run.
+4. **One thread at a time.** Guest threads are interleaved under the emulator's control and
+   never run in parallel. Nothing the sample starts can outlive the run.
 
-This is defence in depth for an analysis tool, not a formally verified sandbox. Run it on a
-machine or container you would be willing to rebuild. See [docs/DESIGN.md](docs/DESIGN.md) for
+This is defence in depth for an analysis tool, not a formally verified sandbox. For live malware
+add a second layer that does not depend on the emulator being right:
+
+```bash
+scripts/run-isolated.sh run sample.jar
+```
+
+That runs the tool in a network namespace with no network at all. See [docs/DESIGN.md](docs/DESIGN.md) for
 the reasoning and for what was borrowed from other projects.
 
 ## Tested against real samples
 
-The emulator was run against public MalwareBazaar samples from five families (STRRAT,
-Adwind/jRAT, Ratty, SilentNet and a Fabric-mod sample). It recovered C2 addresses, persistence
+The emulator was run against public MalwareBazaar samples from six families (STRRAT,
+Adwind/jRAT, Ratty, SilentNet, a qProtect-obfuscated IRAHook loader and a Fabric-mod sample). It recovered C2 addresses, persistence
 commands, decrypted configuration and run-time-defined classes. Results and reproduction steps
 are in [docs/SELFTEST.md](docs/SELFTEST.md).
 
 ## Known limitations
 
-- **Native code is not emulated.** Calls to `native` methods are reported and return zero. A
-  sample whose logic lives in a bundled DLL will stop revealing behaviour at that point.
-- **Concurrency is flattened.** Threads run cooperatively on one thread, in a deterministic
-  order. Code that depends on true parallelism or timing sees a different interleaving.
+- **Native code is not executed.** JavaByte describes each native library (format, architecture,
+  exported JNI functions, whether it registers methods at load time), saves it, and reports every
+  native call with its arguments. The machine code itself needs a native tool. A plugin can
+  supply a native method's behaviour through `vm.natives`.
+- **No real parallelism.** Guest threads are interleaved, with working locks, `wait`/`notify`
+  and pre-emption, but only one runs at a time. A bug that needs two threads to execute at the
+  same instant cannot occur. Sleeps take no real time, so timing measurements see virtual time.
 - **Missing libraries become phantoms.** A class that is neither in the sample nor allowed from
   the JDK is replaced by a placeholder whose methods return neutral values. Add the library to
   `classpath` to have it interpreted instead.
 - **No GUI.** AWT and Swing are blocked; calls are reported.
 - **Deserialization is filtered** to value types and cryptographic keys.
 - **Nested archives** (a jar inside a jar) are not mounted automatically.
+- **It is tested, not proven.** A test attempts about eighty escapes and checks the real
+  machine afterwards, but that is evidence, not a proof. Use `scripts/run-isolated.sh` or a
+  container for live malware.
 - **Speed.** About 95 million bytecode instructions per second on the development machine,
   roughly 80 to 100 times slower than JIT-compiled code.
 
@@ -164,8 +176,11 @@ adding its id under `plugins:` in the config. A plugin can add stubs, hooks and 
 mvn test
 ```
 
-The tests include a differential suite that runs the same programs on the real JVM and in the
-emulator and requires identical output, and structural safety checks (for example, that the
-simulated `File` overrides every `java.io.File` method).
+The tests include:
+
+- a differential suite that runs the same programs, single- and multi-threaded, on the real JVM
+  and in the emulator and requires identical output;
+- an escape suite that tries about eighty ways out of the emulator and checks the real machine;
+- structural checks, for example that the simulated `File` overrides every `java.io.File` method.
 
 For AI agents working with this tool, see [AGENTS.md](AGENTS.md).

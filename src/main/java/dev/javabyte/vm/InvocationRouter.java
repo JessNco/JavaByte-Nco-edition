@@ -207,10 +207,7 @@ public final class InvocationRouter {
             return applyHook((Hooks.Hook) method.hook, method.id, method.returnType);
         }
         if (method.isNative) {
-            // There is no machine code to run. Reporting the call is the useful part: it shows
-            // which native library functions the Java side depends on.
-            vm.events.addOnce(method.id, "native", "call", "method", method.id);
-            return Values.zero(method.returnType);
+            return callNative(method, receiver, args);
         }
         if (method.isAbstract) {
             throw vm.raise(new AbstractMethodError(method.id));
@@ -238,6 +235,25 @@ public final class InvocationRouter {
             recordString(method, text);
         }
         return result;
+    }
+
+    /**
+     * Handles a call to a {@code native} method. A plugin's handler runs if one is registered.
+     * Otherwise there is no machine code to run: the call is reported, with its arguments and
+     * the library that implements it if known, and answered with a zero value.
+     */
+    private Object callNative(GuestMethod method, Object receiver, Object[] args) {
+        dev.javabyte.plugin.NativeHandler handler = vm.natives.find(method);
+        if (handler != null) {
+            vm.events.addOnce(method.id, "native", "handled", "method", method.id);
+            return handler.call(vm, method, receiver, args);
+        }
+        vm.events.addOnce(method.id, "native", "call", "method", method.id,
+                "firstArguments", args.length == 0 ? null : describeArgs(args),
+                "implementedBy", vm.natives.implementedBy(method),
+                "result", method.returnType.getSort() == Type.VOID ? "not emulated"
+                        : "not emulated; returned " + Values.describe(Values.zero(method.returnType)));
+        return Values.zero(method.returnType);
     }
 
     /**

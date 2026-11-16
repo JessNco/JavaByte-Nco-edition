@@ -1,0 +1,16 @@
+# A Minecraft Fabric mod has no main method; its entry point is listed in fabric.mod.json.
+# This sample hides every call target behind its own invokedynamic bootstrap (qProtect);
+# the emulator interprets the bootstrap, so no special setting is needed for that.
+sample: samples/f05a098fa2e1899797e42ebc396932e05ee40adb4454de37f760d87784a4b17c/f05a098fa2e1899797e42ebc396932e05ee40adb4454de37f760d87784a4b17c.jar
+
+entryPoints:
+  - type: method
+    class: ira.mod.easysleep.X
+    method: onInitialize
+
+limits:
+  timeoutSeconds: 180
+  maxSleeps: 6
+
+output:
+  directory: out/qprotect

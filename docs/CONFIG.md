@@ -163,9 +163,12 @@ JDK methods.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `mode` | `deferred` | `deferred`: a started thread runs when its starter blocks or returns. `inline`: it runs at `start()` |
+| `mode` | `deferred` | `deferred`: a started thread first runs when the current one blocks or its time slice ends. `inline`: it runs first, at `start()` |
 | `periodicRuns` | 1 | Times a repeating timer or scheduled task body is run |
 | `runShutdownHooks` | `true` | Run registered shutdown hooks at the end |
+
+Guest threads are interleaved one at a time. A thread is switched out when it blocks and after
+a fixed number of instructions, so the order is the same on every run with the same config.
 
 ## `output`
 

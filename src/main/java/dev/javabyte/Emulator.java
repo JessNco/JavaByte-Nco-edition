@@ -108,8 +108,13 @@ public final class Emulator {
         if (emulatorThread.isAlive()) {
             // The thread is not at an instruction boundary, so it must be inside a real JDK call.
             report.addRun("(run)", "timeout", "emulator thread blocked in host call " + vm.hostCallInProgress(), 0);
-        } else {
+        }
+        try {
+            // Also done after a hard timeout: the stuck thread is parked inside the JDK, and
+            // losing every dropped file would throw away the evidence gathered so far.
             finish(vm, config);
+        } catch (RuntimeException e) {
+            vm.events.add("gap", "finish-failed", "error", e.toString());
         }
         report.complete();
         if (outputDirectory != null) {

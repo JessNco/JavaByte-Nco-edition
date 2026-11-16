@@ -201,11 +201,11 @@ public final class EmulatorConfig {
         public boolean hostCalls;
     }
 
-    /** How concurrency is flattened onto the single emulator thread. */
+    /** How guest threads are scheduled. They are interleaved; only one runs at any moment. */
     public static final class Threads {
         /**
-         * {@code deferred}: started threads are queued and run when the starter blocks or returns.
-         * {@code inline}: {@code start()} runs the thread body immediately.
+         * {@code deferred}: a started thread first runs when the current one blocks or uses up
+         * its time slice. {@code inline}: the new thread runs first, at {@code start()}.
          */
         public String mode = "deferred";
         /** How many times a repeating timer or scheduled task body is run. */

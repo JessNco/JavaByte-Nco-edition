@@ -43,6 +43,7 @@ public final class GuestClass {
 
     private final Map<String, GuestMethod> methods = new LinkedHashMap<>();
     private final Map<String, GuestMethod> virtualCache = new HashMap<>();
+    private final Map<String, Boolean> subtypeCache = new HashMap<>();
     private final Map<String, Integer> instanceSlots = new HashMap<>();
     private final Map<String, Integer> staticSlots = new HashMap<>();
     private Object[] statics;
@@ -137,6 +138,12 @@ public final class GuestClass {
 
     /** True if this class is, extends or implements the interpreted class or named host type. */
     public boolean isSubtypeOf(String internalName) {
+        // Asked on every instanceof, cast and catch involving a guest object, so the answer is
+        // remembered. It cannot change: a class's supertypes are fixed once it is linked.
+        return subtypeCache.computeIfAbsent(internalName, this::computeIsSubtypeOf);
+    }
+
+    private boolean computeIsSubtypeOf(String internalName) {
         Deque<GuestClass> work = new ArrayDeque<>(List.of(this));
         Set<GuestClass> visited = new LinkedHashSet<>();
         while (!work.isEmpty()) {
@@ -155,6 +162,20 @@ public final class GuestClass {
             }
         }
         return false;
+    }
+
+    /** This interface and every interpreted interface it extends, nearest first. */
+    public List<GuestClass> selfAndSuperInterfaces() {
+        List<GuestClass> result = new ArrayList<>();
+        Deque<GuestClass> work = new ArrayDeque<>(List.of(this));
+        while (!work.isEmpty()) {
+            GuestClass current = work.poll();
+            if (!result.contains(current)) {
+                result.add(current);
+                work.addAll(current.guestInterfaces());
+            }
+        }
+        return result;
     }
 
     public boolean isInterface() {
@@ -213,19 +234,6 @@ public final class GuestClass {
             }
         }
         return findInInterfaces(key, true);
-    }
-
-    /** Any method with this signature in the class chain, abstract or not. Used by reflection. */
-    public GuestMethod findAny(String name, String desc) {
-        String key = name + desc;
-        for (GuestClass current = this; current != null; current = current.superClass()) {
-            GuestMethod candidate = current.methods.get(key);
-            if (candidate != null) {
-                return candidate;
-            }
-        }
-        GuestMethod inInterface = findInInterfaces(key, false);
-        return inInterface != null ? inInterface : findInInterfaces(key, true);
     }
 
     private GuestMethod findInInterfaces(String key, boolean wantStatic) {

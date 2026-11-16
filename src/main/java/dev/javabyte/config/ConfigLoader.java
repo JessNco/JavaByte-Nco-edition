@@ -96,10 +96,37 @@ public final class ConfigLoader {
             }
             requireOneOf("hooks[].action", hook.action, "return", "skip", "throw", "trace");
         }
-        if (config.limits.maxInstructions <= 0 || config.limits.timeoutSeconds <= 0) {
-            throw new ConfigException("limits.maxInstructions and limits.timeoutSeconds must be positive");
+        EmulatorConfig.Limits limits = config.limits;
+        if (limits.maxInstructions <= 0 || limits.timeoutSeconds <= 0 || limits.maxCallDepth <= 0
+                || limits.maxEventsPerCategory <= 0 || limits.maxWrittenBytes <= 0) {
+            throw new ConfigException("limits.maxInstructions, timeoutSeconds, maxCallDepth, maxEventsPerCategory "
+                    + "and maxWrittenBytes must be positive");
+        }
+        if (limits.maxSleeps < 0 || limits.maxTasks < 0 || config.threads.periodicRuns < 1) {
+            throw new ConfigException("limits.maxSleeps and maxTasks cannot be negative; threads.periodicRuns must be at least 1");
+        }
+        for (EmulatorConfig.HttpRule rule : config.network.http) {
+            requirePattern("network.http[].url", rule.url);
+        }
+        for (EmulatorConfig.SocketRule rule : config.network.sockets) {
+            requirePattern("network.sockets[].endpoint", rule.endpoint);
+        }
+        for (EmulatorConfig.ProcessRule rule : config.processes) {
+            requirePattern("processes[].command", rule.command);
         }
         return config;
+    }
+
+    /** A rule without a pattern would never match; a broken pattern would fail mid-run. */
+    private static void requirePattern(String key, String pattern) {
+        if (pattern == null) {
+            throw new ConfigException(key + " is required");
+        }
+        try {
+            java.util.regex.Pattern.compile(pattern);
+        } catch (java.util.regex.PatternSyntaxException e) {
+            throw new ConfigException(key + " is not a valid regular expression: " + e.getDescription() + " in '" + pattern + "'");
+        }
     }
 
     private static void requireOneOf(String key, String value, String... allowed) {

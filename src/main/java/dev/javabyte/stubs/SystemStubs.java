@@ -262,7 +262,7 @@ final class SystemStubs {
         if (value instanceof Mirrors.ConstructorMirror) {
             return java.lang.reflect.Constructor.class;
         }
-        if (value instanceof GuestLambda || value instanceof Mirrors.LookupMirror) {
+        if (value instanceof GuestLambda || value instanceof Mirrors.LookupMirror || value instanceof dev.javabyte.model.GuestProxy) {
             return Object.class;
         }
         if (value instanceof PhantomObject phantom) {

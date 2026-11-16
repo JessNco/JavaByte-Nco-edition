@@ -7,6 +7,7 @@ import dev.javabyte.model.FieldRef;
 import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestLambda;
 import dev.javabyte.model.GuestMethod;
+import dev.javabyte.model.GuestProxy;
 import dev.javabyte.model.InstanceState;
 import dev.javabyte.model.Mirrors;
 import dev.javabyte.model.PendingInstance;
@@ -94,12 +95,22 @@ public final class InvocationRouter {
         if (receiver instanceof GuestLambda lambda) {
             return invokeLambda(lambda, name, desc, args);
         }
+        if (receiver instanceof GuestProxy proxy) {
+            return invokeProxy(proxy, name, desc, args);
+        }
         if (owner.charAt(0) == '[') {
             // Methods "of" an array type are Object's, except clone(), which arrays make public.
             if (name.equals("clone")) {
                 return cloneArray(receiver);
             }
             return hostCall("java/lang/Object", name, desc, receiver, args, false);
+        }
+        GuestLambda behindProxy = vm.indy.lambdaBehind(receiver);
+        if (behindProxy != null && name.equals(behindProxy.methodName())) {
+            // A guest lambda for a JDK interface, called from guest code. Going straight to it
+            // skips a round trip through the JDK proxy, which also could not carry arguments
+            // that are emulator stand-ins (a method mirror handed to an InvocationHandler).
+            return invokeLambda(behindProxy, name, desc, args);
         }
         GuestClass guestOwner = vm.classes.find(owner);
         return hostCall(guestOwner == null ? owner : guestOwner.hostSuperName(), name, desc, receiver, args, false);
@@ -119,6 +130,48 @@ public final class InvocationRouter {
             return callGuest(defaultMethod, lambda, args);
         }
         return hostCall("java/lang/Object", name, desc, lambda, args, false);
+    }
+
+    /**
+     * Calls a method on a proxy for interpreted interfaces by handing it to the sample's
+     * invocation handler, with boxed arguments and a reflective description of the method.
+     */
+    private Object invokeProxy(GuestProxy proxy, String name, String desc, Object[] args) {
+        Object method = null;
+        for (Object mirror : proxy.interfaces()) {
+            if (mirror instanceof GuestClass iface) {
+                for (GuestClass current : iface.selfAndSuperInterfaces()) {
+                    GuestMethod declared = current.declared(name, desc);
+                    if (declared != null) {
+                        method = new Mirrors.MethodMirror(declared);
+                    }
+                }
+            } else if (method == null) {
+                method = findPublicMethod((Class<?>) mirror, name, desc);
+            }
+        }
+        if (method == null) {
+            // toString, hashCode and equals are routed to the handler too, as the JDK does.
+            method = findPublicMethod(Object.class, name, desc);
+        }
+        Type[] types = Type.getArgumentTypes(desc);
+        Object[] boxed = args.length == 0 ? null : new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            boxed[i] = Values.box(args[i], types[i]);
+        }
+        Object result = invokeVirtual("java/lang/reflect/InvocationHandler", "invoke",
+                "(Ljava/lang/Object;Ljava/lang/reflect/Method;[Ljava/lang/Object;)Ljava/lang/Object;",
+                proxy.handler(), new Object[] {proxy, method, boxed});
+        return Values.unbox(result, Type.getReturnType(desc));
+    }
+
+    private static java.lang.reflect.Method findPublicMethod(Class<?> type, String name, String desc) {
+        for (java.lang.reflect.Method candidate : type.getMethods()) {
+            if (candidate.getName().equals(name) && Type.getMethodDescriptor(candidate).equals(desc)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ special (super and private)
@@ -420,7 +473,7 @@ public final class InvocationRouter {
     private static boolean isMirror(Object value) {
         return value instanceof GuestClass || value instanceof Mirrors.MethodMirror
                 || value instanceof Mirrors.FieldMirror || value instanceof Mirrors.ConstructorMirror
-                || value instanceof Mirrors.LookupMirror || value instanceof GuestLambda;
+                || value instanceof Mirrors.LookupMirror || value instanceof GuestLambda || value instanceof GuestProxy;
     }
 
     private void traceHostCall(String owner, String name, String desc, Object[] args) {
@@ -533,7 +586,8 @@ public final class InvocationRouter {
      */
     private Object objectMethod(Object receiver, InstanceState state, String name, String desc, Object[] args) {
         // A shell that extends a real JDK class inherits that class's behaviour instead.
-        boolean jdkBase = state.type.shellClass != null && state.type.shellClass.getSuperclass() != Object.class;
+        boolean jdkBase = state.type.shellClass != null
+                && dev.javabyte.shell.ShellFactory.jdkBase(state.type.shellClass) != Object.class;
         switch (name + desc) {
             case "getClass()Ljava/lang/Class;":
                 return state.type;

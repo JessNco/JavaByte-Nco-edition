@@ -32,6 +32,20 @@ class DifferentialTest {
     }
 
     @Test
+    void jdkBoundaryFeaturesMatchRealJvm() throws Exception {
+        java.util.List<String> expected = Fixtures.realOutput(() -> {
+            try {
+                dev.javabyte.guest.Advanced.main(new String[0]);
+            } catch (Throwable e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.Advanced.class)));
+        assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
+        assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
+    }
+
+    @Test
     void multiThreadedProgramMatchesRealJvm() throws Exception {
         java.util.List<String> expected = Fixtures.realOutput(() -> {
             try {

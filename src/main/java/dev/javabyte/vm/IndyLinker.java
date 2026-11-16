@@ -1,7 +1,6 @@
 package dev.javabyte.vm;
 
 import dev.javabyte.model.FieldRef;
-import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestLambda;
 import dev.javabyte.model.GuestMethod;
 import dev.javabyte.model.InstanceState;
@@ -225,8 +224,24 @@ public final class IndyLinker {
         if (hostInterface == null || !hostInterface.isInterface()) {
             return lambda;
         }
-        InvocationHandler handler = (proxy, method, args) -> invokeLambdaFromHost(lambda, proxy, method, args);
-        return Proxy.newProxyInstance(vm.shells.loader(), new Class<?>[] {hostInterface}, handler);
+        return Proxy.newProxyInstance(vm.shells.loader(), new Class<?>[] {hostInterface}, new LambdaHandler(lambda));
+    }
+
+    /** Handler of the JDK proxy that represents a guest lambda to real JDK code. */
+    private record LambdaHandler(GuestLambda lambda) implements InvocationHandler {
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            return invokeLambdaFromHost(lambda, proxy, method, args);
+        }
+    }
+
+    /** The guest lambda a value stands for, if it is one of the proxies made by {@link #newLambda}. */
+    public GuestLambda lambdaBehind(Object value) {
+        if (value != null && Proxy.isProxyClass(value.getClass())
+                && Proxy.getInvocationHandler(value) instanceof LambdaHandler handler) {
+            return handler.lambda();
+        }
+        return null;
     }
 
     private static Object invokeLambdaFromHost(GuestLambda lambda, Object proxy, Method method, Object[] args)

@@ -53,6 +53,12 @@ public final class EventLog {
      * copy keeps the report readable and stops a hot loop from exhausting the category budget.
      */
     public void addOnce(String dedupeKey, String category, String action, Object... keyValues) {
+        if (counts.getOrDefault(category, 0) >= maxPerCategory) {
+            // The category is full, so the event would not be stored anyway. Skipping the
+            // "seen" set here keeps memory bounded on runs that produce endless new values.
+            counts.merge(category, 1, Integer::sum);
+            return;
+        }
         if (seen.add(category + '\u0000' + dedupeKey)) {
             record(category, action, toMap(keyValues));
         }

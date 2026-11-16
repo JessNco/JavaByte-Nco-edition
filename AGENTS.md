@@ -47,7 +47,7 @@ Everything here also works for a person; it is just written as a procedure.
    | Outcome `no-entry-point` | Use `type: method` with a class from `mainCandidates`, or `type: clinit-sweep` |
    | `gap.missing-class` for a library | Add the library jar to `classpath` |
    | `native.call` events and little else | The logic is in native code; report the library details from `native.load-library` and stop |
-   | `thread.stopped` with "would block forever" | That thread was waiting for something no other thread provides, often a network reply; supply it |
+   | `thread.stopped` with "would block forever", or outcome `blocked` | That thread was waiting for something no other thread provides, often a network reply; supply it |
 
 5. **Stop** when a further run adds nothing new, and summarise.
 
@@ -55,6 +55,7 @@ Everything here also works for a person; it is just written as a procedure.
 
 | Path | Meaning |
 | --- | --- |
+| `schemaVersion` | Version of this layout; it changes only if a field is removed, renamed or redefined |
 | `runs[]` | One entry per entry point and per batch of queued tasks: `entry`, `outcome`, `detail`, `instructions` |
 | `summary.processes` | Command lines the sample tried to launch |
 | `summary.httpRequests`, `summary.connections`, `summary.dnsLookups` | Network indicators |
@@ -66,7 +67,7 @@ Everything here also works for a person; it is just written as a procedure.
 | `events[]` | Everything, in order: `seq`, `category`, `action`, `caller`, `data` |
 | `artifacts[]` | Files saved under the output directory |
 
-`runs[].outcome` values: `completed`, `uncaught-exception`, `exit`, `sleep-budget`,
+`runs[].outcome` values: `completed`, `uncaught-exception`, `exit`, `sleep-budget`, `blocked`,
 `instruction-limit`, `timeout`, `policy`, `no-entry-point`, `config-error`, `internal-error`.
 
 Event categories: `process`, `file`, `net`, `class`, `resource`, `reflect`, `crypto`, `string`,

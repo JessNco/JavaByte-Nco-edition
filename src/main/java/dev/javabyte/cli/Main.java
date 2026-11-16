@@ -31,7 +31,7 @@ import picocli.CommandLine.Parameters;
  *   3  the run was cut short by the instruction or time limit
  * </pre>
  */
-@Command(name = "javabyte", mixinStandardHelpOptions = true, version = "javabyte " + Report.TOOL_VERSION,
+@Command(name = "javabyte", mixinStandardHelpOptions = true, versionProvider = Main.Version.class,
         description = "Emulates JVM bytecode to analyse untrusted Java code without running it on a real JVM.",
         subcommands = {Main.Run.class, Main.Inspect.class, Main.Init.class, Main.Defaults.class, Main.Policy.class})
 public final class Main {
@@ -40,6 +40,14 @@ public final class Main {
     static final int EXIT_INTERNAL = 1;
     static final int EXIT_USAGE = 2;
     static final int EXIT_LIMIT = 3;
+
+    /** Supplies {@code --version} from the build, since annotations cannot hold a computed value. */
+    static final class Version implements CommandLine.IVersionProvider {
+        @Override
+        public String[] getVersion() {
+            return new String[] {"javabyte " + Report.TOOL_VERSION};
+        }
+    }
 
     public static void main(String[] args) {
         CommandLine commandLine = new CommandLine(new Main());

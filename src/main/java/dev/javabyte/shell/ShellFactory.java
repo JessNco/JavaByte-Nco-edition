@@ -101,7 +101,7 @@ public final class ShellFactory {
         Class<?> shell = state.type.shellClass;
         Constructor<?> constructor = findConstructor(shell, desc);
         Object[] effectiveArgs = args;
-        if (constructor == null || !Type.getInternalName(shell.getSuperclass()).equals(ctorOwner)) {
+        if (constructor == null || !Type.getInternalName(jdkBase(shell)).equals(ctorOwner)) {
             // The sample's direct superclass is unavailable or blocked, so the shell extends
             // Object instead and there is nothing to pass the arguments to.
             constructor = findConstructor(shell, "()V");
@@ -160,9 +160,13 @@ public final class ShellFactory {
         if (base == Object.class && interfaces.isEmpty()) {
             return null;
         }
+        // If the guest superclass has a shell, extend that shell. The generated classes then
+        // mirror the guest hierarchy, which JDK code can observe: Enum.compareTo, for one,
+        // accepts two constants only if their classes share the enum as a common superclass.
+        Class<?> parentShell = guest.superClass() == null ? null : shellFor(guest.superClass());
         try {
             String name = "dev/javabyte/shell/gen/" + guest.name.replaceAll("[^A-Za-z0-9_$]", "_") + "$Shell" + counter++;
-            byte[] bytes = generate(name, base, interfaces);
+            byte[] bytes = parentShell == null ? generate(name, base, interfaces) : generateChild(name, parentShell, interfaces);
             return loader.define(name.replace('/', '.'), bytes);
         } catch (LinkageError | RuntimeException e) {
             // Some JDK types cannot be subclassed from outside (package-private abstract
@@ -289,6 +293,50 @@ public final class ShellFactory {
         return writer.toByteArray();
     }
 
+    /**
+     * Generates a shell that extends the shell of the guest superclass. Everything the parent
+     * shell provides (state, constructors' targets, trampolines for the JDK base class) is
+     * inherited; only JDK interfaces that this guest class adds need new trampolines.
+     */
+    private byte[] generateChild(String name, Class<?> parentShell, List<Class<?>> interfaces) {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected String getCommonSuperClass(String type1, String type2) {
+                return "java/lang/Object";
+            }
+        };
+        List<Class<?>> added = new ArrayList<>();
+        for (Class<?> iface : interfaces) {
+            if (!iface.isAssignableFrom(parentShell)) {
+                added.add(iface);
+            }
+        }
+        String parentName = Type.getInternalName(parentShell);
+        writer.visit(V17, ACC_PUBLIC | ACC_SUPER, name, null, parentName,
+                added.stream().map(Type::getInternalName).toArray(String[]::new));
+        emitConstructors(writer, parentShell, parentName);
+        for (Overridable overridable : overridables(parentShell, added)) {
+            // Methods reachable through the parent shell already have trampolines there.
+            if (added.contains(overridable.fallbackOwner())) {
+                emitTrampoline(writer, parentName, overridable);
+                if (overridable.fallback() != Fallback.ABSTRACT) {
+                    emitSuperAccessor(writer, parentName, overridable);
+                }
+            }
+        }
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
+
+    /** The JDK class a shell ultimately extends, skipping any parent shells in between. */
+    public static Class<?> jdkBase(Class<?> shell) {
+        Class<?> base = shell.getSuperclass();
+        while (ShellInstance.class.isAssignableFrom(base)) {
+            base = base.getSuperclass();
+        }
+        return base;
+    }
+
     private static void emitStateAccessors(ClassWriter writer, String name) {
         // javabyte$state(): the bound state, or the state under construction if not bound yet.
         MethodVisitor getter = writer.visitMethod(ACC_PUBLIC, "javabyte$state", "()" + STATE_DESC, null, null);
@@ -410,6 +458,14 @@ public final class ShellFactory {
         loadArguments(method, argTypes);
         method.visitMethodInsn(INVOKESPECIAL, owner, overridable.method().getName(),
                 Type.getMethodDescriptor(overridable.method()), viaInterface);
+        if (overridable.method().getName().equals("toString") && argTypes.length == 0) {
+            // Inherited toString() implementations print the runtime class name; swap the
+            // shell's generated name for the guest's.
+            method.visitVarInsn(ALOAD, 0);
+            method.visitInsn(SWAP);
+            method.visitMethodInsn(INVOKESTATIC, DISPATCH, "guestToString",
+                    "(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;", false);
+        }
         method.visitInsn(returnType.getOpcode(IRETURN));
     }
 

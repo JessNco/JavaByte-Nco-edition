@@ -21,7 +21,26 @@ import java.util.Map;
 public final class Report {
 
     public static final String TOOL_NAME = "javabyte";
-    public static final String TOOL_VERSION = "0.1.0";
+    /** Taken from the Maven build, so the version is stated in exactly one place (pom.xml). */
+    public static final String TOOL_VERSION = readVersion();
+
+    /**
+     * Version of the JSON layout. Increase it only for a change that would break a reader:
+     * removing or renaming a field, or changing what one means. Adding fields does not count.
+     */
+    public static final int SCHEMA_VERSION = 1;
+
+    private static String readVersion() {
+        try (java.io.InputStream in = Report.class.getResourceAsStream("/dev/javabyte/version.properties")) {
+            java.util.Properties properties = new java.util.Properties();
+            if (in != null) {
+                properties.load(in);
+            }
+            return properties.getProperty("version", "unknown");
+        } catch (IOException e) {
+            return "unknown";
+        }
+    }
 
     /** How one entry point (or the tasks it queued) ended. */
     public record Run(String entry, String outcome, String detail, long instructions) {}
@@ -73,6 +92,7 @@ public final class Report {
 
     public Map<String, Object> toMap() {
         Map<String, Object> root = new LinkedHashMap<>();
+        root.put("schemaVersion", SCHEMA_VERSION);
         root.put("tool", Map.of("name", TOOL_NAME, "version", TOOL_VERSION));
 
         Map<String, Object> sample = new LinkedHashMap<>();
@@ -108,14 +128,16 @@ public final class Report {
 
     /** Distinct values of one data field across events of a kind, in first-seen order. */
     private List<Object> values(String category, String action, String field) {
-        List<Object> values = new ArrayList<>();
+        // A LinkedHashSet removes repeats while keeping first-seen order, without the
+        // quadratic cost of searching a list for every event.
+        java.util.Set<Object> values = new java.util.LinkedHashSet<>();
         for (Event event : vm.events.events()) {
             Object value = event.data().get(field);
-            if (event.category().equals(category) && event.action().equals(action) && value != null && !values.contains(value)) {
+            if (event.category().equals(category) && event.action().equals(action) && value != null) {
                 values.add(value);
             }
         }
-        return values;
+        return new ArrayList<>(values);
     }
 
     public void writeJson(Path file) throws IOException {
@@ -168,15 +190,12 @@ public final class Report {
     }
 
     private void section(StringBuilder text, String title, String category, String action, String field) {
-        List<String> lines = new ArrayList<>();
+        java.util.Set<String> lines = new java.util.LinkedHashSet<>();
         for (Event event : vm.events.events()) {
             if (!event.category().equals(category) || (action != null && !event.action().equals(action))) {
                 continue;
             }
-            String line = field == null ? event.action() + " " + event.data() : String.valueOf(event.data().get(field));
-            if (!lines.contains(line)) {
-                lines.add(line);
-            }
+            lines.add(field == null ? event.action() + " " + event.data() : String.valueOf(event.data().get(field)));
         }
         if (lines.isEmpty()) {
             return;

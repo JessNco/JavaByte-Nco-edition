@@ -87,7 +87,9 @@ final class ReflectionStubs {
             List<Class<?>> interfaces = new ArrayList<>();
             for (Object iface : (Object[]) ctx.arg(1)) {
                 if (!(iface instanceof Class<?> cls)) {
-                    return vm.router.gap("Proxy for interpreted interface " + iface, ctx.desc);
+                    // The JDK cannot proxy an interface it has no class for; the interpreter can.
+                    vm.events.add("reflect", "proxy", "interfaces", java.util.Arrays.toString((Object[]) ctx.arg(1)));
+                    return new dev.javabyte.model.GuestProxy(List.of((Object[]) ctx.arg(1)), ctx.arg(2));
                 }
                 interfaces.add(cls);
             }
@@ -110,6 +112,16 @@ final class ReflectionStubs {
             return new java.util.PropertyResourceBundle(new ByteArrayInputStream(data));
         });
 
+        // For a guest enum the real method would return the generated shell class.
+        stubs.on("java/lang/Enum", "getDeclaringClass", ctx -> {
+            dev.javabyte.model.InstanceState state = vm.stateOf(ctx.receiver);
+            if (state == null) {
+                return ctx.proceed();
+            }
+            // A constant with a body is an anonymous subclass; its declaring class is the enum.
+            GuestClass type = state.type;
+            return type.superClass() != null && !"java/lang/Enum".equals(type.node.superName) ? type.superClass() : type;
+        });
         stubs.on("java/lang/Enum", "valueOf", ctx -> {
             if (!(ctx.arg(0) instanceof GuestClass guest)) {
                 return ctx.proceed();

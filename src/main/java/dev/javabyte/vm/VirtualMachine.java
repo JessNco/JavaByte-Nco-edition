@@ -27,9 +27,10 @@ import org.objectweb.asm.Opcodes;
  * One emulated JVM: the classes, the guest call stack, and the components that execute and
  * constrain guest code.
  *
- * <p>All guest execution happens on a single host thread (the "emulator thread"). Guest threads
- * are flattened onto it by {@link Scheduler}. This removes data races from the emulator, makes
- * runs repeatable, and guarantees that nothing the sample starts can outlive the analysis.
+ * <p>Guest code only ever runs on one host thread at a time. The {@link Scheduler} gives each
+ * guest thread its own carrier thread and passes a single baton between them, so the fields of
+ * this class need no synchronisation: whoever is reading or writing them holds the baton.
+ * That also makes runs repeatable and guarantees nothing the sample starts outlives the run.
  */
 public final class VirtualMachine {
 
@@ -176,19 +177,9 @@ public final class VirtualMachine {
         return frames();
     }
 
-    public int depth() {
-        return frames().size();
-    }
-
     /** The guest method currently executing, or null between entry points. */
     public GuestMethod currentMethod() {
         return frames().isEmpty() ? null : frames().get(frames().size() - 1).method;
-    }
-
-    /** Name of the guest class {@code levelsUp} frames above the current one, or null. */
-    public String callerClass(int levelsUp) {
-        int index = frames().size() - 1 - levelsUp;
-        return index < 0 ? null : frames().get(index).method.owner.name;
     }
 
     public String callerLocation() {

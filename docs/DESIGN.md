@@ -82,6 +82,10 @@ A JDK class may serve as a shell's superclass only if the policy allows guest co
 it. Otherwise it is treated as a *phantom* superclass: the guest class is plain, and calls to
 the missing parent are reported and answered with neutral values.
 
+When a guest class with a shell is extended by another guest class, the second shell extends
+the first, so the generated classes mirror the guest hierarchy. JDK code can observe that
+relationship: `Enum.compareTo`, for instance, requires two constants to share their enum class.
+
 Because bytecode allocates an object (`NEW`) before passing constructor arguments, an object
 that needs a real host instance exists as a `PendingInstance` placeholder until its constructor
 call returns.

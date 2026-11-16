@@ -56,6 +56,17 @@ public final class TypeSystem {
             GuestClass iface = vm.classes.find(lambda.interfaceName());
             return lambda.interfaceName().equals(type) || (iface != null && iface.isSubtypeOf(type));
         }
+        if (value instanceof dev.javabyte.model.GuestProxy proxy) {
+            for (Object mirror : proxy.interfaces()) {
+                Class<?> host = mirror instanceof Class<?> cls ? cls : null;
+                Class<?> wanted = host == null ? null : vm.host.findClass(type);
+                if ((mirror instanceof GuestClass iface && iface.isSubtypeOf(type))
+                        || (wanted != null && wanted.isAssignableFrom(host))) {
+                    return true;
+                }
+            }
+            return false;
+        }
         if (value instanceof PhantomObject) {
             // Nothing is known about a phantom's hierarchy. Saying yes keeps the sample on the
             // path it would take if the real class were present.

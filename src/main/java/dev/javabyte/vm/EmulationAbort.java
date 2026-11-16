@@ -14,8 +14,12 @@ public final class EmulationAbort extends Error {
         INSTRUCTION_LIMIT(false),
         TIMEOUT(false),
         POLICY(false),
-        /** Only the looping task is ended; other queued tasks still get their turn. */
-        SLEEP_BUDGET(true);
+        /** Only the looping thread is ended; other guest threads still get their turn. */
+        SLEEP_BUDGET(true),
+        /** The thread waited for something no other thread can provide; only it is ended. */
+        BLOCKED(true),
+        /** The run is over and a parked guest thread is being unwound. Never reported. */
+        SHUTDOWN(true);
 
         /** True when only the current task stops and the rest of the run continues. */
         public final boolean taskScoped;

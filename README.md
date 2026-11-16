@@ -24,7 +24,7 @@ run, and every result is available as stable JSON.
 
 ## Quick start
 
-Requirements: Maven and Java 17 or later. The test suite passes on Java 17 and Java 21.
+Requirements: Maven and Java 17 or later. The test suite passes on Java 17, 21 and 25.
 
 ```bash
 mvn -q package
@@ -183,4 +183,13 @@ The tests include:
 - an escape suite that tries about eighty ways out of the emulator and checks the real machine;
 - structural checks, for example that the simulated `File` overrides every `java.io.File` method.
 
-For AI agents working with this tool, see [AGENTS.md](AGENTS.md).
+## Documentation
+
+| Document | For |
+| --- | --- |
+| [docs/CONFIG.md](docs/CONFIG.md) | Every config option |
+| [AGENTS.md](AGENTS.md) | Driving the tool from an AI agent or a script; report fields |
+| [docs/DESIGN.md](docs/DESIGN.md) | How it works and why |
+| [docs/SELFTEST.md](docs/SELFTEST.md) | Results against real malware |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |
+| [CHANGELOG.md](CHANGELOG.md) | What changed between versions |

@@ -188,7 +188,12 @@ public final class Scheduler {
 
     // ------------------------------------------------------------------ passing the baton
 
-    /** Lets every other runnable thread have a turn before the caller continues. */
+    /**
+     * Lets every other runnable thread have a turn before the caller continues.
+     *
+     * @param reason why the caller is giving way. Not used by the scheduler itself; it documents
+     *               each call site and is the natural place to add switch tracing later.
+     */
     public void yieldToOthers(String reason) {
         if (runnable.isEmpty()) {
             return;
@@ -204,27 +209,47 @@ public final class Scheduler {
         if (next == me) {
             return;
         }
-        resume(next);
+        if (!resume(next)) {
+            // The other thread could not be started, so the baton never left. Undo the
+            // caller's place in the queue and carry on.
+            runnable.remove(me);
+            return;
+        }
         me.turn.acquireUninterruptibly();
         // From here the baton is ours again.
         if (me == main) {
             rethrowPendingFatal();
         } else if (shuttingDown) {
-            throw new EmulationAbort(EmulationAbort.Reason.SLEEP_BUDGET, "run ended");
+            throw new EmulationAbort(EmulationAbort.Reason.SHUTDOWN, "run ended");
         }
     }
 
-    private void resume(Carrier next) {
+    /**
+     * Makes {@code next} the running carrier, starting its host thread on first use.
+     *
+     * @return false if the host refused to create a thread; the baton then stays with the caller
+     */
+    private boolean resume(Carrier next) {
+        Carrier previous = current;
         current = next;
         if (next.started) {
             next.turn.release();
-            return;
+            return true;
         }
         next.started = true;
         next.host = new Thread(null, () -> carry(next), "javabyte-guest-" + next.label, CARRIER_STACK_BYTES);
         // Daemon: a carrier stuck in a real JDK call must not keep the tool alive.
         next.host.setDaemon(true);
-        next.host.start();
+        try {
+            next.host.start();
+            return true;
+        } catch (OutOfMemoryError noThread) {
+            // The guest sees a thread that never ran, and the report says why.
+            current = previous;
+            next.finished = true;
+            vm.events.add("gap", "thread-not-started", "task", next.label, "error", String.valueOf(noThread.getMessage()));
+            return false;
+        }
     }
 
     /** Body of a carrier's host thread. */
@@ -238,7 +263,7 @@ public final class Scheduler {
                     "exception", vm.types.nameOf(thrown.value), "message", messageOf(thrown));
         } catch (EmulationAbort abort) {
             if (abort.reason.taskScoped) {
-                if (!shuttingDown) {
+                if (abort.reason != EmulationAbort.Reason.SHUTDOWN) {
                     vm.events.add("thread", "stopped", "task", carrier.label, "reason", abort.getMessage());
                 }
             } else {
@@ -267,8 +292,9 @@ public final class Scheduler {
         }
         // A fatal condition goes straight to main, which owns the run's outcome.
         Carrier next = pendingFatal != null && runnable.remove(main) ? main : runnable.poll();
-        if (next != null) {
-            resume(next);
+        // Skip over any thread the host cannot start; main is already running and always resumes.
+        while (next != null && !resume(next)) {
+            next = runnable.poll();
         }
     }
 
@@ -311,7 +337,7 @@ public final class Scheduler {
         while (!ready.getAsBoolean()) {
             if (runnable.isEmpty() || ++fruitlessPolls > 2 * (runnable.size() + 1)) {
                 fruitlessPolls = 0;
-                throw new EmulationAbort(EmulationAbort.Reason.SLEEP_BUDGET, what + " would block forever");
+                throw new EmulationAbort(EmulationAbort.Reason.BLOCKED, what + " would block forever");
             }
             yieldToOthers(what);
         }
@@ -376,10 +402,6 @@ public final class Scheduler {
             }
         }
         current = main;
-    }
-
-    public int pending() {
-        return runnable.size();
     }
 
     // ------------------------------------------------------------------ monitors

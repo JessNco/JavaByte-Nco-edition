@@ -23,6 +23,9 @@ import org.objectweb.asm.tree.ClassNode;
  */
 public final class ClassRepository {
 
+    /** Largest archive entry that is read. Real classes and payloads are far smaller. */
+    static final int MAX_ENTRY_BYTES = 256 * 1024 * 1024;
+
     /** Raw class files by internal name, parsed on first use so huge bundled libraries cost nothing. */
     private final Map<String, byte[]> classBytes = new LinkedHashMap<>();
     private final Map<String, String> classOrigins = new LinkedHashMap<>();
@@ -65,7 +68,14 @@ public final class ClassRepository {
                 } else if (entry.isDirectory()) {
                     continue;
                 }
-                byte[] data = zip.readAllBytes();
+                // Read one byte past the limit to tell "exactly at the limit" from "over it".
+                byte[] data = zip.readNBytes(MAX_ENTRY_BYTES + 1);
+                if (data.length > MAX_ENTRY_BYTES) {
+                    // A decompression bomb. Skipping the entry costs one resource; reading it
+                    // could cost the whole analysis.
+                    unparseable.add(name + ": entry larger than " + MAX_ENTRY_BYTES + " bytes, skipped");
+                    continue;
+                }
                 // Requiring the class-file magic keeps decoy entries (obfuscators add thousands of
                 // one-byte ".class" files to confuse tools) from being reported as broken classes.
                 if (name.endsWith(".class") && !name.startsWith("META-INF/versions/") && hasClassMagic(data)) {

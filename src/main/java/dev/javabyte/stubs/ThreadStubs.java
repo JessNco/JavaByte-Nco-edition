@@ -20,9 +20,10 @@ import org.objectweb.asm.Type;
 /**
  * Threads and everything else that would start one.
  *
- * <p>No guest code ever runs on a second host thread. Starting a thread queues its body on the
- * {@link dev.javabyte.vm.Scheduler}; pools, timers and asynchronous futures are redirected to
- * the same queue; and calls that would block waiting for another thread yield to it instead.
+ * <p>The JDK is never allowed to start or block a thread on the sample's behalf. Starting a
+ * thread hands its body to the {@link dev.javabyte.vm.Scheduler}, which interleaves guest
+ * threads one at a time; pools, timers and asynchronous futures are redirected the same way;
+ * and calls that would block waiting for another thread wait cooperatively instead.
  */
 final class ThreadStubs {
 
@@ -216,9 +217,9 @@ final class ThreadStubs {
         return null;
     }
 
-    /** Ends only the current task, the same way an exhausted sleep budget does. */
+    /** Ends only the current guest thread: it is waiting for something that cannot happen. */
     private static EmulationAbort wouldBlockForever(String what) {
-        return new EmulationAbort(EmulationAbort.Reason.SLEEP_BUDGET, what + " would block forever");
+        return new EmulationAbort(EmulationAbort.Reason.BLOCKED, what + " would block forever");
     }
 
     /** Parallel streams and sorts use the common pool; they are made sequential. */

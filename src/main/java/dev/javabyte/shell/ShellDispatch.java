@@ -78,6 +78,17 @@ public final class ShellDispatch {
         }
     }
 
+    /**
+     * Corrects the text of an inherited {@code toString()}. JDK implementations such as
+     * {@code Throwable.toString()} print {@code getClass().getName()}, which for a shell is the
+     * generated class. The guest must see its own class name there instead.
+     */
+    public static String guestToString(Object self, String inherited) {
+        InstanceState state = ((GuestInstance) self).javabyte$state();
+        return state == null || inherited == null
+                ? inherited : inherited.replace(self.getClass().getName(), state.type.dottedName());
+    }
+
     /** Throws any exception without declaring it; generated methods have no throws clauses. */
     @SuppressWarnings("unchecked")
     public static <T extends Throwable> RuntimeException sneakyThrow(Throwable throwable) throws T {

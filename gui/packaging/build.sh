@@ -33,7 +33,16 @@ esac
 
 # Earlier bundles would be picked up by the copy below.
 rm -rf target/release/bundle
-(cd app && "${tauri[@]}" build --bundles "$bundles" "${configs[@]}")
+if [[ $os == linux ]]; then
+    # The AppImage tool (linuxdeploy) resolves the libraries of every program it packs, the Java
+    # runtime's included. Those find libjvm.so by path at run time, not through the linker, so
+    # it is shown where they are. Stripping is left off: the runtime's libraries are already
+    # stripped, and strip fails on some of them.
+    runtime="$gui/target/bundle-input/runtime/lib"
+    export LD_LIBRARY_PATH="$runtime/server:$runtime${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export NO_STRIP=true
+fi
+(cd app && "${tauri[@]}" build --verbose --bundles "$bundles" "${configs[@]}")
 
 out="target/installers"
 mkdir -p "$out"

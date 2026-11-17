@@ -58,6 +58,8 @@ public final class Scenario {
         public List<String> forbidOutcomes = new ArrayList<>();
         /** Each must be found in some line the sample printed. */
         public List<String> stdout = new ArrayList<>();
+        /** Regular expressions that no printed line may match: proof that the run stopped where expected. */
+        public List<String> notPrinted = new ArrayList<>();
         public List<EventMatch> events = new ArrayList<>();
         /** Events that must not occur. */
         public List<EventMatch> absent = new ArrayList<>();

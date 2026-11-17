@@ -47,6 +47,11 @@ public final class SimFileInputStream extends FileInputStream {
             public void replace(byte[] bytes) {
                 throw new java.nio.channels.NonWritableChannelException();
             }
+
+            @Override
+            public void checkSize(long size) {
+                throw new java.nio.channels.NonWritableChannelException();
+            }
         }, data.length - in.available());
     }
 }

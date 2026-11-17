@@ -1,0 +1,13 @@
+description: 'LIMITATION: a class that is neither in the sample nor allowed from the JDK becomes a phantom. The run continues, flagged as a gap; adding the library to the classpath removes it.'
+techniques: [limitation, missing-class, phantom, classpath]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: without-library
+    config:
+      entryPoints: [{args: [missing-class]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^phantom result: null$', '^continued after the missing class$']
+      events:
+        - {category: gap, action: missing-class, where: {class: 'sim/Payload$'}}
+      absent: [{category: process, action: exec}]

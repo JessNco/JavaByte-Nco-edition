@@ -23,6 +23,9 @@ public final class SimFileChannel extends FileChannel {
 
         /** Replaces the whole content. Throws {@link NonWritableChannelException} if read-only. */
         void replace(byte[] bytes);
+
+        /** Called before the file grows, so the owner can refuse a size over the write limit. */
+        void checkSize(long size);
     }
 
     private final Storage storage;
@@ -77,6 +80,7 @@ public final class SimFileChannel extends FileChannel {
     public int write(ByteBuffer src, long at) {
         int count = src.remaining();
         byte[] data = storage.bytes();
+        storage.checkSize(at + count);
         byte[] grown = at + count > data.length ? Arrays.copyOf(data, (int) at + count) : data.clone();
         src.get(grown, (int) at, count);
         storage.replace(grown);

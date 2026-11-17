@@ -1,0 +1,12 @@
+description: 'LIMITATION: listening sockets are reported but never accept a connection.'
+techniques: [limitation, server-socket, bind-shell]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [server-socket]}]
+    expect:
+      outcomes: [completed]
+      events:
+        - {category: net, action: listen, where: {port: '^4444$'}, because: the port a bind shell opens is the indicator worth having}
+        - {category: policy, action: phantom-call, where: {method: 'ServerSocket\.accept'}}

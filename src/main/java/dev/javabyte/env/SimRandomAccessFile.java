@@ -65,7 +65,8 @@ public final class SimRandomAccessFile implements StandIn {
     }
 
     public void write(byte[] b, int off, int len) {
-        if (position + len > data.length) {
+        if ((long) position + len > data.length) {
+            fs.checkBuffered((long) position + len);
             data = Arrays.copyOf(data, position + len);
         }
         System.arraycopy(b, off, data, position, len);
@@ -86,6 +87,8 @@ public final class SimRandomAccessFile implements StandIn {
     }
 
     public void setLength(long newLength) {
+        // Samples pre-allocate huge files to fill a disk; the limit turns that into an outcome.
+        fs.checkBuffered(newLength);
         data = Arrays.copyOf(data, (int) newLength);
         position = Math.min(position, data.length);
         dirty = true;
@@ -102,6 +105,11 @@ public final class SimRandomAccessFile implements StandIn {
             @Override
             public byte[] bytes() {
                 return data;
+            }
+
+            @Override
+            public void checkSize(long size) {
+                fs.checkBuffered(size);
             }
 
             @Override

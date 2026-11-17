@@ -1,0 +1,10 @@
+description: A wait that nothing will ever end is detected and reported, instead of hanging the emulator.
+techniques: [limit, deadlock-detection]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [wait]}]
+    expect:
+      outcomes: [blocked]
+      notPrinted: ['^finished']

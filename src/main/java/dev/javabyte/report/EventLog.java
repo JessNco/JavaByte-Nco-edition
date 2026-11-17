@@ -107,6 +107,21 @@ public final class EventLog {
         return counts;
     }
 
+    /**
+     * Events per category that were counted but not stored because the category was full.
+     * Empty for most runs; a non-empty map tells a reader that {@link #events()} is incomplete
+     * without making them compare counts.
+     */
+    public Map<String, Integer> dropped() {
+        Map<String, Integer> dropped = new java.util.TreeMap<>();
+        counts.forEach((category, count) -> {
+            if (count > maxPerCategory) {
+                dropped.put(category, count - maxPerCategory);
+            }
+        });
+        return dropped;
+    }
+
     public List<Event> byCategory(String category) {
         return events.stream().filter(event -> event.category().equals(category)).toList();
     }

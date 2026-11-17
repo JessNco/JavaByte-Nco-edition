@@ -1,0 +1,12 @@
+description: Loading a library that is not on the virtual disk fails as it would on a clean machine.
+techniques: [limitation, native, load-library]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [native-missing-library]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^library not found$']
+      events:
+        - {category: native, action: load-library, where: {library: notshipped, presentOnVirtualDisk: 'false'}}

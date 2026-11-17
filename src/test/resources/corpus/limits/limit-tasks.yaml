@@ -1,0 +1,13 @@
+description: Tasks that each queue two more are cut off at the task limit, with a marker event.
+techniques: [limit, task-limit, executors]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [tasks]}]
+      limits: {maxTasks: 20}
+    expect:
+      outcomes: [completed]
+      events:
+        - {category: thread, action: run, min: 20, max: 20}
+        - {category: thread, action: task-limit-reached, max: 1}

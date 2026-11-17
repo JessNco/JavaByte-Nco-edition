@@ -134,6 +134,12 @@ public final class ScenarioRunner {
                 problems.add("no printed line matches /" + regex + "/; printed: " + printed);
             }
         }
+        for (String regex : expect.notPrinted) {
+            Pattern pattern = Pattern.compile(regex);
+            if (printed.stream().anyMatch(line -> pattern.matcher(line).find())) {
+                problems.add("a printed line matches /" + regex + "/, which must not happen; printed: " + printed);
+            }
+        }
         for (Scenario.EventMatch match : expect.events) {
             long count = count(match, report);
             if (count < match.min || (match.max != null && count > match.max)) {

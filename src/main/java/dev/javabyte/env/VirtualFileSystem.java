@@ -219,12 +219,31 @@ public final class VirtualFileSystem {
         return node.data;
     }
 
+    /**
+     * Ends the run if an open file has grown past what the sample may still write.
+     *
+     * <p>Open files buffer in memory and are only counted by {@link #write} when committed, so
+     * without this check a loop that writes to one stream for ever would exhaust the emulator's
+     * heap long before the limit was consulted.
+     *
+     * @param bufferedSize the size the open file has, or is about to have
+     */
+    public void checkBuffered(long bufferedSize) {
+        if (bufferedSize < 0 || writtenBytes + bufferedSize > maxWrittenBytes) {
+            throw writeLimitReached();
+        }
+    }
+
+    private static dev.javabyte.vm.EmulationAbort writeLimitReached() {
+        return new dev.javabyte.vm.EmulationAbort(dev.javabyte.vm.EmulationAbort.Reason.POLICY,
+                "sample wrote more than limits.maxWrittenBytes to the virtual file system");
+    }
+
     /** Creates or replaces a file. Parent directories are created implicitly. */
     public void write(String path, byte[] data) {
         writtenBytes += data.length;
         if (writtenBytes > maxWrittenBytes) {
-            throw new dev.javabyte.vm.EmulationAbort(dev.javabyte.vm.EmulationAbort.Reason.POLICY,
-                    "sample wrote more than limits.maxWrittenBytes to the virtual file system");
+            throw writeLimitReached();
         }
         addDirectory(parent(absolute(path)));
         Node node = new Node(absolute(path), false, data, now);

@@ -1,0 +1,11 @@
+description: 'LIMITATION: a jar inside the jar is readable as data but is not mounted, so its classes are not found by name.'
+techniques: [limitation, nested-jar]
+fixture: dev.javabyte.guest.sim.Limitations
+builder: nested-jar
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [nested-jar]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^inner entries readable: 1$', '^inner class not found$']

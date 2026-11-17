@@ -67,6 +67,9 @@ fn schema_reads_and_describes_every_option() {
     assert_eq!(os.allowed, ["windows", "linux"]);
     assert_eq!(schema.option("limits.timeoutSeconds").unwrap().default, Some(serde_json::json!(120)));
     assert_eq!(schema.option("network.http").unwrap().element.as_deref(), Some("object"));
+    let bridge = schema.plugins.iter().find(|p| p.id == "native-bridge").expect("the native bridge is described");
+    assert!(!bridge.description.is_empty());
+    assert_eq!(bridge.settings[0].path, "python");
 }
 
 #[test]

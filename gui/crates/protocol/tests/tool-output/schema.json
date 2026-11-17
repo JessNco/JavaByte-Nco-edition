@@ -389,5 +389,19 @@
     "element" : "map",
     "default" : { },
     "description" : "Settings for plugins, by plugin id. A plugin runs only if it has an entry here."
+  } ],
+  "plugins" : [ {
+    "id" : "native-bridge",
+    "description" : "Runs the sample's 64-bit Windows native libraries (DLLs) in a CPU emulator, so their behaviour is analysed too. Needs Python with speakeasy-emulator.",
+    "settings" : [ {
+      "path" : "python",
+      "type" : "string",
+      "default" : "python3",
+      "description" : "The Python interpreter that has speakeasy-emulator installed."
+    } ]
+  }, {
+    "id" : "test-native",
+    "description" : "",
+    "settings" : [ ]
   } ]
 }

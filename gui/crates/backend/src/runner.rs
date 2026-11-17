@@ -81,6 +81,12 @@ impl Launcher {
 
     /// Runs a short command that prints one JSON document, and reads it.
     fn json_command<T: serde::de::DeserializeOwned>(&self, args: &[&std::ffi::OsStr], accept: &[i32]) -> Result<T, String> {
+        let output = self.text_command(args, accept)?;
+        serde_json::from_str(&output).map_err(|e| javabyte_gui_protocol::t!("error-tool-output", detail = e.to_string()))
+    }
+
+    /// Runs a short command and returns what it printed.
+    fn text_command(&self, args: &[&std::ffi::OsStr], accept: &[i32]) -> Result<String, String> {
         let output = self
             .command(args)
             .stdin(Stdio::null())
@@ -90,7 +96,12 @@ impl Launcher {
         if !accept.contains(&code) {
             return Err(javabyte_gui_protocol::t!("error-tool-failed", code = code, detail = last_lines(&String::from_utf8_lossy(&output.stderr), 5)));
         }
-        serde_json::from_slice(&output.stdout).map_err(|e| javabyte_gui_protocol::t!("error-tool-output", detail = e.to_string()))
+        String::from_utf8(output.stdout).map_err(|e| javabyte_gui_protocol::t!("error-tool-output", detail = e.to_string()))
+    }
+
+    /// A starter config for a sample: the tool's suggestions, with comments, ready to edit.
+    pub fn init(&self, sample: &Path) -> Result<String, String> {
+        self.text_command(&["init".as_ref(), sample.as_os_str()], &[exit_code::OK])
     }
 
     /// Describes a sample without running it.

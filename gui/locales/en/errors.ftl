@@ -34,3 +34,20 @@ error-backend-missing = The desktop backend is not available.
 error-backend-call = The app could not call its backend: { $detail }
 error-backend-reply = Unexpected reply from the backend: { $detail }
 error-engine-missing = The analysis engine (javabyte.jar) was not found. Set JAVABYTE_JAR to its location, or build it with 'mvn package' in the JavaByte folder.
+
+## Problems editing the settings. $path is a setting's name, such as network.http[2].url.
+
+config-no-item = { $path } has no item { $index }.
+config-wrong-shape = { $path } does not fit how the settings are laid out there. Check it in the YAML tab.
+config-not-a-list = { $path } is not a list.
+config-single-value = { $path } holds a single value, not a group of settings.
+config-not-a-mapping = The settings must be a set of named options, not a list or a single value.
+error-no-sample = Choose a sample first.
+error-preset-name = Give the preset a name, using letters, numbers and spaces.
+error-preset-unreadable = These settings cannot be saved as a preset until the YAML can be read.
+error-preset-save = The preset could not be saved: { $detail }
+error-preset-read = The preset could not be read: { $detail }
+error-preset-delete = The preset could not be deleted: { $detail }
+error-import = The file could not be read: { $detail }
+error-import-too-big = That file is too big to be a JavaByte settings file.
+error-export = The settings could not be saved: { $detail }

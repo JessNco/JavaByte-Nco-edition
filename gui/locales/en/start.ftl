@@ -28,3 +28,7 @@ picker-sample = Choose a sample to analyse
 picker-java-files = Java programs and classes
 picker-all-files = All files
 picker-folder = Choose a folder of classes
+picker-import = Open settings
+picker-export = Save settings
+picker-settings-files = JavaByte settings (YAML or JSON)
+picker-host-file = Choose a file

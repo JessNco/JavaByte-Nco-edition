@@ -32,16 +32,15 @@ pub enum EntryChoice {
 }
 
 impl EntryChoice {
-    /// The `entryPoints` override that selects this choice on the command line.
-    pub fn override_value(&self) -> Option<String> {
+    /// The `entryPoints` list that selects this choice in the settings.
+    pub fn entry_points(&self) -> serde_json::Value {
+        use serde_json::json;
         match self {
-            EntryChoice::Main => None,
-            EntryChoice::MainOf { class } => Some(format!("entryPoints=[{{class: '{}'}}]", class.replace('\'', "''"))),
-            EntryChoice::Agent { class } => Some(format!(
-                "entryPoints=[{{type: method, class: '{}', method: premain, args: ['', null]}}]",
-                class.replace('\'', "''")
-            )),
-            EntryChoice::ClinitSweep => Some("entryPoints=[{type: clinit-sweep}]".into()),
+            EntryChoice::Main => json!([{"type": "main"}]),
+            EntryChoice::MainOf { class } => json!([{"type": "main", "class": class}]),
+            // premain(String options, Instrumentation inst): no options, and no instrumentation.
+            EntryChoice::Agent { class } => json!([{"type": "method", "class": class, "method": "premain", "args": ["", null]}]),
+            EntryChoice::ClinitSweep => json!([{"type": "clinit-sweep"}]),
         }
     }
 }
@@ -200,6 +199,102 @@ pub struct ReportView {
     pub dropped: Vec<(String, u64)>,
     /// Where the full report and saved files are.
     pub output_dir: String,
+    /// What the next run could supply, for the settings presets.
+    #[serde(default)]
+    pub follow_ups: FollowUps,
+}
+
+/// A config read from a file someone chose to import.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Imported {
+    /// As YAML: a JSON file is turned into YAML.
+    pub text: String,
+    /// The sample the file names, if any. Untrusted.
+    pub sample: Option<String>,
+}
+
+/// A saved preset: settings without a sample, kept as a YAML file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Preset {
+    pub name: String,
+}
+
+/// Things a report shows the sample wanted, which settings can give it next time
+/// (the follow-up table in AGENTS.md). Untrusted: values come from the sample.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FollowUps {
+    /// Files it tried to read that were not there (`file.read-missing`).
+    pub missing_files: Vec<String>,
+    /// Web addresses it asked for that no rule answered (`net.http`, no matching rule).
+    pub unanswered_urls: Vec<String>,
+    /// Arguments it gave when starting itself again as a Java program (`process.exec`).
+    pub relaunch_args: Vec<Vec<String>>,
+}
+
+/// Most follow-up values offered of each kind.
+const FOLLOW_UP_LIMIT: usize = 50;
+
+pub fn follow_ups(report: &Report) -> FollowUps {
+    let mut out = FollowUps::default();
+    let text = |e: &crate::stream::Event, key: &str| e.data.get(key).and_then(|v| v.as_str()).map(str::to_string);
+    for event in &report.events {
+        match (event.category.as_str(), event.action.as_str()) {
+            ("file", "read-missing") => {
+                if let Some(path) = text(event, "path") {
+                    if !out.missing_files.contains(&path) && out.missing_files.len() < FOLLOW_UP_LIMIT {
+                        out.missing_files.push(path);
+                    }
+                }
+            }
+            ("net", "http") if text(event, "matchedRule").is_some_and(|r| r.starts_with("none")) => {
+                if let Some(url) = text(event, "url") {
+                    if !out.unanswered_urls.contains(&url) && out.unanswered_urls.len() < FOLLOW_UP_LIMIT {
+                        out.unanswered_urls.push(url);
+                    }
+                }
+            }
+            ("process", "exec") => {
+                let argv: Vec<String> = event
+                    .data
+                    .get("argv")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .unwrap_or_default();
+                if let Some(args) = java_program_args(&argv) {
+                    if !out.relaunch_args.contains(&args) && out.relaunch_args.len() < FOLLOW_UP_LIMIT {
+                        out.relaunch_args.push(args);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The program's own arguments in a `java` command line: what follows `-jar FILE`, or the main
+/// class after the Java options. `None` if the command does not start Java.
+fn java_program_args(argv: &[String]) -> Option<Vec<String>> {
+    let program = argv.first()?.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
+    if !matches!(program.as_str(), "java" | "javaw" | "java.exe" | "javaw.exe") {
+        return None;
+    }
+    let mut i = 1;
+    while i < argv.len() {
+        let arg = argv[i].as_str();
+        if arg == "-jar" {
+            return Some(argv.get(i + 2..).unwrap_or_default().to_vec());
+        }
+        if matches!(arg, "-cp" | "-classpath" | "--class-path" | "-p" | "--module-path") {
+            i += 2;
+        } else if arg.starts_with('-') {
+            i += 1;
+        } else {
+            // The main class.
+            return Some(argv[i + 1..].to_vec());
+        }
+    }
+    None
 }
 
 /// Most values kept per indicator list; the full list is in the report file.
@@ -254,6 +349,7 @@ pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> Repo
         gaps: s.gaps,
         dropped: s.events_dropped.iter().map(|(k, v)| (k.clone(), *v)).collect(),
         output_dir: output_dir.to_string(),
+        follow_ups: follow_ups(report),
     }
 }
 
@@ -340,6 +436,20 @@ pub struct EngineStatus {
     pub ready: bool,
     /// Plain words: what is wrong and how to fix it. None when ready.
     pub problem: Option<String>,
+}
+
+#[cfg(test)]
+mod follow_up_tests {
+    use super::*;
+
+    #[test]
+    fn java_relaunches_give_their_program_arguments() {
+        let argv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(java_program_args(&argv(&["C:\\jre\\bin\\javaw.exe", "-Xmx1g", "-jar", "x.jar", "--install", "2"])), Some(argv(&["--install", "2"])));
+        assert_eq!(java_program_args(&argv(&["java", "-cp", "a.jar;b.jar", "a.Main", "go"])), Some(argv(&["go"])));
+        assert_eq!(java_program_args(&argv(&["/usr/bin/java", "-jar", "x.jar"])), Some(vec![]));
+        assert_eq!(java_program_args(&argv(&["cmd.exe", "/c", "del", "x"])), None);
+    }
 }
 
 #[cfg(test)]

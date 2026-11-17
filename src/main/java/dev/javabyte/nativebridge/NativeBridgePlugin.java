@@ -96,6 +96,17 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
     }
 
     @Override
+    public String description() {
+        return "Runs the sample's 64-bit Windows native libraries (DLLs) in a CPU emulator, so their behaviour is analysed too. Needs Python with speakeasy-emulator.";
+    }
+
+    @Override
+    public List<dev.javabyte.config.ConfigSchema.Option> settings() {
+        return List.of(new dev.javabyte.config.ConfigSchema.Option("python", "string", null, "python3", List.of(),
+                "The Python interpreter that has speakeasy-emulator installed."));
+    }
+
+    @Override
     public void install(VirtualMachine machine, Map<String, Object> settings) {
         this.vm = machine;
         this.python = String.valueOf(settings.getOrDefault("python", "python3"));

@@ -41,6 +41,10 @@ final class Inspection {
     }
 
     static Inspection of(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            // A usage error (exit code 2), not an emulator failure: the caller named a wrong file.
+            throw new dev.javabyte.config.ConfigLoader.ConfigException("Sample not found: " + path);
+        }
         byte[] bytes = Files.readAllBytes(path);
         ClassRepository repository = new ClassRepository();
         Manifest manifest = null;

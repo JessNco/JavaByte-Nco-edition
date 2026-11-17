@@ -133,13 +133,17 @@ class ContractTest {
                 Map.entry("threads: {mode: parallel}", "threads.mode"),
                 Map.entry("limits: {timeoutSeconds: 0}", "timeoutSeconds"),
                 Map.entry("limits: {maxSleeps: -1}", "maxSleeps"),
-                Map.entry("entryPoints: [{type: agent}]", "entryPoints[].type"),
-                Map.entry("entryPoints: [{type: method, class: A}]", "method"),
-                Map.entry("hooks: [{action: return}]", "method"),
-                Map.entry("hooks: [{method: 'A.b', action: explode}]", "hooks[].action"),
-                Map.entry("network: {http: [{body: x}]}", "network.http[].url"),
-                Map.entry("network: {http: [{url: '(unclosed'}]}", "network.http[].url"),
-                Map.entry("processes: [{command: '['}]", "processes[].command"),
+                Map.entry("entryPoints: [{type: agent}]", "entryPoints[0].type"),
+                Map.entry("entryPoints: [{type: method, class: A}]", "entryPoints[0].method"),
+                Map.entry("hooks: [{action: return}]", "hooks[0].method"),
+                Map.entry("hooks: [{method: 'A.b', action: explode}]", "hooks[0].action"),
+                Map.entry("network: {http: [{url: a}, {body: x}]}", "network.http[1].url"),
+                Map.entry("network: {http: [{url: '(unclosed'}]}", "network.http[0].url"),
+                Map.entry("processes: [{command: '['}]", "processes[0].command"),
+                Map.entry("environment: {clockStart: yesterday}", "environment.clockStart"),
+                Map.entry("limits: [1, 2]", "limits must be a mapping"),
+                Map.entry("classpath: lib.jar", "classpath must be a list"),
+                Map.entry("threads: {runShutdownHooks: maybe}", "true or false"),
                 Map.entry("- a\n- b", "mapping"),
                 Map.entry("limits: {timeoutSeconds: soon}", "timeoutSeconds"));
         cases.forEach((text, expectedInMessage) -> {
@@ -355,5 +359,77 @@ class ContractTest {
         Map<?, ?> summary = (Map<?, ?>) report.toMap().get("summary");
         assertEquals(Map.of("console", 452), summary.get("eventsDropped"), "500 lines, the two framing lines, 50 kept");
         assertEquals(1, Fixtures.events(report, "process", "exec").size(), "other categories are unaffected by a full one");
+    }
+
+    // ------------------------------------------------------------------ validate and schema
+
+    @Test
+    void validateListsEveryProblemWithItsKey() throws IOException {
+        Path config = write("many.yaml", String.join("\n",
+                "limitz: {}",
+                "limits: {maxSleep: 3, timeoutSeconds: soon}",
+                "environment: {os: macos, clockStart: yesterday}",
+                "network: {http: [{url: x}, {body: y}]}",
+                "entryPoints: [{type: method}]", ""));
+        Cli result = cli("validate", "-c", config.toString(), "--json");
+        assertEquals(2, result.exitCode());
+        JsonNode answer = result.json();
+        assertFalse(answer.get("valid").asBoolean());
+        List<String> keys = new java.util.ArrayList<>();
+        answer.get("problems").forEach(p -> keys.add(p.get("key").asText()));
+        assertEquals(List.of("limitz", "limits.maxSleep", "limits.timeoutSeconds", "environment.os", "entryPoints[0].class",
+                "entryPoints[0].method", "environment.clockStart", "network.http[1].url"), keys,
+                "structural problems first, then rules involving several options, all in one pass");
+        assertTrue(answer.get("problems").get(1).get("message").asText().contains("did you mean 'limits.maxSleeps'"));
+
+        Cli text = cli("validate", "-c", config.toString());
+        assertEquals(2, text.exitCode());
+        assertTrue(text.out().startsWith("8 problems:"), text.out());
+
+        assertEquals(0, cli("validate", "-c", write("ok.yaml", "limits: {maxSleeps: 3}\n").toString()).exitCode());
+        assertEquals(0, cli("validate").exitCode(), "no config at all is valid: everything has a default");
+        Cli broken = cli("validate", "-c", write("broken.yaml", "limits: {maxSleeps: [\n").toString(), "--json");
+        assertEquals(2, broken.exitCode());
+        assertTrue(broken.json().get("problems").get(0).get("message").asText().contains("line"), "syntax errors name the line");
+
+        // run refuses the same config with the same messages.
+        Cli run = cli("run", basics.toString(), "-c", config.toString());
+        assertEquals(2, run.exitCode());
+        assertTrue(run.err().contains("8 problems"), run.err());
+    }
+
+    @Test
+    void validateAgreesWithOverrides() throws IOException {
+        Path config = write("fixable.yaml", "limits: {timeoutSeconds: 0}\n");
+        assertEquals(2, cli("validate", "-c", config.toString()).exitCode());
+        assertEquals(0, cli("validate", "-c", config.toString(), "-s", "limits.timeoutSeconds=30").exitCode());
+    }
+
+    @Test
+    void schemaDescribesEveryOption() throws IOException {
+        JsonNode schema = cli("schema", "--json").json();
+        assertEquals(1, schema.get("schemaVersion").asInt());
+        java.util.Map<String, JsonNode> byPath = new java.util.LinkedHashMap<>();
+        schema.get("options").forEach(o -> byPath.put(o.get("path").asText(), o));
+        for (JsonNode option : byPath.values()) {
+            assertTrue(option.hasNonNull("description") && option.get("description").asText().length() > 10,
+                    "every option needs a description: " + option);
+        }
+        assertEquals("integer", byPath.get("limits.timeoutSeconds").get("type").asText());
+        assertEquals(120, byPath.get("limits.timeoutSeconds").get("default").asInt());
+        assertEquals(List.of("windows", "linux"),
+                java.util.stream.StreamSupport.stream(byPath.get("environment.os").get("allowed").spliterator(), false).map(JsonNode::asText).toList());
+        assertEquals("list", byPath.get("network.http").get("type").asText());
+        assertEquals("object", byPath.get("network.http").get("element").asText());
+        assertTrue(byPath.containsKey("network.http[].url"), "list items are described too");
+        assertTrue(byPath.containsKey("entryPoints[].class"), "the JSON name is used, not the Java field name");
+        assertEquals(0, cli("schema").exitCode());
+
+        // Every option the schema knows is documented in docs/CONFIG.md.
+        String reference = Files.readString(Path.of("docs/CONFIG.md"));
+        for (String path : byPath.keySet()) {
+            String leaf = path.substring(path.lastIndexOf('.') + 1);
+            assertTrue(reference.contains("`" + leaf + "`"), "docs/CONFIG.md does not mention " + path);
+        }
     }
 }

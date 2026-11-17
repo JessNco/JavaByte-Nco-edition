@@ -26,7 +26,20 @@ Class names may be written with dots or slashes. Method patterns use slashes, as
 | `sample` | none | Jar, zip, single `.class` file, or directory of classes |
 | `classpath` | `[]` | More jars or directories to interpret alongside the sample |
 | `entryPoints` | manifest `Main-Class` | What to execute, in order |
+| `limits` | see below | Budgets that end a run with a named reason; [details](#limits) |
+| `environment` | see below | The pretend machine; [details](#environment) |
+| `network` | see below | The simulated network; [details](#network) |
+| `processes` | `[]` | Made-up results for programs the sample starts; [details](#processes) |
+| `policy` | see below | Changes to the JDK allow-list; [details](#policy) |
+| `hooks` | `[]` | Overrides for chosen methods; [details](#hooks) |
+| `trace` | see below | Extra recording; [details](#trace) |
+| `threads` | see below | Thread scheduling; [details](#threads) |
+| `output` | see below | Where results go; [details](#output) |
 | `plugins` | `{}` | Settings per plugin id; a plugin runs only if it has an entry here |
+
+`javabyte schema` prints every option with its type, default, allowed values and meaning, from
+the same descriptions this page is checked against. `javabyte validate -c FILE` checks a config
+and lists every problem at once.
 
 ## `entryPoints[]`
 

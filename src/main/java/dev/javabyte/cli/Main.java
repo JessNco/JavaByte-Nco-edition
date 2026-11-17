@@ -34,7 +34,8 @@ import picocli.CommandLine.Parameters;
  */
 @Command(name = "javabyte", mixinStandardHelpOptions = true, versionProvider = Main.Version.class,
         description = "Emulates JVM bytecode to analyse untrusted Java code without running it on a real JVM.",
-        subcommands = {Main.Run.class, Main.Inspect.class, Main.Init.class, Main.Defaults.class, Main.Policy.class})
+        subcommands = {Main.Run.class, Main.Inspect.class, Main.Init.class, Main.Validate.class, Main.Schema.class,
+                Main.Defaults.class, Main.Policy.class})
 public final class Main {
 
     static final int EXIT_OK = 0;
@@ -251,6 +252,67 @@ public final class Main {
         public Integer call() throws Exception {
             Inspection inspection = Inspection.of(Path.of(sample));
             System.out.print(inspection.starterConfig());
+            return EXIT_OK;
+        }
+    }
+
+    /** Checks a config without running anything, and lists every problem at once. */
+    @Command(name = "validate", mixinStandardHelpOptions = true,
+            description = "Check a config and list every problem, each with the key it concerns. Exit code 0 if valid, 2 if not.")
+    static final class Validate implements Callable<Integer> {
+
+        @Option(names = {"-c", "--config"}, paramLabel = "FILE", description = "YAML or JSON config file.")
+        Path config;
+
+        @Option(names = {"-s", "--set"}, paramLabel = "KEY=VALUE", description = "Override one config value. Repeatable.")
+        List<String> overrides = new ArrayList<>();
+
+        @Option(names = "--json", description = "Print JSON: {valid, problems: [{key, message}]}.") boolean json;
+
+        @Override
+        public Integer call() throws Exception {
+            List<ConfigLoader.Problem> problems;
+            try {
+                problems = ConfigLoader.problems(ConfigLoader.readTree(config, overrides));
+            } catch (ConfigException unreadable) {
+                // A file that cannot be parsed at all is one problem with the whole file.
+                problems = unreadable.problems();
+            }
+            if (json) {
+                java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+                result.put("valid", problems.isEmpty());
+                result.put("problems", problems);
+                System.out.println(ConfigLoader.json().writeValueAsString(result));
+            } else if (problems.isEmpty()) {
+                System.out.println("The config is valid.");
+            } else {
+                System.out.println(problems.size() == 1 ? "1 problem:" : problems.size() + " problems:");
+                problems.forEach(p -> System.out.println("  " + (p.key().isEmpty() ? "(file)" : p.key()) + ": " + p.message()));
+            }
+            return problems.isEmpty() ? EXIT_OK : EXIT_USAGE;
+        }
+    }
+
+    /** Describes every config option, for forms, editors and agents. */
+    @Command(name = "schema", mixinStandardHelpOptions = true,
+            description = "Describe every config option: key, type, default, allowed values and meaning.")
+    static final class Schema implements Callable<Integer> {
+
+        @Option(names = "--json", description = "Print JSON instead of a table.") boolean json;
+
+        @Override
+        public Integer call() throws Exception {
+            if (json) {
+                System.out.println(ConfigLoader.json().writeValueAsString(dev.javabyte.config.ConfigSchema.toMap()));
+                return EXIT_OK;
+            }
+            for (dev.javabyte.config.ConfigSchema.Option option : dev.javabyte.config.ConfigSchema.options()) {
+                String type = option.element() == null ? option.type() : option.type() + " of " + option.element();
+                System.out.println(option.path() + "  (" + type + ")"
+                        + (option.defaultValue() == null ? "" : "  default: " + option.defaultValue())
+                        + (option.allowed().isEmpty() ? "" : "  one of: " + String.join(", ", option.allowed())));
+                System.out.println("    " + option.description());
+            }
             return EXIT_OK;
         }
     }

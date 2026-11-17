@@ -6,6 +6,18 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- A full test suite, described in docs/TESTING.md: declarative scenarios for simulated and
+  real malware, limit and limitation scenarios, generated-bytecode differential tests, contract
+  tests for config, commands and the report, seeded fuzzing, and coverage reporting.
+- `environment.randomSeed`: random numbers the sample does not seed itself are now repeatable.
+  Set it to `null` for real entropy.
+- `summary.eventsDropped` in the report, listing categories that hit the event cap.
+- Event `gap.invalid-bytecode`: code a JVM verifier would reject now ends as the sample's own
+  `VerifyError` instead of an emulator failure.
+- `scripts/fetch-corpus.py` downloads the samples the real-malware tests use.
+- Reflection on nested classes (`getEnclosingClass`, `getDeclaredClasses`, `isMemberClass`
+  and related), `Proxy.isProxyClass` and `getInvocationHandler` for sample-defined interfaces,
+  and `RandomAccessFile`'s binary read and write methods.
 - Optional `native-bridge` plugin: runs 64-bit Windows JNI libraries in a CPU emulator
   (Speakeasy and Unicorn) and reports their Windows API calls. See docs/NATIVE.md.
 - `EmulatorPlugin.close()` and `NativeHandler.NOT_HANDLED` for plugin authors.
@@ -17,6 +29,13 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Package documentation, contributing guide, CI workflow.
 
 ### Changed
+- `new Date()`, `Calendar.getInstance()` and the `java.time` `now()` methods follow the virtual
+  clock. They used to read the real clock, which disagreed with `System.currentTimeMillis`
+  after a simulated sleep.
+- A damaged archive is read as far as possible and the damage reported, instead of failing.
+- Deleting a directory that still has contents fails, as on a real disk.
+- Config errors about a value's type name the key. `inspect` and `init` return exit code 2 for
+  a missing sample.
 - `System.load` and `System.loadLibrary` now fail with `UnsatisfiedLinkError` when the library
   is not on the virtual disk, as a JVM would. Libraries that unpack their own native code
   depend on that failure.
@@ -26,6 +45,10 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - The tool version comes from `pom.xml` only.
 
 ### Fixed
+- Writing without end to one open file exhausted memory before `limits.maxWrittenBytes` applied.
+- Method handles invoked with `byte`, `short`, `char` or `boolean` arguments failed.
+- An exception inside `CompletableFuture.supplyAsync` or `runAsync` escaped to the caller.
+- `toString()` on a proxy for a sample-defined interface did not reach the invocation handler.
 - `toString()` inherited from a JDK class printed an internal class name for sample classes.
 - `Enum.compareTo` failed between enum constants that have bodies.
 - A sample lambda could not receive emulator stand-ins (such as a method mirror) as arguments.

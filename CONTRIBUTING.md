@@ -11,21 +11,27 @@ mvn verify
 
 Every change should keep all tests passing on Java 17, 21 and 25. CI runs all three.
 
-| Test class | What it protects |
+The suite is described in [docs/TESTING.md](docs/TESTING.md): what each part proves, the
+scenario format, and which kind of test to add for which kind of change. The short version:
+
+| Changed | Run at least |
 | --- | --- |
-| `DifferentialTest` | Interpreter correctness: programs must print the same as on a real JVM |
-| `BehaviourTest` | Reporting of malware-like behaviour; `defineClass`; hooks; fixtures |
-| `EscapeTest` | Containment: about eighty escape attempts, checked on the real machine |
-| `SafetyTest` | Structure: simulated classes override everything; key policy exclusions |
-| `NativeTest` | Native reporting, plugin handlers, library parsing |
-| `NativeBridgeTest` | Native code in the CPU emulator. Skipped unless `JAVABYTE_BRIDGE_PYTHON` is set; see docs/NATIVE.md |
+| Interpreter, router, type handling | `DifferentialTest`, `BytecodeTest`, `FuzzTest` |
+| A stub or a simulated class | `SimulatedCorpusTest`, `SafetyTest`, `EscapeTest` |
+| Config, command line, report | `ContractTest` |
+| Anything, before a release | Everything, plus `RealCorpusTest` with the samples and `NativeBridgeTest` with the bridge |
 
 The quickest way to find an interpreter bug is to add code to a fixture in
-`src/test/java/dev/javabyte/guest/` (`Basics`, `Advanced`, `Concurrency`). Those programs are
-harmless and run on the real JVM too, so the test needs no hand-written expectations.
+`src/test/java/dev/javabyte/guest/` (`Basics`, `Advanced`, `Concurrency`, `Introspection`).
+Those programs are harmless and run on the real JVM too, so the test needs no hand-written
+expectations.
 
-Fixtures that imitate malware (`Dropper`, `Stage2`, `Escape`, `Reflective`) are only ever
-interpreted. Never call their `main` from a test.
+Fixtures that imitate malware (everything in `guest/sim/`, and `Dropper`, `Stage2`, `Escape`,
+`Reflective`) are only ever interpreted. Never call their `main` from a test.
+
+Expectations in `ContractTest` are the public interface. Changing one means a caller somewhere
+may break: record it in the changelog, and raise `schemaVersion` if a report field was removed,
+renamed or redefined.
 
 ## Conventions
 

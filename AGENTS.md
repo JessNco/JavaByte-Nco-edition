@@ -48,6 +48,8 @@ Everything here also works for a person; it is just written as a procedure.
    | `gap.missing-class` for a library | Add the library jar to `classpath` |
    | `native.call` events and little else | The logic is in native code. For a 64-bit Windows DLL, rerun with the `native-bridge` plugin (docs/NATIVE.md); otherwise report the library details from `native.load-library` |
    | `thread.stopped` with "would block forever", or outcome `blocked` | That thread was waiting for something no other thread provides, often a network reply; supply it |
+   | `policy.blocked` for `java/net/http/HttpClient` | That API is not simulated. Look for the URL in `string.returned` events |
+   | You need to compare two runs | Set `environment.clockStart`; random numbers are already seeded by `environment.randomSeed` |
 
 5. **Stop** when a further run adds nothing new, and summarise.
 
@@ -64,6 +66,7 @@ Everything here also works for a person; it is just written as a procedure.
 | `summary.nativeLibraries` | Libraries passed to `System.load`/`loadLibrary` |
 | `summary.blockedCalls` | JDK members the policy refused |
 | `summary.gaps` | Count of `gap` events |
+| `summary.eventsDropped` | Per category, how many events were counted but not stored because `limits.maxEventsPerCategory` was reached. Empty for most runs; if not, `events[]` is incomplete for that category |
 | `events[]` | Everything, in order: `seq`, `category`, `action`, `caller`, `data` |
 | `artifacts[]` | Files saved under the output directory |
 
@@ -99,6 +102,11 @@ limit reached.
   `java.awt.Robot`), not an error.
 - `gap.*` means the emulator could not reproduce something faithfully. Behaviour after a gap
   should be reported with that caveat.
+- `gap.invalid-bytecode` means a method contained code a JVM would have refused to load. The
+  sample received a `VerifyError`. Either the class is deliberately malformed or it was
+  extracted incorrectly.
+- `gap.unparseable-class` with "archive ... damaged" means only part of the archive could be
+  read; classes after the damage are missing.
 - To allow a JDK member, add a rule under `policy.allow`. Only do so for members with no effect
   outside the process; the rule syntax and the test for inclusion are at the top of
   `javabyte policy`.

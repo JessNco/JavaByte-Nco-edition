@@ -7,6 +7,10 @@ produce full analyses. Every run used the default policy.
 The findings below are what the emulator reported. Network indicators are quoted as observed in
 the samples; nothing was contacted.
 
+The results are also executable: each sample has a scenario file under
+`src/test/resources/corpus/real/` that states what the report must contain, and
+`RealCorpusTest` checks it. See [TESTING.md](TESTING.md#real-malware).
+
 ## Reproducing
 
 ```bash
@@ -91,6 +95,35 @@ gaps. The sample then created a directory under Discord's local storage and sent
 requests for an ENS name to three public Ethereum RPC endpoints, which is how this family looks
 up its next address.
 
+### Discord token stealer (untagged)
+
+`a3da824a606798716fea7ef5a3bb697225d0dd219295cf59812a3fd558217d3b`
+
+An obfuscated stealer that exits quietly on a clean machine after probing about thirty Discord
+and browser profile directories under `%APPDATA%` and `%LOCALAPPDATA%`; the probes alone
+identify what it is after. With a fake profile file supplied through `environment.files` it
+lists the directory and reads the file. It expects a JSON library that it does not bundle, so
+that class is a phantom and the run carries one gap.
+
+### Java agent aimed at RuneLite (untagged)
+
+`e45b0e5875d94045a1982cf15f6343857e24c962face4c48362d13ecce7f20cc`
+
+The jar has a `Premain-Class` and no main method, so the entry point is set to `premain` with
+a null `Instrumentation`. Its strings are encrypted with DES and Blowfish under per-string
+keys; all were decrypted, giving the server URLs, a header name and token, and the files it
+looks for in the game client's directory. **Limitation shown:** it talks to its server with
+`java.net.http.HttpClient`, which is not simulated. The calls are reported as blocked and no
+request is recorded, so the URL is known only from the decrypted strings.
+
+### Fabric mod with an in-memory loader (tagged funrat, Skidfuscator)
+
+`d8c72771d069a35841e5b8a1eb3b1f34faef03bda187b8b97200735e73d3f409`
+
+Two layers of string decryption are followed and yield the name of a Minecraft class, which the
+sample then looks up. **Limitation shown:** without the game on the classpath the lookup fails
+and the sample stops before its loader is used.
+
 ### Linux profile
 
 MalwareBazaar had no Java sample tagged as Linux-only, so the Linux environment was exercised
@@ -101,7 +134,7 @@ would on a real Linux machine. No emulator errors.
 
 ### Java versions
 
-The full test suite and the STRRAT run give the same results on Java 17 and Java 21.
+The full test suite gives the same results on Java 17, 21 and 25.
 
 ## Defects found and fixed during the self-test
 
@@ -119,6 +152,9 @@ The full test suite and the STRRAT run give the same results on Java 17 and Java
 | Adwind | A null argument crashed a stub | Stub failures are delivered to the guest and reported as gaps |
 | SilentNet | A `File` passed to `ProcessBuilder` setters was blocked | Guard checks declared parameter types |
 | SilentNet | Raw TLS sockets blocked | Simulated TLS socket and factory |
+
+Defects found later, while building the test suite, are listed in
+[TESTING.md](TESTING.md#defects-this-suite-found).
 
 ## Not covered
 

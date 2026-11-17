@@ -95,7 +95,8 @@ java -jar target/javabyte-0.1.0.jar run SAMPLE -o out/run1 --events jsonl --prog
 - `javabyte validate -c FILE --json` returns `{valid, problems: [{key, message}]}` with every
   problem at once; exit code 0 if valid, 2 if not.
 - `javabyte schema --json` describes every option: `path`, `type`, `default`, `allowed`,
-  `description`. Use it to build a config rather than guessing key names.
+  `description`, and under `plugins` each plugin's `id`, `description` and `settings`. Use it
+  to build a config rather than guessing key names.
 
 Event categories: `process`, `file`, `net`, `class`, `resource`, `reflect`, `crypto`, `string`,
 `native`, `thread`, `system`, `console`, `policy`, `hook`, `gap`, `lifecycle`.

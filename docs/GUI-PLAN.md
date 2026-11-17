@@ -368,7 +368,7 @@ The Java tool and the GUI share one version number and are released together.
 
 English is the only language at first, but nothing in the code holds user-visible text.
 
-- All text lives in [Fluent](https://projectfluent.org/) resource files (`gui/locales/en/`), shared by the screens and the backend,,
+- All text lives in [Fluent](https://projectfluent.org/) resource files (`gui/locales/en/`), shared by the screens and the backend,
   read through the `fluent` crates. Fluent handles plurals and grammar properly ("1 file",
   "3 files"), which matters for the plain-language summaries.
 - The page's `lang` attribute is set from the active language, so screen readers use the right

@@ -1,6 +1,9 @@
 # Phase 3: the settings editor
 
-Status: **in progress** on branch `claude/gui-phase3`.
+Status: **built and tested** on branch `claude/gui-phase3`. Both "done when" tests pass: every
+option has a field (`form_parity.rs`), and the copied command line gives the tool the identical
+effective config (`the_command_line_is_the_same_analysis` in the backend's session tests). How
+it went, and what differs from the plan, is at the end.
 
 ## Goal
 
@@ -80,7 +83,9 @@ pause. The tab's name says "YAML (changed)" while there are edits not yet checke
 - **Saved presets**: **Save as preset…** asks for a name and writes
   `<app data>/presets/<name>.yaml`, without the `sample` line. **Apply** replaces the settings
   with the preset's and keeps the sample; **Undo** puts the previous settings back.
-- **Open presets folder** shows the folder in the file manager.
+- The presets folder is shown with **Copy folder path**, like the results folder on the
+  report. (Opening it in the file manager would need a shell plugin the window does not have;
+  see "As built".)
 
 ## Moving settings between app and command line
 
@@ -130,3 +135,34 @@ The parity test passes for every option, and the equivalence test passes.
 
 Report tabs **Settings used** and **Run again with changes** (phase 4, which will reuse this
 editor), packaging (phase 5).
+
+## As built
+
+What changed from the plan, and what was learned on the way.
+
+| Plan | As built | Why |
+| --- | --- | --- |
+| `<details>` for More settings and Presets | A disclosure button (`aria-expanded`) | The accessibility-bus check showed WebKitGTK reports `<details>` with no role and no open or closed state, so Orca users would not know it opens. The report's **Details** changed too |
+| **Open presets folder** | The path, with **Copy folder path** | Keeps the window without any plugin permissions; the same pattern as the report's results folder |
+| Settings in the browser stand-in checked by the tool | A small checker for the browser tests only (unknown options, whole numbers, allowed values, required fields) | The browser has no tool; the desktop app always asks the real tool |
+| Plugins with translated names | Bundled plugins (the native bridge) have names and labels; any other plugin is shown by its id and the tool's description | A third-party plugin can be configured without an app update |
+
+Found and fixed on the way:
+
+- **Moving a list item corrupted the YAML.** The YAML library's remove-and-insert re-indented a
+  moved item wrongly. The randomised test found it on its first run; moves now cut and paste
+  the item's own lines. About 77,000 random edits over eleven seeds now pass.
+- **Focus was lost while editing a list item.** The item editor was rebuilt on every change,
+  taking focus from the field being edited. It is now rebuilt only when another item opens.
+- **Command lines lost backslashes in POSIX shells** (`C:\x` was left unquoted). Quoting is now
+  per shell: POSIX, and PowerShell on Windows.
+- **Text missed by hand**: the resource-text test found the file picker's titles and the
+  "engine not found" message still in code.
+
+The accessibility-bus walk-through changes a setting with a preset (the screen reader's Press
+action) rather than by typing: a virtual display without a window manager gives no keyboard
+focus to the window. Typing is covered by the browser checks.
+
+Start-up is unchanged in practice (the start screen is ready in about 130 ms in the browser
+check), although the screens' WebAssembly grew from 2.4 to 4.2 MB with the YAML editor and
+Fluent.

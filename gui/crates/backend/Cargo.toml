@@ -13,3 +13,8 @@ yaml-edit = { version = "0.3.6", default-features = false }
 
 [dev-dependencies]
 serde_yaml = "0.9"
+
+# Reading and saving files a sample produced: only in the desktop app, never in the screens.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sha2 = "0.10"
+zip = { version = "9", default-features = false, features = ["aes-crypto", "deflate"] }

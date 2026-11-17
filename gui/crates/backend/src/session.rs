@@ -56,6 +56,10 @@ struct Active {
 struct OpenReport {
     view: ReportView,
     events: EventStore,
+    folder: PathBuf,
+    /// The report's `artifacts` list: the only files the app will read or copy.
+    artifacts: Vec<String>,
+    sample_path: PathBuf,
 }
 
 impl Session {
@@ -312,16 +316,21 @@ impl Session {
                 output_dir: active.output.display().to_string(),
             };
             self.report = Some(opened);
-            let mut list = self.recent();
-            list.retain(|r| r.id != recent.id);
-            list.insert(0, recent);
-            list.truncate(RECENT_LIMIT);
-            if let Ok(json) = serde_json::to_string_pretty(&list) {
-                if let Some(parent) = self.recent_file.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(&self.recent_file, json);
+            self.remember(recent);
+        }
+    }
+
+    /// Puts a run first in the recent list.
+    fn remember(&self, recent: RecentRun) {
+        let mut list = self.recent();
+        list.retain(|r| r.id != recent.id);
+        list.insert(0, recent);
+        list.truncate(RECENT_LIMIT);
+        if let Ok(json) = serde_json::to_string_pretty(&list) {
+            if let Some(parent) = self.recent_file.parent() {
+                let _ = std::fs::create_dir_all(parent);
             }
+            let _ = std::fs::write(&self.recent_file, json);
         }
     }
 
@@ -350,6 +359,116 @@ impl Session {
             .collect()
     }
 
+    /// Opens a report the app did not necessarily make: a `report.json`, or the folder holding
+    /// one (such as a command-line run's `javabyte-out`). It joins the recent list.
+    pub fn open_report_at(&mut self, path: &Path) -> Result<ReportView, String> {
+        let folder = if path.is_dir() { path.to_path_buf() } else { path.parent().map(Path::to_path_buf).unwrap_or_default() };
+        let (report, _) = read_report(&folder)?;
+        let name = file_name_of(&report.sample.path);
+        let opened = open_report(&folder, &name)?;
+        let view = opened.view.clone();
+        self.remember(RecentRun {
+            id: folder.display().to_string(),
+            sample_name: name,
+            when: timestamp(SystemTime::now(), false),
+            outcome: report.runs.first().map(|r| describe_outcome(&r.outcome)).unwrap_or_default(),
+            events: view.event_count,
+            output_dir: folder.display().to_string(),
+        });
+        self.report = Some(opened);
+        Ok(view)
+    }
+
+    /// Compares two runs from the recent list; `a` is the earlier one, shown first.
+    pub fn compare(&self, a: &str, b: &str) -> Result<javabyte_gui_protocol::compare::Comparison, String> {
+        let find = |id: &str| self.recent().into_iter().find(|r| r.id == id).ok_or_else(|| t!("error-run-gone"));
+        let (ra, rb) = (find(a)?, find(b)?);
+        let (report_a, _) = read_report(Path::new(&ra.output_dir))?;
+        let (report_b, _) = read_report(Path::new(&rb.output_dir))?;
+        Ok(javabyte_gui_protocol::compare::compare(
+            (&report_a, &ra.sample_name, &ra.output_dir),
+            (&report_b, &rb.sample_name, &rb.output_dir),
+        ))
+    }
+
+    /// The open report's sample, chosen again with the run's settings, for **Run again with
+    /// changes**. The sample must still be where it was.
+    pub fn run_again(&mut self) -> Result<Overview, String> {
+        let open = self.report.as_ref().ok_or_else(|| t!("error-no-report"))?;
+        let sample_path = open.sample_path.clone();
+        let text = open.view.config_text.clone().unwrap_or_else(|| config::render_document(&open.view.config));
+        let sample = Session::choose(&sample_path).map_err(|_| t!("error-sample-moved", path = sample_path.display().to_string()))?;
+        let overview = self.inspect(sample.clone())?;
+        let mut doc = ConfigDoc::new(with_sample(&text, Some(&sample)));
+        // The run's own folder is set per run by the app; a copied one would mislead.
+        let _ = doc.remove(&ConfigPath::parse("output.directory"));
+        let _ = doc.remove(&ConfigPath::parse("output.console"));
+        self.set_settings_text(doc.text().to_string());
+        Ok(overview)
+    }
+
+    fn open_report(&self) -> Result<&OpenReport, String> {
+        self.report.as_ref().ok_or_else(|| t!("error-no-report"))
+    }
+
+    /// The open report's saved files, with size, SHA-256 and origin.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn artifacts(&self) -> Result<Vec<javabyte_gui_protocol::views::Artifact>, String> {
+        let open = self.open_report()?;
+        let (report, _) = read_report(&open.folder)?;
+        Ok(crate::artifacts::list(&open.folder, &report))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn artifact_path(&self, relative: &str) -> Result<PathBuf, String> {
+        let open = self.open_report()?;
+        crate::artifacts::resolve(&open.folder, &open.artifacts, relative)
+    }
+
+    /// One 64 KB page of a saved file.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn artifact_page(&self, relative: &str, offset: u64) -> Result<javabyte_gui_protocol::views::FilePage, String> {
+        crate::artifacts::read_page(&self.artifact_path(relative)?, offset)
+    }
+
+    /// A saved class as readable instructions.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn artifact_disasm(&self, relative: &str) -> Result<String, String> {
+        let path = self.artifact_path(relative)?;
+        self.launcher()?.disasm(&path)
+    }
+
+    /// Where a copy may be saved: never next to the sample.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn check_save_destination(&self, destination: &Path) -> Result<(), String> {
+        crate::artifacts::check_destination(destination, &self.open_report()?.sample_path)
+    }
+
+    /// Saves the chosen files in a password zip.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save_zip(&self, relatives: &[String], destination: &Path) -> Result<(), String> {
+        self.check_save_destination(destination)?;
+        let open = self.open_report()?;
+        let all = self.artifacts()?;
+        let files: Vec<_> = relatives
+            .iter()
+            .map(|r| {
+                let artifact = all.iter().find(|a| a.path == *r).cloned().ok_or_else(|| t!("error-artifact-refused", path = r.clone()))?;
+                Ok((artifact, self.artifact_path(r)?))
+            })
+            .collect::<Result<_, String>>()?;
+        crate::artifacts::write_zip(destination, &open.folder, &files)
+    }
+
+    /// Saves one file as it is, after the warning; recorded in the run's folder.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save_as_is(&self, relative: &str, destination: &Path) -> Result<(), String> {
+        self.check_save_destination(destination)?;
+        let open = self.open_report()?;
+        let artifact = self.artifacts()?.into_iter().find(|a| a.path == relative).ok_or_else(|| t!("error-artifact-refused", path = relative))?;
+        crate::artifacts::save_as_is(destination, &open.folder, &artifact, &self.artifact_path(relative)?)
+    }
+
     /// A page of the open report's events; empty if none is open.
     pub fn events_page(&mut self, request: &PageRequest) -> Page {
         match self.report.as_mut() {
@@ -360,14 +479,34 @@ impl Session {
 }
 
 fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport, String> {
-    let file = output.join("report.json");
-    let text = std::fs::read_to_string(&file).map_err(|e| javabyte_gui_protocol::t!("error-report-unreadable", detail = e.to_string()))?;
-    let report: Report = serde_json::from_str(&text).map_err(|e| javabyte_gui_protocol::t!("error-report-unreadable", detail = e.to_string()))?;
+    let (report, text) = read_report(output)?;
     let events = ReportEventsSource::read(text.as_bytes())?;
+    let mut view = views::report_view(&report, sample_name, &output.display().to_string());
+    view.config_text = std::fs::read_to_string(output.join("config.yaml")).ok();
     Ok(OpenReport {
-        view: views::report_view(&report, sample_name, &output.display().to_string()),
+        view,
         events: EventStore::new(Box::new(events)),
+        folder: output.to_path_buf(),
+        artifacts: report.artifacts.clone(),
+        sample_path: PathBuf::from(&report.sample.path),
     })
+}
+
+/// A run folder's report, and its text.
+fn read_report(folder: &Path) -> Result<(Report, String), String> {
+    let text = std::fs::read_to_string(folder.join("report.json")).map_err(|e| t!("error-report-unreadable", detail = e.to_string()))?;
+    let report: Report = serde_json::from_str(&text).map_err(|e| t!("error-not-a-report", detail = e.to_string()))?;
+    Ok((report, text))
+}
+
+/// The file name in a path written on any system (`C:\a\b.jar` or `/a/b.jar`).
+fn file_name_of(path: &str) -> String {
+    path.rsplit(['/', '\\']).find(|p| !p.is_empty()).unwrap_or(path).to_string()
+}
+
+/// The current time for log lines, in UTC.
+pub fn now_for_log() -> String {
+    timestamp(SystemTime::now(), false)
 }
 
 /// A folder-safe version of a sample name: letters, digits, dot, dash and underscore only.

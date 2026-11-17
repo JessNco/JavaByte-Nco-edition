@@ -6,6 +6,10 @@
 // No console window behind the app on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod guard;
+#[cfg(feature = "egress-probe")]
+mod egress_probe;
+
 use javabyte_gui_backend::EventStore;
 use javabyte_gui_backend::events::EventSource;
 use javabyte_gui_backend::report::ReportEventsSource;
@@ -75,9 +79,11 @@ fn main() {
         run: Mutex::new(Simulation::new(TRIAL_RUN_MS)),
         started: Instant::now(),
     };
-    tauri::Builder::default()
-        .manage(state)
-        .invoke_handler(tauri::generate_handler![events_page, run_start, run_stop, run_status])
-        .run(tauri::generate_context!())
-        .expect("the JavaByte window could not be opened");
+    let builder = tauri::Builder::default().plugin(guard::plugin()).manage(state);
+    #[cfg(not(feature = "egress-probe"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![events_page, run_start, run_stop, run_status]);
+    #[cfg(feature = "egress-probe")]
+    let builder = egress_probe::install(builder)
+        .invoke_handler(tauri::generate_handler![events_page, run_start, run_stop, run_status, egress_probe::probe_report]);
+    builder.run(tauri::generate_context!()).expect("the JavaByte window could not be opened");
 }

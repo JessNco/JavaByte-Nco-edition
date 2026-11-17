@@ -231,7 +231,6 @@ pub fn command_line() -> String {
 /// Starts the analysis, unless the settings have problems: then the settings screen shows them.
 pub fn analyse(busy: RwSignal<bool>, on_error: impl Fn(String) + 'static) {
     let s = settings();
-    let flow = flow();
     busy.set(true);
     spawn_local(async move {
         let ready = if !s.syntax.get_untracked().is_empty() {
@@ -253,19 +252,29 @@ pub fn analyse(busy: RwSignal<bool>, on_error: impl Fn(String) + 'static) {
         }
         // The backend has the text already; send it again in case a change is still on its way.
         let _ = bridge::set_settings_text(&s.text.get_untracked()).await;
-        match bridge::start_run().await {
-            Ok(()) => {
-                flow.run_started.set(true);
-                flow.report.set(None);
-                show(Screen::Running);
-                if let Some(sample) = flow.sample.get_untracked() {
-                    announcer().say(t!("overview-started", name = &sample.name));
-                }
-            }
-            Err(message) => on_error(message),
+        match bridge::run_question().await {
+            // The run cannot be isolated from the network: it starts only if the person agrees.
+            Some(reason) => crate::isolation::ask(reason, move || spawn_local(begin(true, on_error))),
+            None => begin(false, on_error).await,
         }
         busy.set(false);
     });
+}
+
+/// Starts the run and shows the Running screen.
+async fn begin(without_isolation: bool, on_error: impl Fn(String) + 'static) {
+    let flow = flow();
+    match bridge::start_run(without_isolation).await {
+        Ok(()) => {
+            flow.run_started.set(true);
+            flow.report.set(None);
+            show(Screen::Running);
+            if let Some(sample) = flow.sample.get_untracked() {
+                announcer().say(t!("overview-started", name = &sample.name));
+            }
+        }
+        Err(message) => on_error(message),
+    }
 }
 
 /// **Run again with changes**: the open report's sample and settings, in Settings. With a

@@ -74,7 +74,7 @@ pub fn preferences() -> RwSignal<Preferences> {
     PREFERENCES.with(|cell| *cell.get_or_init(|| RwSignal::new(Preferences::load())))
 }
 
-/// The Display settings screen.
+/// The display part of the Preferences screen.
 #[component]
 pub fn DisplayPanel() -> impl IntoView {
     let prefs = preferences();
@@ -88,7 +88,7 @@ pub fn DisplayPanel() -> impl IntoView {
     // Each theme's label is the message `theme-<value>`.
     let themes = ["system", "light", "dark", "contrast"];
     view! {
-        <h2 id="display-heading" tabindex="-1">{t!("display-heading")}</h2>
+        <h3>{t!("display-heading")}</h3>
         <p>{t!("display-intro")}</p>
         <fieldset>
             <legend>{t!("display-colours")}</legend>

@@ -51,6 +51,11 @@ or on the command line:
 java -jar target/javabyte-0.1.0.jar run sample.jar -s 'plugins={native-bridge: {python: .venv-native-bridge/bin/python}}'
 ```
 
+When `python` is not given, the plugin uses the interpreter named by the `JAVABYTE_BRIDGE_PYTHON`
+environment variable, and `python3` if that is not set either. The desktop app's "with native
+bridge" installer sets the variable to the Python it bundles, so there the plugin only needs
+turning on.
+
 ### What appears in the report
 
 | Event | Meaning |

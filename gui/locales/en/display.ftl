@@ -1,6 +1,6 @@
 ## Display settings.
 
-display-heading = Display settings
+display-heading = Display
 display-intro = Changes apply at once and are remembered. By default the app follows your system settings.
 display-colours = Colours
 theme-system = Follow the system setting

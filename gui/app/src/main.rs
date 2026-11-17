@@ -11,13 +11,13 @@ mod guard;
 #[cfg(feature = "egress-probe")]
 mod egress_probe;
 
-use javabyte_gui_backend::runner::Launcher;
 use javabyte_gui_backend::session::Session;
+use javabyte_gui_backend::setup::{self, Setup};
 use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::Validation;
 use javabyte_gui_protocol::compare::Comparison;
-use javabyte_gui_protocol::views::{Artifact, EngineStatus, FilePage, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
+use javabyte_gui_protocol::views::{AppPreferences, Artifact, EngineStatus, Isolation, SetupStatus, FilePage, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{EventFilter, Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -26,12 +26,21 @@ use tauri_plugin_dialog::DialogExt;
 
 struct AppState {
     session: Mutex<Session>,
+    /// Where the app's parts and preferences are.
+    setup: Setup,
+    /// Whether runs can be isolated from the network, checked once at start.
+    isolation: Isolation,
     /// The last file dropped on the window, waiting for the start screen to take it.
     dropped: Mutex<Option<PathBuf>>,
 }
 
 /// The session, locked for this command.
 fn session<'a>(state: &'a tauri::State<'_, AppState>) -> std::sync::MutexGuard<'a, Session> {
+    session_of(state)
+}
+
+/// The session, locked.
+fn session_of(state: &AppState) -> std::sync::MutexGuard<'_, Session> {
     // A panic while holding the lock would poison it; the session's state is still usable.
     state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -93,10 +102,98 @@ fn command_line(state: tauri::State<'_, AppState>) -> String {
     session(&state).command_line()
 }
 
-/// Starts the analysis of the chosen sample with its settings. One at a time.
+/// Whether starting a run needs the person's agreement first, and why: isolation is on in
+/// Preferences, the system does not allow it, and they have not said to stop asking.
+fn isolation_question(state: &AppState) -> Option<String> {
+    let preferences = state.setup.preferences();
+    (state.isolation.supported && preferences.isolate && !state.isolation.available && preferences.ask_without_isolation)
+        .then(|| state.isolation.problem.clone().unwrap_or_default())
+}
+
+/// What to ask before the next run, if anything (see `isolation_question`).
 #[tauri::command]
-fn start_run(state: tauri::State<'_, AppState>) -> Result<(), String> {
+fn run_question(state: tauri::State<'_, AppState>) -> Option<String> {
+    isolation_question(&state)
+}
+
+/// Starts the analysis of the chosen sample with its settings. One at a time. Refused when a
+/// question must be answered first and `without_isolation` does not answer it.
+#[tauri::command]
+fn start_run(without_isolation: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if isolation_question(&state).is_some() && !without_isolation {
+        return Err(t!("error-isolation-unconfirmed"));
+    }
     session(&state).start()
+}
+
+// --- Preferences ---
+
+/// A preference change the screens may ask for. Paths are never among them: a Java runtime or
+/// an output folder is chosen with the system's picker, in `choose_java` and
+/// `choose_output_folder`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum PreferenceChange {
+    /// Start runs with no network (Linux).
+    Isolate(bool),
+    /// Ask before a run that cannot be isolated.
+    AskWithoutIsolation(bool),
+    /// Use the Java that came with the app again.
+    BundledJava,
+    /// Save runs in Documents/JavaByte again.
+    DefaultOutputFolder,
+}
+
+/// Saves the preferences and makes the session use them.
+fn apply_preferences(state: &AppState, preferences: &AppPreferences) -> Result<SetupStatus, String> {
+    state.setup.save_preferences(preferences)?;
+    let launcher = state.setup.launcher(preferences, &state.isolation);
+    session_of(state).reconfigure(launcher, state.setup.output_folder(preferences));
+    Ok(state.setup.status(preferences, &state.isolation))
+}
+
+/// What the app found and the preferences in use, for the Preferences screen.
+#[tauri::command]
+async fn setup_status(state: tauri::State<'_, AppState>) -> Result<SetupStatus, String> {
+    Ok(state.setup.status(&state.setup.preferences(), &state.isolation))
+}
+
+/// Changes one preference.
+#[tauri::command]
+fn change_preference(change: PreferenceChange, state: tauri::State<'_, AppState>) -> Result<SetupStatus, String> {
+    let mut preferences = state.setup.preferences();
+    match change {
+        PreferenceChange::Isolate(on) => preferences.isolate = on,
+        PreferenceChange::AskWithoutIsolation(ask) => preferences.ask_without_isolation = ask,
+        PreferenceChange::BundledJava => preferences.java = None,
+        PreferenceChange::DefaultOutputFolder => preferences.output_folder = None,
+    }
+    apply_preferences(&state, &preferences)
+}
+
+/// Picks a Java runtime's `java` program. It is checked (it must start, and be 17 or later)
+/// before it is saved. None when the person cancelled.
+#[tauri::command]
+async fn choose_java(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<SetupStatus>, String> {
+    let mut picker = app.dialog().file().set_title(t!("picker-java"));
+    if cfg!(windows) {
+        picker = picker.add_filter(t!("picker-programs"), &["exe"]);
+    }
+    let Some(path) = picker.blocking_pick_file().and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let mut preferences = state.setup.preferences();
+    preferences.java = Some(path.display().to_string());
+    apply_preferences(&state, &preferences).map(Some)
+}
+
+/// Picks the folder runs are saved in. None when the person cancelled.
+#[tauri::command]
+async fn choose_output_folder(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<SetupStatus>, String> {
+    let Some(path) = app.dialog().file().set_title(t!("picker-output-folder")).blocking_pick_folder().and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let mut preferences = state.setup.preferences();
+    preferences.output_folder = Some(path.display().to_string());
+    apply_preferences(&state, &preferences).map(Some)
 }
 
 // --- Reports and their files ---
@@ -333,49 +430,77 @@ fn events_page(request: PageRequest, state: tauri::State<'_, AppState>) -> Page 
     session(&state).events_page(&request)
 }
 
-/// The JavaByte tool to drive. Until the installer bundles it (phase 5): `JAVABYTE_JAR`, then
-/// `javabyte.jar` next to the app, then the `target/` folder of a source checkout.
-fn find_engine() -> Result<Launcher, String> {
-    let mut candidates: Vec<PathBuf> = std::env::var_os("JAVABYTE_JAR").map(PathBuf::from).into_iter().collect();
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent() {
-            candidates.push(dir.join("javabyte.jar"));
-            for ancestor in dir.ancestors() {
-                if let Ok(entries) = std::fs::read_dir(ancestor.join("target")) {
-                    candidates.extend(entries.flatten().map(|e| e.path()).filter(|p| {
-                        p.file_name().is_some_and(|n| {
-                            let n = n.to_string_lossy();
-                            n.starts_with("javabyte-") && n.ends_with(".jar") && !n.contains("original")
-                        })
-                    }));
-                }
-            }
+/// Where the app's parts are: its resource folder (where installers put the runtime, the jar
+/// and the bridge), its own folder, its data folder and Documents/JavaByte.
+fn setup_for(resources: PathBuf, data: PathBuf, documents: Option<PathBuf>) -> Setup {
+    let exe_dir = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
+    let default_output = documents.unwrap_or_else(|| data.clone()).join("JavaByte");
+    Setup { resources, exe_dir, data, default_output }
+}
+
+/// `--self-check`: prints what the app found and whether the tool works, then exits. Support
+/// can ask for it, and CI uses it to test installers. Exit code 0 when the tool runs.
+fn self_check(setup: &Setup) -> i32 {
+    let preferences = setup.preferences();
+    let isolation = setup::isolation_status();
+    let status = setup.status(&preferences, &isolation);
+    let yes_no = |found: bool| if found { t!("self-check-yes") } else { t!("self-check-no") };
+    let mut lines = vec![
+        t!("self-check-version", version = status.version.as_str(), os = status.os.as_str()),
+        t!("self-check-java", path = status.java.as_str(), version = status.java_version.clone().unwrap_or_default(), bundled = yes_no(status.java_bundled)),
+        t!("self-check-jar", path = status.jar.as_str()),
+        t!("self-check-output", path = status.output_folder.as_str()),
+    ];
+    let launcher = setup.launcher(&preferences, &isolation);
+    let tool = launcher.as_ref().map_err(Clone::clone).and_then(|l| l.schema().map(|_| ()));
+    lines.push(match &tool {
+        Ok(()) => t!("self-check-tool-works"),
+        Err(problem) => t!("self-check-tool-fails", detail = problem.as_str()),
+    });
+    lines.push(match &status.bridge {
+        Some(python) => {
+            let imports = std::process::Command::new(python)
+                .args(["-I", "-W", "ignore", "-c", "import speakeasy"]) // not-ui-text: a Python command
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success());
+            t!("self-check-bridge", path = python.as_str(), works = yes_no(imports))
         }
-    let jar = candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| t!("error-engine-missing"))?;
-    let launcher = Launcher::find(jar)?;
-    // Java must answer before anything is promised to the person.
-    let works = std::process::Command::new(&launcher.java)
-        .arg("-version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if works {
-        Ok(launcher)
-    } else {
-        Err(t!("error-java-missing"))
+        None => t!("self-check-no-bridge"),
+    });
+    lines.push(match (&isolation.supported, &isolation.problem) {
+        (true, None) => t!("self-check-isolation-on"),
+        (_, problem) => t!("self-check-isolation-off", detail = problem.clone().unwrap_or_default()),
+    });
+    for line in lines {
+        println!("{line}");
     }
+    if tool.is_ok() { 0 } else { 1 }
 }
 
 fn main() {
+    let context = tauri::generate_context!();
+    if std::env::args_os().nth(1).is_some_and(|a| a == "--self-check") {
+        let resources = tauri::utils::platform::resource_dir(context.package_info(), &tauri::Env::default()).unwrap_or_default();
+        let data = dirs::data_dir().unwrap_or_default().join(&context.config().identifier);
+        std::process::exit(self_check(&setup_for(resources, data, dirs::document_dir())));
+    }
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Results go where people can find them: Documents/JavaByte, one folder per run.
-            let documents = app.path().document_dir().or_else(|_| app.path().app_data_dir())?;
-            let data = app.path().app_data_dir()?;
+            // Results go where people can find them: Documents/JavaByte, one folder per run,
+            // unless Preferences name another folder.
+            let setup = setup_for(app.path().resource_dir()?, app.path().app_data_dir()?, app.path().document_dir().ok());
+            let preferences = setup.preferences();
+            let isolation = setup::isolation_status();
+            let launcher = setup.launcher(&preferences, &isolation);
+            let runs_root = setup.output_folder(&preferences);
+            let recent = setup.data.join("recent-runs.json");
             app.manage(AppState {
-                session: Mutex::new(Session::new(find_engine(), documents.join("JavaByte"), data.join("recent-runs.json"))),
+                session: Mutex::new(Session::new(launcher, runs_root, recent)),
+                setup,
+                isolation,
                 // A file named on the command line ("Open with" in a file manager) is treated
                 // like a dropped one: the start screen picks it up and inspects it.
                 dropped: Mutex::new(std::env::args_os().nth(1).map(PathBuf::from)),
@@ -395,7 +520,7 @@ fn main() {
     macro_rules! commands {
         ($($extra:path),*) => {
             tauri::generate_handler![engine_status, choose_sample, choose_sample_folder, take_dropped, inspect_sample,
-                command_line, start_run, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
+                command_line, run_question, start_run, setup_status, change_preference, choose_java, choose_output_folder, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
                 settings_text, set_settings_text, config_schema, check_settings, presets, presets_folder, save_preset,
                 load_preset, delete_preset, import_settings, export_settings, choose_host_file,
                 open_report_file, open_report_folder, artifacts, artifact_page, artifact_disasm, save_zip, save_as_is,
@@ -406,5 +531,5 @@ fn main() {
     let builder = builder.invoke_handler(commands!());
     #[cfg(feature = "egress-probe")]
     let builder = egress_probe::install(builder).invoke_handler(commands!(egress_probe::probe_report));
-    builder.run(tauri::generate_context!()).expect("the JavaByte window could not be opened");
+    builder.run(context).expect("the JavaByte window could not be opened");
 }

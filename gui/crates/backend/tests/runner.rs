@@ -129,3 +129,26 @@ fn class_files_are_listed_as_instructions() {
     let not_a_class = launcher.disasm(&classes.join("dev/javabyte/guest")).unwrap_err();
     assert!(not_a_class.contains("could not be shown"), "{not_a_class}");
 }
+
+/// With isolation on, a run starts in a namespace with no network, and still streams its
+/// events and writes its report and files where the person can read them. Skipped where the
+/// system does not allow namespaces (the app then asks before running).
+#[cfg(target_os = "linux")]
+#[test]
+fn an_isolated_run_works_and_writes_its_report() {
+    let Some((mut launcher, classes)) = setup() else { return };
+    if let Err(e) = javabyte_gui_backend::isolation::check() {
+        eprintln!("skipped: isolation is not available here: {e}");
+        return;
+    }
+    launcher.isolate = true;
+    let request = request(&classes, "dev.javabyte.guest.Basics", &[], "isolated");
+    let ended = launcher.start(&request).unwrap().wait(Duration::from_secs(60), Duration::from_secs(10));
+    assert_eq!(ended.exit_code, Some(exit_code::OK), "{}", ended.stderr);
+    let finish = ended.tally.finish.as_ref().expect("finish record");
+    let report = std::fs::metadata(&finish.report).expect("report written");
+    // Written as the person, not as a user that exists only inside the namespace.
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: getuid cannot fail.
+    assert_eq!(report.uid(), unsafe { libc::getuid() });
+}

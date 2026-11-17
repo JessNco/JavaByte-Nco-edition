@@ -2036,6 +2036,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 name = "javabyte-gui"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "javabyte-gui-backend",
  "javabyte-gui-protocol",
  "serde",
@@ -2050,6 +2051,7 @@ name = "javabyte-gui-backend"
 version = "0.1.0"
 dependencies = [
  "javabyte-gui-protocol",
+ "libc",
  "serde",
  "serde_json",
  "serde_yaml",

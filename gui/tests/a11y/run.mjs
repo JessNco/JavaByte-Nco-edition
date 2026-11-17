@@ -57,13 +57,13 @@ async function section(name, body) {
   }
 }
 
-async function open(options = {}) {
+async function open(options = {}, query = '') {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, ...options });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(url);
+  await page.goto(url + query);
   await page.waitForSelector('#start-heading');
   return { page, context, errors };
 }
@@ -189,8 +189,9 @@ await section(`axe, ${theme}, ${textSize}%`, async () => {
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
   await page.waitForSelector('#compare-result-heading');
   await axe(page, `compare, ${theme}, ${textSize}%`);
-  await page.getByRole('button', { name: 'Display settings' }).click();
-  await axe(page, `display settings, ${theme}, ${textSize}%`);
+  await page.getByRole('button', { name: 'Preferences' }).click();
+  await page.waitForSelector('#prefs-isolate');
+  await axe(page, `preferences, ${theme}, ${textSize}%`);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await axe(page, `start with recent list, ${theme}, ${textSize}%`);
   check(errors.length === 0, `page errors (${theme}): ${errors.join('; ')}`);
@@ -621,7 +622,46 @@ await section('forced colours', async () => {
   await context.close();
 });
 
-// 8. Chromium's accessibility tree for the grid, as assistive technology receives it.
+// 8. Preferences, and the question before an analysis that cannot be isolated (as on Ubuntu
+// 24.04 with the AppImage, which the stand-in imitates with ?isolation=unavailable).
+await section('preferences and isolation', async () => {
+  const { page, context, errors } = await open({}, '?isolation=unavailable');
+  check(await page.getByText('The AppImage cannot turn off the network').isVisible(), 'the first-run notice says isolation is not available, and why');
+  await page.getByRole('button', { name: 'Preferences' }).click();
+  check(await focusIs(page, 'preferences-heading'), 'Preferences focuses its heading');
+  check((await page.title()) === 'Preferences – JavaByte', `preferences title: ${await page.title()}`);
+  check(await page.getByRole('checkbox', { name: 'Turn off the network for each analysis' }).isChecked(), 'isolation is on by default');
+  check(await page.getByRole('checkbox', { name: 'Ask me before an analysis that cannot be isolated' }).isChecked(), 'asking is on by default');
+  check((await page.locator('#prefs-isolate').getAttribute('aria-describedby')) === 'prefs-isolate-hint', 'the isolation setting is explained');
+  check(await page.getByRole('button', { name: 'Choose another Java…' }).isVisible(), 'another Java can be chosen');
+  await axe(page, 'preferences, isolation unavailable');
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await toOverview(page);
+  await page.getByRole('button', { name: 'Analyse', exact: true }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'This analysis will not be isolated from the network' });
+  check(await dialog.isVisible(), 'Analyse asks first when the run cannot be isolated');
+  check(await focusIs(page, 'isolation-cancel'), 'focus starts on Cancel, the safe choice');
+  check((await dialog.getAttribute('aria-describedby')) === 'isolation-reason', 'the dialog is described by the reason');
+  await axe(page, 'isolation question');
+  await page.keyboard.press('Escape');
+  check(!(await dialog.isVisible()), 'Escape closes the question');
+  check((await page.evaluate(() => document.activeElement?.textContent)) === 'Analyse', 'focus returns to the Analyse button');
+  check(await page.locator('#running-heading').isHidden(), 'nothing ran');
+
+  await page.getByRole('button', { name: 'Analyse', exact: true }).click();
+  await page.getByRole('checkbox', { name: /Don't ask me again/ }).check();
+  await page.getByRole('button', { name: 'Analyse without isolation' }).click();
+  check(await focusIs(page, 'running-heading', 5000), 'agreeing starts the analysis');
+  await page.getByRole('button', { name: 'Stop analysis' }).click();
+  await page.getByRole('button', { name: 'Preferences' }).click();
+  await page.waitForSelector('#prefs-isolate');
+  check(!(await page.getByRole('checkbox', { name: 'Ask me before an analysis that cannot be isolated' }).isChecked()), "Don't ask again is kept, and shown in Preferences");
+  check(errors.length === 0, `page errors: ${errors.join('; ')}`);
+  await context.close();
+});
+
+// 9. Chromium's accessibility tree for the grid, as assistive technology receives it.
 await section('grid accessibility tree', async () => {
   const { page, context } = await open();
   await toReport(page);

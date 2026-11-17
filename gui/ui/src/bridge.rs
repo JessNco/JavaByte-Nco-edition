@@ -14,7 +14,7 @@ use javabyte_gui_protocol::t;
 use javabyte_gui_backend::config::ConfigDoc;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::{Problem, Validation};
-use javabyte_gui_protocol::views::{self, EngineStatus, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
+use javabyte_gui_protocol::views::{self, AppPreferences, EngineStatus, Isolation, SetupStatus, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{Page, PageRequest, RunState, RunStatus};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -42,6 +42,7 @@ struct InPage {
     finished_once: bool,
     settings: String,
     presets: Vec<(String, String)>,
+    preferences: AppPreferences,
 }
 
 thread_local! {
@@ -59,6 +60,7 @@ fn in_page<T>(work: impl FnOnce(&mut InPage) -> T) -> T {
             finished_once: false,
             settings: EXAMPLE_SETTINGS.to_string(),
             presets: Vec::new(),
+            preferences: AppPreferences::default(),
         });
         work(backend)
     })
@@ -168,10 +170,29 @@ pub async fn inspect_sample(sample: &SampleChoice) -> Result<Overview, String> {
     }
 }
 
-/// Starts the analysis of the chosen sample with its settings.
-pub async fn start_run() -> Result<(), String> {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StartArgs {
+    without_isolation: bool,
+}
+
+/// What must be asked before the next run, if anything: why it cannot be isolated from the
+/// network.
+pub async fn run_question() -> Option<String> {
     if in_desktop_app() {
-        invoke("start_run", NoArgs {}).await
+        invoke("run_question", NoArgs {}).await.unwrap_or(None)
+    } else {
+        let status = stand_in_setup();
+        (status.isolation.supported && status.preferences.isolate && !status.isolation.available && status.preferences.ask_without_isolation)
+            .then(|| status.isolation.problem.unwrap_or_default())
+    }
+}
+
+/// Starts the analysis of the chosen sample with its settings. `without_isolation` answers the
+/// [`run_question`], when there was one.
+pub async fn start_run(without_isolation: bool) -> Result<(), String> {
+    if in_desktop_app() {
+        invoke("start_run", StartArgs { without_isolation }).await
     } else {
         in_page(|b| b.run.start(js_sys::Date::now()));
         Ok(())
@@ -593,4 +614,78 @@ pub async fn event_position(seq: u64, filter: &javabyte_gui_protocol::EventFilte
     } else {
         in_page(|b| b.events.position_of(seq, filter))
     }
+}
+
+// --- Preferences ---
+
+/// The browser stand-in's computer: Linux, with isolation available unless the page address
+/// asks otherwise (`?isolation=unavailable`, for testing the question before a run).
+fn stand_in_setup() -> SetupStatus {
+    let unavailable = web_sys::window().and_then(|w| w.location().search().ok()).is_some_and(|q| q.contains("isolation=unavailable"));
+    let isolation = if unavailable {
+        Isolation { supported: true, available: false, problem: Some(t!("isolation-unavailable-appimage", detail = "Permission denied (os error 13)")) } // not-ui-text: a system error as the stand-in reports it
+    } else {
+        Isolation { supported: true, available: true, problem: None }
+    };
+    SetupStatus {
+        version: env!("CARGO_PKG_VERSION").into(),
+        os: "linux".into(), // not-ui-text: an operating system id
+        java: "/opt/javabyte/lib/javabyte/runtime/bin/java".into(), // not-ui-text: a path
+        java_bundled: true,
+        java_version: Some("21.0.5".into()),
+        jar: "/opt/javabyte/lib/javabyte/javabyte.jar".into(), // not-ui-text: a path
+        output_folder: "/home/analyst/Documents/JavaByte".into(), // not-ui-text: a path
+        bridge: None,
+        isolation,
+        preferences: in_page(|b| b.preferences.clone()),
+    }
+}
+
+/// What the app found, and the preferences in use.
+pub async fn setup_status() -> Result<SetupStatus, String> {
+    if in_desktop_app() { invoke("setup_status", NoArgs {}).await } else { Ok(stand_in_setup()) }
+}
+
+/// A preference the screens may change (paths are chosen with pickers instead).
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PreferenceChange {
+    /// Start runs with no network (Linux).
+    Isolate(bool),
+    /// Ask before a run that cannot be isolated.
+    AskWithoutIsolation(bool),
+    /// Use the Java that came with the app again.
+    BundledJava,
+    /// Save runs in Documents/JavaByte again.
+    DefaultOutputFolder,
+}
+
+#[derive(Serialize)]
+struct ChangeArgs {
+    change: PreferenceChange,
+}
+
+/// Changes one preference and returns the new state.
+pub async fn change_preference(change: PreferenceChange) -> Result<SetupStatus, String> {
+    if in_desktop_app() {
+        invoke("change_preference", ChangeArgs { change }).await
+    } else {
+        in_page(|b| match change {
+            PreferenceChange::Isolate(on) => b.preferences.isolate = on,
+            PreferenceChange::AskWithoutIsolation(ask) => b.preferences.ask_without_isolation = ask,
+            PreferenceChange::BundledJava => b.preferences.java = None,
+            PreferenceChange::DefaultOutputFolder => b.preferences.output_folder = None,
+        });
+        Ok(stand_in_setup())
+    }
+}
+
+/// Picks a Java runtime with the system's picker. None when cancelled.
+pub async fn choose_java() -> Result<Option<SetupStatus>, String> {
+    if in_desktop_app() { invoke("choose_java", NoArgs {}).await } else { Ok(None) }
+}
+
+/// Picks the folder analyses are saved in. None when cancelled.
+pub async fn choose_output_folder() -> Result<Option<SetupStatus>, String> {
+    if in_desktop_app() { invoke("choose_output_folder", NoArgs {}).await } else { Ok(None) }
 }

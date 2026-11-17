@@ -103,15 +103,24 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
     @Override
     public List<dev.javabyte.config.ConfigSchema.Option> settings() {
         return List.of(new dev.javabyte.config.ConfigSchema.Option("python", "string", null, "python3", List.of(),
-                "The Python interpreter that has speakeasy-emulator installed."));
+                "The Python interpreter that has speakeasy-emulator installed. Default: JAVABYTE_BRIDGE_PYTHON if set, else python3."));
     }
 
     @Override
     public void install(VirtualMachine machine, Map<String, Object> settings) {
         this.vm = machine;
-        this.python = String.valueOf(settings.getOrDefault("python", "python3"));
+        this.python = String.valueOf(settings.getOrDefault("python", defaultPython()));
         vm.natives.onLibraryLoaded(this::loadLibrary);
         vm.natives.register("*", this::callNative);
+    }
+
+    /**
+     * The interpreter used when the config names none. The desktop app sets
+     * {@code JAVABYTE_BRIDGE_PYTHON} to the Python it bundles, so turning the plugin on is enough.
+     */
+    static String defaultPython() {
+        String fromEnvironment = System.getenv("JAVABYTE_BRIDGE_PYTHON");
+        return fromEnvironment == null || fromEnvironment.isBlank() ? "python3" : fromEnvironment;
     }
 
     @Override

@@ -1,8 +1,9 @@
-//! The GUI's screens: start, sample overview, running, report and display settings.
+//! The GUI's screens: start, sample overview, running, report, compare and preferences.
 
 mod app;
 mod bridge;
 mod events;
+mod isolation;
 mod prefs;
 mod screens;
 mod settings;

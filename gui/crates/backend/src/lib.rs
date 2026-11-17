@@ -5,6 +5,7 @@
 //! code also compiles to WebAssembly, so the screens can run in an ordinary browser for
 //! automated accessibility tests without the desktop shell.
 
+pub mod config;
 pub mod events;
 pub mod report;
 pub mod runner;

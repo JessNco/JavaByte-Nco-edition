@@ -7,3 +7,5 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
+# Event data and the effective config are free-form JSON.
+serde_json.workspace = true

@@ -1,9 +1,20 @@
-//! Types exchanged between the GUI's screens (WebAssembly) and its backend (native Rust).
+//! Types exchanged between the GUI's screens (WebAssembly) and its backend (native Rust), and the
+//! formats the command-line tool writes: the event stream, the report, `inspect`, `schema` and
+//! `validate` output.
 //!
-//! This is the only place the GUI defines the shape of data it passes around, so both sides
-//! always agree. It has no dependencies beyond `serde`, so it compiles for both targets.
+//! This is the only place the GUI defines the shape of data it passes around, so all sides
+//! agree. The tool's formats are checked against real output: `tests/samples/` is written by the
+//! Java test `ContractSamplesTest`, and `tests/samples.rs` reads it with these types. Readers
+//! ignore fields they do not know, so the tool may add fields without breaking the GUI.
+//!
+//! Only `serde` and `serde_json` are needed, so the crate compiles for both targets.
 
 mod display;
+pub mod inspect;
+pub mod report;
+pub mod schema;
+pub mod stream;
+pub mod validate;
 
 pub use display::{DisplayText, display_text};
 use serde::{Deserialize, Serialize};

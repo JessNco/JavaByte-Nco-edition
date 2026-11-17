@@ -27,6 +27,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: gui
@@ -71,6 +72,12 @@ jobs:
         run: cargo build --release -p javabyte-gui
       - name: Configuration and guard tests
         run: cargo test -p javabyte-gui
+      # Lints keep the code easy to change; missing documentation in protocol and backend is
+      # one of them. Runs after the screens are built, because the app embeds them.
+      - name: Lints
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy -p javabyte-gui-ui --target wasm32-unknown-unknown -- -D warnings
       # Goes through a whole analysis of a harmless test fixture, pressing buttons through the
       # bus as a screen reader would. The app finds the tool's jar next to the repository.
       - name: Accessibility bus check (WebKitGTK)

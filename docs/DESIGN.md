@@ -1,7 +1,8 @@
 # Design
 
 This document explains how JavaByte is put together and why. It is meant for someone changing
-the code; for using the tool, start with the README.
+the code; for using the tool, start with the README. The desktop app is a separate program
+that drives the command-line tool; its design is in [GUI-PLAN.md](GUI-PLAN.md).
 
 ## Goal
 

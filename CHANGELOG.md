@@ -55,6 +55,8 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Package documentation, contributing guide, CI workflow.
 
 ### Changed
+- Desktop app code: every public item documented, large modules split by job, and clippy run
+  in CI with warnings as errors. No change in behaviour.
 - `trace.log` is flushed after every event, so a killed run keeps its trace.
 - Config errors name list items by position (`network.http[2].url`), and a config with several
   problems reports all of them.

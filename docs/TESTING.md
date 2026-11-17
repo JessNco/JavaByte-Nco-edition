@@ -40,6 +40,12 @@ It also writes a coverage report to `target/site/jacoco/index.html`.
 
 Tests that lack what they need are reported as *skipped*, never as passed.
 
+The desktop app in `gui/` has its own Rust tests, browser accessibility checks, a Linux
+accessibility-bus check and a network-containment test. They are described, with how to run
+them, in [gui/README.md](../gui/README.md#testing). One Java test belongs to them:
+`ContractSamplesTest` writes real tool output into `gui/crates/protocol/tests/tool-output/`,
+and CI fails if the committed copy drifts from what the tool produces.
+
 ## The parts
 
 | Test class | Tests | What it proves |

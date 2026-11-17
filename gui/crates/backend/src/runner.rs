@@ -176,7 +176,7 @@ impl Launcher {
         });
 
         let stdin = child.stdin.take();
-        Ok(Run { child, stdin, records, stderr: stderr_text, tally: Tally::default(), stream_ended: false })
+        Ok(Run { child, stdin, records, stderr: stderr_text, tally: Tally::default(), stream_ended: false, ended: None })
     }
 }
 
@@ -188,6 +188,7 @@ pub struct Run {
     stderr: Arc<Mutex<String>>,
     tally: Tally,
     stream_ended: bool,
+    ended: Option<Ended>,
 }
 
 /// What is known about a run so far, kept up to date as records arrive.
@@ -285,6 +286,40 @@ impl Run {
                 .map_err(|e| format!("The stop request could not be sent: {e}")),
             None => Ok(()),
         }
+    }
+
+    /// Checks, without waiting, whether the run has ended. Takes any records that have arrived.
+    /// Returns the ending once the process has exited and its last records are in; after that
+    /// the run is over and further calls return the same answer.
+    pub fn try_end(&mut self) -> Option<Ended> {
+        if let Some(ended) = &self.ended {
+            return Some(ended.clone());
+        }
+        self.poll();
+        let Ok(Some(status)) = self.child.try_wait() else { return None };
+        // The process has gone; the reader thread may still be delivering its last lines.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !self.stream_ended && Instant::now() < deadline {
+            let _ = self.next(Duration::from_millis(20));
+        }
+        let ended = self.ending(status.code(), false);
+        self.ended = Some(ended.clone());
+        Some(ended)
+    }
+
+    fn ending(&mut self, exit_code: Option<i32>, forced: bool) -> Ended {
+        let stderr = self.stderr.lock().map(|s| s.clone()).unwrap_or_default();
+        let summary = summarise(exit_code, forced, &self.tally);
+        Ended { exit_code, forced, tally: self.tally.clone(), stderr, summary }
+    }
+
+    /// Ends the process now, for when it ignored a stop request.
+    pub fn force_end(&mut self) -> Ended {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let ended = self.ending(None, true);
+        self.ended = Some(ended.clone());
+        ended
     }
 
     /// Waits for the run to end by itself, taking every record on the way. After `limit`, asks

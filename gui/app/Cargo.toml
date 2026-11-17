@@ -27,3 +27,6 @@ javabyte-gui-backend.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2.12", features = [] }
+# The system's own file picker, opened from Rust. The screens cannot call it directly: the
+# window's capabilities grant no plugin permissions.
+tauri-plugin-dialog = "2.8"

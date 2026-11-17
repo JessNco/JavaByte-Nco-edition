@@ -15,6 +15,7 @@ pub mod report;
 pub mod schema;
 pub mod stream;
 pub mod validate;
+pub mod views;
 
 pub use display::{DisplayText, display_text};
 use serde::{Deserialize, Serialize};
@@ -84,6 +85,18 @@ pub struct RunStatus {
     pub notable: Vec<EventRow>,
     /// How the run ended, in the emulator's words (`completed`, `stopped`, ...), once it has.
     pub outcome: Option<String>,
+    /// The sample being analysed, for headings.
+    #[serde(default)]
+    pub sample_name: String,
+    /// The entry point running now.
+    #[serde(default)]
+    pub entry: String,
+    /// Once the run has ended: what happened, in plain words.
+    #[serde(default)]
+    pub ended: Option<String>,
+    /// Once the run has ended: whether a report is ready to open.
+    #[serde(default)]
+    pub report_ready: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

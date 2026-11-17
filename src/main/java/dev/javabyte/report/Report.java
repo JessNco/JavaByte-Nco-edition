@@ -63,7 +63,32 @@ public final class Report {
     }
 
     public synchronized void addRun(String entry, String outcome, String detail, long instructions) {
-        runs.add(new Run(entry, outcome, detail, instructions));
+        Run run = new Run(entry, outcome, detail, instructions);
+        runs.add(run);
+        runListener.accept(run);
+    }
+
+    private java.util.function.Consumer<Run> runListener = run -> {};
+
+    /** Receives each finished entry point as it is added. */
+    public void setRunListener(java.util.function.Consumer<Run> listener) {
+        this.runListener = listener;
+    }
+
+    public String samplePath() {
+        return samplePath.toString();
+    }
+
+    public String sampleSha256() {
+        return sampleSha256;
+    }
+
+    public long sampleSize() {
+        return sampleSize;
+    }
+
+    public String mainClass() {
+        return mainClass;
     }
 
     /** Called once execution has stopped; reserved for derived data. */

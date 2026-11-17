@@ -54,6 +54,23 @@ public final class Emulator {
      *                        everything in memory (used by tests)
      */
     public static Report run(EmulatorConfig config, Path outputDirectory) throws IOException {
+        return run(config, outputDirectory, new RunControl());
+    }
+
+    /**
+     * Runs with a control, through which the caller watches the run live and can stop it.
+     *
+     * @param control used for this run only
+     */
+    public static Report run(EmulatorConfig config, Path outputDirectory, RunControl control) throws IOException {
+        try {
+            return runControlled(config, outputDirectory, control);
+        } finally {
+            control.markFinished();
+        }
+    }
+
+    private static Report runControlled(EmulatorConfig config, Path outputDirectory, RunControl control) throws IOException {
         if (config.sample == null) {
             throw new ConfigException("No sample given: set 'sample' in the config or pass it on the command line");
         }
@@ -68,6 +85,7 @@ public final class Emulator {
         }
         EventLog events = new EventLog(config.limits.maxEventsPerCategory, trace);
         VirtualMachine vm = new VirtualMachine(config, events, new Artifacts(outputDirectory));
+        control.attach(vm);
         BuiltinStubs.install(vm);
         List<EmulatorPlugin> installed = new ArrayList<>();
         for (EmulatorPlugin plugin : ServiceLoader.load(EmulatorPlugin.class)) {
@@ -89,21 +107,30 @@ public final class Emulator {
 
         String mainClass = manifest == null ? null : manifest.getMainAttributes().getValue("Main-Class");
         Report report = new Report(config, samplePath, sampleBytes, mainClass, vm);
+        report.setRunListener(control::entryFinished);
+        control.started(report);
         List<EmulatorConfig.EntryPoint> entries = config.entryPoints;
         if (entries.isEmpty()) {
             entries = List.of(new EmulatorConfig.EntryPoint());
         }
 
         List<EmulatorConfig.EntryPoint> plan = entries;
-        Thread emulatorThread = new Thread(null, () -> runAll(vm, plan, mainClass, report),
+        Thread emulatorThread = new Thread(null, () -> runAll(vm, plan, mainClass, report, control),
                 "javabyte-emulator", EMULATOR_STACK_BYTES);
         // A daemon thread cannot keep the tool alive if guest-driven JDK code blocks forever.
         emulatorThread.setDaemon(true);
         emulatorThread.start();
+        boolean stopped = false;
         try {
-            emulatorThread.join(config.limits.timeoutSeconds * 1000L);
+            // Waits in short steps so that a stop request is acted on even while the sample is
+            // stuck inside a JDK call, where the emulator thread cannot notice it.
+            long deadline = System.nanoTime() + config.limits.timeoutSeconds * 1_000_000_000L;
+            while (emulatorThread.isAlive() && System.nanoTime() < deadline && !control.stopRequested()) {
+                emulatorThread.join(100);
+            }
             if (emulatorThread.isAlive()) {
-                vm.cancel();
+                stopped = control.stopRequested();
+                vm.cancel(stopped ? EmulationAbort.Reason.STOPPED : EmulationAbort.Reason.TIMEOUT);
                 emulatorThread.join(CANCEL_GRACE_MILLIS);
             }
         } catch (InterruptedException e) {
@@ -111,8 +138,10 @@ public final class Emulator {
         }
         if (emulatorThread.isAlive()) {
             // The thread is not at an instruction boundary, so it must be inside a real JDK call.
-            report.addRun("(run)", "timeout", "emulator thread blocked in host call " + vm.hostCallInProgress(), 0);
+            report.addRun("(run)", stopped ? "stopped" : "timeout",
+                    (stopped ? "stopped while blocked in host call " : "emulator thread blocked in host call ") + vm.hostCallInProgress(), 0);
         }
+        control.finalProgress();
         try {
             // Also done after a hard timeout: the stuck thread is parked inside the JDK, and
             // losing every dropped file would throw away the evidence gathered so far.
@@ -182,7 +211,8 @@ public final class Emulator {
     // ------------------------------------------------------------------ execution
 
     /** Body of the emulator thread: runs each entry point, then everything it left queued. */
-    private static void runAll(VirtualMachine vm, List<EmulatorConfig.EntryPoint> entries, String mainClass, Report report) {
+    private static void runAll(VirtualMachine vm, List<EmulatorConfig.EntryPoint> entries, String mainClass, Report report,
+            RunControl control) {
         vm.bindToCurrentThread();
         try {
             boolean stopped = false;
@@ -190,6 +220,7 @@ public final class Emulator {
                 if (stopped) {
                     break;
                 }
+                control.entryStarted(entryLabel(entry, mainClass));
                 stopped = runEntry(vm, entry, mainClass, report);
             }
             if (!stopped && vm.config.threads.runShutdownHooks) {
@@ -199,6 +230,15 @@ public final class Emulator {
             vm.scheduler.shutdown();
             vm.unbind();
         }
+    }
+
+    /** The name progress reports use for an entry point, matching the report's run labels. */
+    private static String entryLabel(EmulatorConfig.EntryPoint entry, String mainClass) {
+        if ("clinit-sweep".equals(entry.type)) {
+            return "clinit-sweep";
+        }
+        String className = entry.className != null ? entry.className : mainClass;
+        return className == null ? "main" : className + '.' + ("main".equals(entry.type) ? "main" : entry.method);
     }
 
     /** @return true if the whole run must stop (exit, limit or internal error) */

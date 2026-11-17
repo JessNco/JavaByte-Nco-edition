@@ -25,6 +25,7 @@ public final class EventLog {
     private final int maxPerCategory;
     private final Writer trace;
     private Supplier<String> callerSupplier = () -> null;
+    private java.util.function.Consumer<Event> listener = event -> {};
     private long seq;
 
     /**
@@ -34,6 +35,11 @@ public final class EventLog {
     public EventLog(int maxPerCategory, Writer trace) {
         this.maxPerCategory = maxPerCategory;
         this.trace = trace;
+    }
+
+    /** Receives each stored event as it is recorded, for live displays. */
+    public void setListener(java.util.function.Consumer<Event> listener) {
+        this.listener = listener;
     }
 
     /** Supplies the current guest location; set once the interpreter exists. */
@@ -72,6 +78,11 @@ public final class EventLog {
         Event event = new Event(seq++, category, action, callerSupplier.get(), data);
         events.add(event);
         writeTrace(event.toLine());
+        // Each event reaches the file before the next one is recorded, so a run that is killed
+        // or hangs still leaves its evidence on disk. Events are rare next to instructions, so
+        // this costs little; the measurement is in docs/TESTING.md.
+        flush();
+        listener.accept(event);
     }
 
     /** Writes a free-form line to the trace only (method and instruction tracing). */

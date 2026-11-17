@@ -14,6 +14,8 @@ public final class EmulationAbort extends Error {
         INSTRUCTION_LIMIT(false),
         TIMEOUT(false),
         POLICY(false),
+        /** Someone asked the run to stop (the Stop button, Ctrl+C); the report is still written. */
+        STOPPED(false),
         /** Only the looping thread is ended; other guest threads still get their turn. */
         SLEEP_BUDGET(true),
         /** The thread waited for something no other thread can provide; only it is ended. */

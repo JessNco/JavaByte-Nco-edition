@@ -275,6 +275,33 @@ class ContractTest {
     }
 
     @Test
+    void disasmPrintsInstructionsWithoutRunningAnything() throws IOException {
+        Path classFile = Files.write(temp.resolve("Basics.class"), Fixtures.classBytes(Basics.class));
+        Cli single = cli("disasm", classFile.toString());
+        assertEquals(0, single.exitCode(), single.err());
+        assertTrue(single.out().contains("class dev/javabyte/guest/Basics"), single.out());
+        assertTrue(single.out().contains("public static main([Ljava/lang/String;)V"), "methods are listed");
+        assertTrue(single.out().contains("INVOKESTATIC") || single.out().contains("INVOKEVIRTUAL"), "instructions are listed");
+
+        // A class inside a jar, named with dots or slashes.
+        Cli inJar = cli("disasm", basics.toString(), "--class", Basics.class.getName());
+        assertEquals(0, inJar.exitCode(), inJar.err());
+        assertEquals(single.out(), inJar.out());
+        assertEquals(0, cli("disasm", basics.toString(), "--class", "dev/javabyte/guest/Basics").exitCode());
+
+        // Problems are usage errors with the reason, never a crash.
+        assertEquals(2, cli("disasm", basics.toString()).exitCode(), "a jar needs --class");
+        assertEquals(2, cli("disasm", basics.toString(), "--class", "no.Such").exitCode());
+        assertEquals(2, cli("disasm", write("notes.txt", "plain text").toString()).exitCode());
+        assertEquals(2, cli("disasm", temp.resolve("missing.class").toString()).exitCode());
+        byte[] damaged = Fixtures.classBytes(Basics.class);
+        Path cut = Files.write(temp.resolve("Cut.class"), java.util.Arrays.copyOf(damaged, damaged.length / 2));
+        Cli broken = cli("disasm", cut.toString());
+        assertEquals(2, broken.exitCode(), broken.err());
+        assertTrue(broken.err().contains("damaged"), broken.err());
+    }
+
+    @Test
     void initPrintsAConfigThatRuns() throws IOException {
         Cli init = cli("init", basics.toString());
         assertEquals(0, init.exitCode(), init.err());

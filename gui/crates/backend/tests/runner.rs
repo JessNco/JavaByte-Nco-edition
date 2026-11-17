@@ -119,3 +119,13 @@ fn inspect_schema_and_validate() {
     assert!(invalid.problems[0].message.contains("did you mean"), "{:?}", invalid.problems);
     assert!(launcher.validate(None, &[]).unwrap().valid);
 }
+
+#[test]
+fn class_files_are_listed_as_instructions() {
+    let Some((launcher, classes)) = setup() else { return };
+    let class_file = classes.join("dev/javabyte/guest/Basics.class");
+    let text = launcher.disasm(&class_file).unwrap();
+    assert!(text.contains("class dev/javabyte/guest/Basics"), "{text}");
+    let not_a_class = launcher.disasm(&classes.join("dev/javabyte/guest")).unwrap_err();
+    assert!(not_a_class.contains("could not be shown"), "{not_a_class}");
+}

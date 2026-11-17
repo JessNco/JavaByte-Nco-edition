@@ -198,7 +198,55 @@ def main():
     print(f"grid row count exposed to assistive technology: {rowcount}")
     if not (rowcount and rowcount.isdigit() and int(rowcount) > 1):
         missing.append(("table attribute", f"rowcount above 1 (got {rowcount})"))
+
+    # The Files tab and the warning before saving a file as is.
+    if not press(app, "page tab", "Files"):
+        missing.append(("page tab", "Files (to press)"))
+        return report(missing)
+    nodes = wait_until(app, lambda r, n: r == "push button" and n.startswith("View "), 30)
+    view = next((node for node in find_all(app, "push button") if node.name.startswith("View ")), None)
+    if view is None:
+        missing.append(("push button", "View <file> in the Files tab"))
+        return report(missing)
+    print(f"files tab offers: {view.name!r}")
+    view.queryAction().doAction(0)
+    wait_for(app, "push button", "Save as is…", 15)
+    if not press(app, "push button", "Save as is…"):
+        missing.append(("push button", "Save as is… (to press)"))
+        return report(missing)
+    nodes = wait_for(app, "check box", "I understand this file may be harmful", 15)
+    show(nodes, "the warning", printing, 400)
+    title = "Save this file without protection?"
+    roles = {r for _, r, n, _ in nodes if n == title}
+    print(f"the warning is exposed as: {sorted(roles)}")
+    if not roles & {"alert", "dialog"}:
+        missing.append(("alert or dialog", title))
+    missing += check(nodes, [("push button", "Cancel"), ("check box", "I understand this file may be harmful"), ("push button", "Save as is")])
+    save = next(find_nodes(app, "push button", "Save as is"), None)
+    if save is not None and save.getState().contains(pyatspi.STATE_SENSITIVE):
+        missing.append(("push button", "Save as is must be unavailable before the box is ticked"))
+    press(app, "push button", "Cancel")
     return report(missing)
+
+
+def wait_until(app, test, timeout_s):
+    """Walks the tree until an object passes test(role, name)."""
+    deadline = time.time() + timeout_s
+    while True:
+        nodes = walk(app)
+        if any(test(r, n) for _, r, n, _ in nodes) or time.time() > deadline:
+            return nodes
+        time.sleep(0.5)
+
+
+def find_all(node, role):
+    try:
+        if node.getRoleName() == role:
+            yield node
+        for i in range(node.childCount):
+            yield from find_all(node.getChildAtIndex(i), role)
+    except Exception:
+        return
 
 
 def wait_for(app, role, name, timeout_s):

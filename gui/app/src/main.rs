@@ -16,8 +16,9 @@ use javabyte_gui_backend::session::Session;
 use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::Validation;
-use javabyte_gui_protocol::views::{EngineStatus, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
-use javabyte_gui_protocol::{Page, PageRequest, RunStatus};
+use javabyte_gui_protocol::compare::Comparison;
+use javabyte_gui_protocol::views::{Artifact, EngineStatus, FilePage, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
+use javabyte_gui_protocol::{EventFilter, Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
@@ -90,6 +91,85 @@ fn command_line(state: tauri::State<'_, AppState>) -> String {
 #[tauri::command]
 fn start_run(state: tauri::State<'_, AppState>) -> Result<(), String> {
     session(&state).start()
+}
+
+// --- Reports and their files ---
+
+/// Opens a report the person picks: a `report.json` file.
+#[tauri::command]
+async fn open_report_file(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<ReportView>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_title(t!("picker-open-report"))
+        .add_filter(t!("picker-report-files"), &["json"])
+        .blocking_pick_file();
+    match picked.and_then(|p| p.into_path().ok()) {
+        Some(path) => session(&state).open_report_at(&path).map(Some),
+        None => Ok(None),
+    }
+}
+
+/// Opens a report from a results folder the person picks.
+#[tauri::command]
+async fn open_report_folder(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<ReportView>, String> {
+    match app.dialog().file().set_title(t!("picker-open-report-folder")).blocking_pick_folder().and_then(|p| p.into_path().ok()) {
+        Some(path) => session(&state).open_report_at(&path).map(Some),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn artifacts(state: tauri::State<'_, AppState>) -> Result<Vec<Artifact>, String> {
+    session(&state).artifacts()
+}
+
+#[tauri::command]
+fn artifact_page(path: String, offset: u64, state: tauri::State<'_, AppState>) -> Result<FilePage, String> {
+    session(&state).artifact_page(&path, offset)
+}
+
+#[tauri::command]
+async fn artifact_disasm(path: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    session(&state).artifact_disasm(&path)
+}
+
+/// Saves the chosen files in a password zip where the person picks. `true` if saved.
+#[tauri::command]
+async fn save_zip(paths: Vec<String>, app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_title(t!("picker-save-zip"))
+        .set_file_name("javabyte-files.zip")
+        .add_filter(t!("picker-zip-files"), &["zip"])
+        .blocking_save_file();
+    match picked.and_then(|p| p.into_path().ok()) {
+        Some(path) => session(&state).save_zip(&paths, &path).map(|()| true),
+        None => Ok(false),
+    }
+}
+
+/// Saves one file as it is, after the warning the screen shows. `true` if saved.
+#[tauri::command]
+async fn save_as_is(path: String, app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let name = path.rsplit('/').next().unwrap_or("file").to_string();
+    let picked = app.dialog().file().set_title(t!("picker-save-as-is")).set_file_name(name).blocking_save_file();
+    match picked.and_then(|p| p.into_path().ok()) {
+        Some(destination) => session(&state).save_as_is(&path, &destination).map(|()| true),
+        None => Ok(false),
+    }
+}
+
+#[tauri::command]
+async fn compare_runs(a: String, b: String, state: tauri::State<'_, AppState>) -> Result<Comparison, String> {
+    session(&state).compare(&a, &b)
+}
+
+/// The open report's sample and settings, ready to change and analyse again.
+#[tauri::command]
+async fn run_again(state: tauri::State<'_, AppState>) -> Result<Overview, String> {
+    session(&state).run_again()
 }
 
 // --- Settings ---
@@ -212,6 +292,16 @@ fn open_recent(id: String, state: tauri::State<'_, AppState>) -> Result<ReportVi
 }
 
 #[tauri::command]
+fn event_actions(category: String, state: tauri::State<'_, AppState>) -> Vec<String> {
+    session(&state).event_actions(&category)
+}
+
+#[tauri::command]
+fn event_position(seq: u64, filter: EventFilter, state: tauri::State<'_, AppState>) -> Option<u64> {
+    session(&state).event_position(seq, &filter)
+}
+
+#[tauri::command]
 fn events_page(request: PageRequest, state: tauri::State<'_, AppState>) -> Page {
     session(&state).events_page(&request)
 }
@@ -283,7 +373,9 @@ fn main() {
             tauri::generate_handler![engine_status, choose_sample, choose_sample_folder, take_dropped, inspect_sample,
                 command_line, start_run, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
                 settings_text, set_settings_text, config_schema, check_settings, presets, presets_folder, save_preset,
-                load_preset, delete_preset, import_settings, export_settings, choose_host_file $(, $extra)*]
+                load_preset, delete_preset, import_settings, export_settings, choose_host_file,
+                open_report_file, open_report_folder, artifacts, artifact_page, artifact_disasm, save_zip, save_as_is,
+                compare_runs, run_again, event_actions, event_position $(, $extra)*]
         };
     }
     #[cfg(not(feature = "egress-probe"))]

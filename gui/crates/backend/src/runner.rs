@@ -99,6 +99,12 @@ impl Launcher {
         String::from_utf8(output.stdout).map_err(|e| javabyte_gui_protocol::t!("error-tool-output", detail = e.to_string()))
     }
 
+    /// A class file as readable instructions (`javabyte disasm`). Parses only.
+    pub fn disasm(&self, class_file: &Path) -> Result<String, String> {
+        self.text_command(&["disasm".as_ref(), class_file.as_os_str()], &[exit_code::OK])
+            .map_err(|detail| javabyte_gui_protocol::t!("error-disasm", detail = detail))
+    }
+
     /// A starter config for a sample: the tool's suggestions, with comments, ready to edit.
     pub fn init(&self, sample: &Path) -> Result<String, String> {
         self.text_command(&["init".as_ref(), sample.as_os_str()], &[exit_code::OK])

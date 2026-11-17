@@ -5,6 +5,8 @@
 //! code also compiles to WebAssembly, so the screens can run in an ordinary browser for
 //! automated accessibility tests without the desktop shell.
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod artifacts;
 pub mod config;
 pub mod events;
 pub mod report;

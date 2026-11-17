@@ -9,10 +9,12 @@
 //!
 //! Only `serde` and `serde_json` are needed, so the crate compiles for both targets.
 
+pub mod compare;
 mod display;
 pub mod form;
 pub mod i18n;
 pub mod inspect;
+pub mod limits;
 pub mod report;
 pub mod schema;
 pub mod stream;
@@ -54,6 +56,9 @@ pub struct PageRequest {
 pub struct EventFilter {
     /// Only this category, e.g. `net`.
     pub category: Option<String>,
+    /// Only this action, e.g. `http`. Used together with a category.
+    #[serde(default)]
+    pub action: Option<String>,
     /// Case-insensitive text that must appear in the action, details or caller.
     pub text: Option<String>,
 }

@@ -90,6 +90,10 @@ java -jar target/javabyte-0.1.0.jar run SAMPLE -o out/run1 --events jsonl --prog
 - `--control stdin` lets you send `stop` on standard input to end the run early, keeping the
   report. Closing standard input does the same.
 
+- `javabyte disasm defined-classes/a/B.class` (or `disasm sample.jar --class a.B`) prints a
+  class as readable instructions without running it. Use it on classes the sample created
+  while running, which the report lists under `artifacts`.
+
 ## Checking a config before running
 
 - `javabyte validate -c FILE --json` returns `{valid, problems: [{key, message}]}` with every

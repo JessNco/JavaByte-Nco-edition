@@ -5,7 +5,7 @@
 //! window title, so screen-reader users always know where they are (the usual pattern for
 //! single-window apps, since no page load announces it).
 
-use crate::screens::{overview, report, running, settings as settings_screen, start};
+use crate::screens::{compare, overview, report, running, settings as settings_screen, start};
 use crate::util::{announcer, focus_id};
 use crate::{events, prefs};
 use javabyte_gui_protocol::t;
@@ -19,6 +19,7 @@ pub enum Screen {
     Settings,
     Running,
     Report,
+    Compare,
     Display,
 }
 
@@ -30,6 +31,7 @@ impl Screen {
             Screen::Settings => "screen-settings",
             Screen::Running => "screen-running",
             Screen::Report => "screen-report",
+            Screen::Compare => "screen-compare",
             Screen::Display => "screen-display",
         })
     }
@@ -41,6 +43,7 @@ impl Screen {
             Screen::Settings => "settings-heading",
             Screen::Running => "running-heading",
             Screen::Report => "report-heading",
+            Screen::Compare => "compare-heading",
             Screen::Display => "display-heading",
         }
     }
@@ -151,6 +154,9 @@ pub fn App() -> impl IntoView {
             </section>
             <section aria-labelledby="report-heading" hidden=move || flow.screen.get() != Screen::Report>
                 <report::ReportScreen visible=Signal::derive(move || flow.screen.get() == Screen::Report) />
+            </section>
+            <section aria-labelledby="compare-heading" hidden=move || flow.screen.get() != Screen::Compare>
+                <compare::CompareScreen />
             </section>
             <section aria-labelledby="display-heading" hidden=move || flow.screen.get() != Screen::Display>
                 <prefs::DisplayPanel />

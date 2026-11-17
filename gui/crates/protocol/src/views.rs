@@ -202,6 +202,87 @@ pub struct ReportView {
     /// What the next run could supply, for the settings presets.
     #[serde(default)]
     pub follow_ups: FollowUps,
+    /// The Limits and gaps tab.
+    #[serde(default)]
+    pub limits: crate::limits::LimitsView,
+    /// The settings as the tool read them.
+    #[serde(default)]
+    pub config: serde_json::Value,
+    /// The run's `config.yaml` as written, comments and all, when the run has one.
+    #[serde(default)]
+    pub config_text: Option<String>,
+    /// How many files the run saved.
+    #[serde(default)]
+    pub artifact_count: usize,
+}
+
+/// A file a run saved: something the sample wrote, code it created, or data it sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Artifact {
+    /// Relative to the run's folder, as the report lists it (`dropped/C_/x/stage.bin`).
+    pub path: String,
+    /// The file's own name. Untrusted.
+    pub name: String,
+    /// `dropped` (a file it wrote), `class` (code it created), `network` (data it sent), `other`.
+    pub kind: String,
+    pub size: u64,
+    pub sha256: String,
+    /// Where it came from: the path on the pretend disk, the web address, or the class name.
+    /// Untrusted.
+    pub origin: Option<String>,
+}
+
+/// One page of a saved file, for the viewer.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilePage {
+    pub offset: u64,
+    pub total: u64,
+    pub bytes: Vec<u8>,
+}
+
+/// Bytes per viewer page (a decision in docs/gui/PHASE4-PLAN.md).
+pub const PAGE_BYTES: u64 = 64 * 1024;
+
+/// The kind of a saved file from where the tool put it.
+pub fn artifact_kind(path: &str) -> &'static str {
+    // Reports from older versions on Windows use '\\'.
+    match path.split(['/', '\\']).next() {
+        Some("dropped") => "dropped",
+        Some("defined-classes") => "class",
+        Some("network") => "network",
+        _ => "other",
+    }
+}
+
+/// Where each saved file came from, from the report's events: the file path the sample wrote,
+/// the address a request body was sent to, or the name of a class it defined.
+pub fn artifact_origins(report: &Report) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let text = |e: &crate::stream::Event, k: &str| e.data.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    for event in &report.events {
+        match (event.category.as_str(), event.action.as_str()) {
+            ("net", _) => {
+                if let (Some(file), Some(url)) = (text(event, "requestBodyFile"), text(event, "url").or_else(|| text(event, "endpoint"))) {
+                    out.entry(file).or_insert(url);
+                }
+            }
+            ("file", "write") => {
+                if let Some(path) = text(event, "path") {
+                    // The tool saves C:\a\b as dropped/C_/a/b and /a/b as dropped/a/b.
+                    let saved = format!("dropped/{}", path.replace(':', "_").replace('\\', "/").trim_start_matches('/'));
+                    out.entry(saved).or_insert(path);
+                }
+            }
+            ("class", _) => {
+                if let Some(name) = text(event, "name").or_else(|| text(event, "class")) {
+                    let saved = format!("defined-classes/{}.class", name.replace('.', "/"));
+                    out.entry(saved).or_insert(name);
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 /// A config read from a file someone chose to import.
@@ -350,6 +431,10 @@ pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> Repo
         dropped: s.events_dropped.iter().map(|(k, v)| (k.clone(), *v)).collect(),
         output_dir: output_dir.to_string(),
         follow_ups: follow_ups(report),
+        limits: crate::limits::limits_view(report),
+        config: report.config.clone(),
+        config_text: None,
+        artifact_count: report.artifacts.len(),
     }
 }
 

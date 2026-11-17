@@ -44,7 +44,9 @@ public final class Artifacts {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        String relative = root.relativize(target).toString();
+        // Always '/', whatever the system: reports are read on other systems too, and the
+        // report format documents paths this way.
+        String relative = root.relativize(target).toString().replace(java.io.File.separatorChar, '/');
         saved.add(relative);
         return relative;
     }

@@ -1,13 +1,13 @@
 {
   "schemaVersion" : 1,
   "tool" : {
-    "name" : "javabyte",
-    "version" : "0.1.0"
+    "version" : "0.1.0",
+    "name" : "javabyte"
   },
   "sample" : {
     "path" : "<work>/basics/basics.jar",
     "sha256" : "0000000000000000000000000000000000000000000000000000000000000000",
-    "size" : 13909,
+    "size" : 0,
     "mainClass" : "dev.javabyte.guest.Basics",
     "classCount" : 9,
     "virtualPath" : "C:\\Users\\admin\\Downloads\\basics.jar"

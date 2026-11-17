@@ -6,6 +6,13 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Desktop app, phase 4: the full report. Limits and gaps with what to try next, the files a run
+  saved (viewed as text, hex or bytecode; saved as AES password zips, or as is behind a
+  warning), the settings used with Run again with changes, filtering events by action and
+  going to an event number, comparing any two analyses, and opening reports made on the
+  command line. See docs/gui/PHASE4-PLAN.md.
+- `javabyte disasm FILE [--class NAME]`: a class file, or one class in a jar, as readable
+  instructions. It only parses; damaged classes give a clean error (exit code 2).
 - Desktop app, phase 3: a Settings screen for every option, with forms built from the tool's
   schema and the same settings as YAML (comments kept), problems shown at their fields, nine
   presets for common next steps plus saved presets, import, export and copy as command line.
@@ -68,6 +75,8 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - The tool version comes from `pom.xml` only.
 
 ### Fixed
+- Saved-file paths in the report (`artifacts`, `requestBodyFile`) use `/` on every system;
+  on Windows they used `\\`, which broke reading a report made on another system.
 - Writing without end to one open file exhausted memory before `limits.maxWrittenBytes` applied.
 - Method handles invoked with `byte`, `short`, `char` or `boolean` arguments failed.
 - An exception inside `CompletableFuture.supplyAsync` or `runAsync` escaped to the caller.

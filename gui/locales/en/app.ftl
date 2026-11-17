@@ -29,3 +29,4 @@ size-kb = { $size } KB
 size-mb = { $size } MB
 screen-settings = Settings
 nav-settings-unavailable = Choose a sample first.
+screen-compare = Compare

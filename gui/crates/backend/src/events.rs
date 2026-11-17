@@ -53,15 +53,52 @@ impl EventStore {
         Page { total, unfiltered_total, offset: request.offset, rows }
     }
 
+    /// The actions that occur in a category, sorted, for the filter's list.
+    pub fn actions(&mut self, category: &str) -> Vec<String> {
+        let mut found = std::collections::BTreeSet::new();
+        for index in 0..self.source.len() {
+            if self.source.category(index) == category {
+                found.insert(self.source.row(index).action);
+            }
+        }
+        found.into_iter().collect()
+    }
+
+    /// Where the event numbered `seq` is among those matching the filter: its row position, or
+    /// `None` if the filter hides it or there is no such event. Event numbers rise with position,
+    /// so this is a binary search.
+    pub fn position_of(&mut self, seq: u64, filter: &EventFilter) -> Option<u64> {
+        if is_empty_filter(filter) {
+            let len = self.source.len();
+            let (mut low, mut high) = (0, len);
+            while low < high {
+                let mid = (low + high) / 2;
+                match self.source.row(mid).seq.cmp(&seq) {
+                    std::cmp::Ordering::Less => low = mid + 1,
+                    std::cmp::Ordering::Greater => high = mid,
+                    std::cmp::Ordering::Equal => return Some(mid),
+                }
+            }
+            return None;
+        }
+        let matches = self.matches(filter).to_vec();
+        let found = matches.binary_search_by(|&index| self.source.row(u64::from(index)).seq.cmp(&seq)).ok()?;
+        Some(found as u64)
+    }
+
     /// Positions of all events matching the filter, computed once per filter.
     fn matches(&mut self, filter: &EventFilter) -> &[u32] {
         let stale = self.cached.as_ref().is_none_or(|(cached, _)| cached != filter);
         if stale {
             let needle = filter.text.as_deref().map(str::to_lowercase).filter(|text| !text.is_empty());
             let category = filter.category.as_deref().filter(|c| !c.is_empty());
+            let action = filter.action.as_deref().filter(|a| !a.is_empty());
             let mut found = Vec::new();
             for index in 0..self.source.len() {
                 if category.is_some_and(|wanted| self.source.category(index) != wanted) {
+                    continue;
+                }
+                if action.is_some_and(|wanted| self.source.row(index).action != wanted) {
                     continue;
                 }
                 if let Some(needle) = &needle {
@@ -81,12 +118,30 @@ impl EventStore {
 }
 
 fn is_empty_filter(filter: &EventFilter) -> bool {
-    filter.category.as_deref().is_none_or(str::is_empty) && filter.text.as_deref().is_none_or(str::is_empty)
+    filter.category.as_deref().is_none_or(str::is_empty)
+        && filter.action.as_deref().is_none_or(str::is_empty)
+        && filter.text.as_deref().is_none_or(str::is_empty)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actions_and_positions() {
+        let mut events = store(10_000);
+        let actions = events.actions("net");
+        assert!(!actions.is_empty() && actions.windows(2).all(|w| w[0] < w[1]), "{actions:?}");
+        let all = EventFilter::default();
+        assert_eq!(events.position_of(1234, &all), Some(1234));
+        assert_eq!(events.position_of(99_999, &all), None);
+        let net = EventFilter { category: Some("net".into()), action: Some(actions[0].clone()), text: None };
+        let page = events.page(&PageRequest { offset: 3, limit: 1, filter: net.clone() });
+        let seq = page.rows[0].seq;
+        assert!(page.rows.iter().all(|r| r.category == "net" && r.action == actions[0]));
+        assert_eq!(events.position_of(seq, &net), Some(3), "found within the filtered list");
+        assert_eq!(events.position_of(seq + 1, &net).map(|_| ()), events.page(&PageRequest { offset: 0, limit: 500, filter: net.clone() }).rows.iter().find(|r| r.seq == seq + 1).map(|_| ()));
+    }
     use crate::synthetic::SyntheticEvents;
     use std::time::Instant;
 
@@ -98,7 +153,7 @@ mod tests {
         PageRequest {
             offset,
             limit,
-            filter: EventFilter { category: category.map(String::from), text: text.map(String::from) },
+            filter: EventFilter { category: category.map(String::from), action: None, text: text.map(String::from) },
         }
     }
 

@@ -388,7 +388,7 @@ English is the only language at first, but nothing in the code holds user-visibl
 | 1. Command-line additions | `schema`, `validate`, `--events jsonl`, graceful stop, trace flushing, `--progress`; `protocol` crate; see [gui/PHASE1-PLAN.md](gui/PHASE1-PLAN.md) | Tests for each; event streaming overhead measured |
 | 2. Open, inspect, run, summary | Start, Sample overview, Running, Report summary and indicators; see [gui/PHASE2.md](gui/PHASE2.md) | First user sessions |
 | 3. Config editor | Generated forms, YAML tab, validation, import/export, presets; see [gui/PHASE3-PLAN.md](gui/PHASE3-PLAN.md) | Parity test passes for every option |
-| 4. Full report | Events grid, limits and gaps, files viewer, compare | Second user sessions |
+| 4. Full report | Events grid, limits and gaps, files viewer, compare; see [gui/PHASE4-PLAN.md](gui/PHASE4-PLAN.md) | Second user sessions |
 | 5. Packaging | jlink runtime, bundled bridge, installers, Linux isolation, GPG-signed Linux packages, unsigned-install instructions | Clean install and first run on fresh Windows 11 and Ubuntu LTS machines |
 | 6. Accessibility audit | Full manual script, fixes, accessibility statement | No open AA issues |
 

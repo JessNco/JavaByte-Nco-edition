@@ -1,12 +1,13 @@
 //! Report: what the sample did. Tabs for the summary, the indicators and every event.
 
 use crate::app::{EventsPanel, flow};
+use crate::screens::report_more::{FilesPanel, LimitsPanel, SettingsUsedPanel};
 use crate::util::{Disclosure, copied_message, copy_text, focus_id, fmt_num};
 use javabyte_gui_protocol::{display_text, t};
 use leptos::prelude::*;
 
 /// Tab stems; each tab's label is the message `report-tab-<stem>`.
-const TABS: [&str; 3] = ["summary", "indicators", "events"];
+const TABS: [&str; 6] = ["summary", "indicators", "events", "limits", "files", "settings"];
 /// Characters of one indicator shown before "show all" is needed; the full text is in the file.
 const ITEM_CHARS: usize = 300;
 
@@ -41,6 +42,9 @@ pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
         <h2 id="report-heading" tabindex="-1">
             {move || t!("report-heading", name = flow.report.with(|r| r.as_ref().map(|r| display_text(&r.sample_name, 120).text).unwrap_or_default()))}
         </h2>
+        <div class="buttons">
+            <button type="button" on:click=move |_| crate::app::show(crate::app::Screen::Compare)>{t!("report-compare")}</button>
+        </div>
         <div role="tablist" aria-label=t!("report-tabs") class="tablist" on:keydown=on_tab_key>
             {TABS.iter().enumerate().map(|(index, stem)| view! {
                 <button
@@ -147,6 +151,15 @@ pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
 
         <div role="tabpanel" id="report-panel-events" aria-labelledby="report-tab-events" hidden=move || active.get() != 2>
             <EventsPanel visible=Signal::derive(move || visible.get() && active.get() == 2) reload=Signal::derive(move || flow.report.with(|r| r.as_ref().map(|r| r.output_dir.clone()))) />
+        </div>
+        <div role="tabpanel" id="report-panel-limits" aria-labelledby="report-tab-limits" hidden=move || active.get() != 3>
+            <LimitsPanel />
+        </div>
+        <div role="tabpanel" id="report-panel-files" aria-labelledby="report-tab-files" hidden=move || active.get() != 4>
+            <FilesPanel visible=Signal::derive(move || visible.get() && active.get() == 4) />
+        </div>
+        <div role="tabpanel" id="report-panel-settings" aria-labelledby="report-tab-settings" hidden=move || active.get() != 5>
+            <SettingsUsedPanel />
         </div>
     }
 }

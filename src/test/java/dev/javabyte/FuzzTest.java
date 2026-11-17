@@ -222,6 +222,47 @@ class FuzzTest {
         report(failures, ITERATIONS);
     }
 
+    /**
+     * {@code javabyte disasm} reads class files from samples and from what samples create, so
+     * damaged or hostile ones must give a clean error in bounded time, never a crash or a hang.
+     */
+    @Test
+    void corruptedClassFilesNeverCrashTheDisassembler() throws Exception {
+        Random random = new Random(SEED);
+        List<String> failures = new ArrayList<>();
+        List<byte[]> originals = new ArrayList<>(classes(Basics.class).values());
+        originals.addAll(classes(Advanced.class).values());
+        int total = ITERATIONS * 4;
+        for (int i = 0; i < total; i++) {
+            byte[] bytes = originals.get(random.nextInt(originals.size())).clone();
+            switch (random.nextInt(4)) {
+                case 0 -> bytes = java.util.Arrays.copyOf(bytes, 4 + random.nextInt(bytes.length - 4));
+                case 1 -> {
+                    random.nextBytes(bytes);
+                    bytes[0] = (byte) 0xCA; bytes[1] = (byte) 0xFE; bytes[2] = (byte) 0xBA; bytes[3] = (byte) 0xBE;
+                }
+                default -> {
+                    for (int flips = 1 + random.nextInt(8); flips > 0; flips--) {
+                        bytes[10 + random.nextInt(bytes.length - 10)] = (byte) random.nextInt(256);
+                    }
+                }
+            }
+            long started = System.nanoTime();
+            try {
+                dev.javabyte.cli.DisassemblyAccess.text(bytes);
+            } catch (dev.javabyte.config.ConfigLoader.ConfigException expected) {
+                // A clean, explained refusal.
+            } catch (Throwable t) {
+                failures.add("iteration " + i + ": " + t);
+            }
+            long millis = (System.nanoTime() - started) / 1_000_000;
+            if (millis > 5_000) {
+                failures.add("iteration " + i + " took " + millis + " ms");
+            }
+        }
+        report(failures, total);
+    }
+
     @Test
     void seedAndIterationCountAreUsable() {
         assertTrue(ITERATIONS > 0, "javabyte.fuzz.iterations must be positive");

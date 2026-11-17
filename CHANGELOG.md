@@ -6,6 +6,8 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- `javabyte disasm FILE [--class NAME]`: a class file, or one class in a jar, as readable
+  instructions. It only parses; damaged classes give a clean error (exit code 2).
 - Desktop app, phase 3: a Settings screen for every option, with forms built from the tool's
   schema and the same settings as YAML (comments kept), problems shown at their fields, nine
   presets for common next steps plus saved presets, import, export and copy as command line.

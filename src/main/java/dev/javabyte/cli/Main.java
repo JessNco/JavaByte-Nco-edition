@@ -35,7 +35,7 @@ import picocli.CommandLine.Parameters;
 @Command(name = "javabyte", mixinStandardHelpOptions = true, versionProvider = Main.Version.class,
         description = "Emulates JVM bytecode to analyse untrusted Java code without running it on a real JVM.",
         subcommands = {Main.Run.class, Main.Inspect.class, Main.Init.class, Main.Validate.class, Main.Schema.class,
-                Main.Defaults.class, Main.Policy.class})
+                Main.Defaults.class, Main.Policy.class, Main.Disasm.class})
 public final class Main {
 
     static final int EXIT_OK = 0;
@@ -237,6 +237,23 @@ public final class Main {
         public Integer call() throws Exception {
             Inspection inspection = Inspection.of(Path.of(sample));
             System.out.println(json ? ConfigLoader.json().writeValueAsString(inspection.toMap()) : inspection.toText());
+            return EXIT_OK;
+        }
+    }
+
+    /** A class file as readable instructions. Parses only: nothing in it runs. */
+    @Command(name = "disasm", mixinStandardHelpOptions = true,
+            description = "Print a class file as readable instructions, without running anything. Exit code 0, or 2 if it cannot be read.")
+    static final class Disasm implements Callable<Integer> {
+
+        @Parameters(paramLabel = "FILE", description = "A .class file, or a jar or zip together with --class.") Path file;
+
+        @Option(names = "--class", paramLabel = "NAME", description = "For a jar or zip: the class to print, with dots or slashes.")
+        String className;
+
+        @Override
+        public Integer call() throws Exception {
+            System.out.print(Disassembly.of(file, className));
             return EXIT_OK;
         }
     }

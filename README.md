@@ -70,6 +70,7 @@ java -jar target/javabyte-0.1.0.jar run -c sample.yaml
 | `init SAMPLE` | Print a starter config |
 | `defaults [--json]` | Print every option with its default |
 | `policy` | Print the built-in JDK allow-list |
+| `disasm FILE [--class NAME]` | Print a class (or one class in a jar) as readable instructions; nothing runs |
 
 Ctrl+C during `run` stops the run and still writes the report.
 

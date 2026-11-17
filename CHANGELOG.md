@@ -6,6 +6,15 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- `run --events jsonl`: the run as JSON lines on standard output while it happens (start,
+  event, progress, entry, finish; `streamVersion` 1).
+- `run --progress`: progress about every half second, in the stream or on standard error.
+- `run --control stdin` and Ctrl+C: stop a run early with outcome `stopped`, exit code 0, and
+  the report still written. `RunControl` and `RunListener` offer the same to Java callers.
+- `javabyte validate`: every config problem at once, each with its exact key, with suggestions
+  for misspelt keys.
+- `javabyte schema`: every config option with type, default, allowed values and description,
+  from `@ConfigDoc` annotations that are now the single source for option descriptions.
 - A full test suite, described in docs/TESTING.md: declarative scenarios for simulated and
   real malware, limit and limitation scenarios, generated-bytecode differential tests, contract
   tests for config, commands and the report, seeded fuzzing, and coverage reporting.
@@ -29,6 +38,10 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Package documentation, contributing guide, CI workflow.
 
 ### Changed
+- `trace.log` is flushed after every event, so a killed run keeps its trace.
+- Config errors name list items by position (`network.http[2].url`), and a config with several
+  problems reports all of them.
+- `environment.clockStart` must be an ISO-8601 time; this used to fail only when the run began.
 - `new Date()`, `Calendar.getInstance()` and the `java.time` `now()` methods follow the virtual
   clock. They used to read the real clock, which disagreed with `System.currentTimeMillis`
   after a simulated sleep.

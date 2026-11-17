@@ -71,7 +71,31 @@ Everything here also works for a person; it is just written as a procedure.
 | `artifacts[]` | Files saved under the output directory |
 
 `runs[].outcome` values: `completed`, `uncaught-exception`, `exit`, `sleep-budget`, `blocked`,
-`instruction-limit`, `timeout`, `policy`, `no-entry-point`, `config-error`, `internal-error`.
+`instruction-limit`, `timeout`, `policy`, `stopped`, `no-entry-point`, `config-error`,
+`internal-error`. `stopped` means someone ended the run (`stop` on standard input, or Ctrl+C);
+the report covers everything up to that point.
+
+## Driving a run live
+
+```bash
+java -jar target/javabyte-0.1.0.jar run SAMPLE -o out/run1 --events jsonl --progress --control stdin
+```
+
+- `--events jsonl` writes one JSON object per line to standard output as the run happens; the
+  text summary moves to standard error. Records have a `type`: `start` (stream version, sample),
+  `event` (as in the report's `events[]`), `progress` (with `--progress`: elapsed ms,
+  instructions, events by category, about every half second), `entry` (one per finished entry
+  point, as in `runs[]`), and `finish` (exit code, report path, runs, summary) last. Ignore
+  fields you do not know; `streamVersion` changes only if a reader could break.
+- `--control stdin` lets you send `stop` on standard input to end the run early, keeping the
+  report. Closing standard input does the same.
+
+## Checking a config before running
+
+- `javabyte validate -c FILE --json` returns `{valid, problems: [{key, message}]}` with every
+  problem at once; exit code 0 if valid, 2 if not.
+- `javabyte schema --json` describes every option: `path`, `type`, `default`, `allowed`,
+  `description`. Use it to build a config rather than guessing key names.
 
 Event categories: `process`, `file`, `net`, `class`, `resource`, `reflect`, `crypto`, `string`,
 `native`, `thread`, `system`, `console`, `policy`, `hook`, `gap`, `lifecycle`.
@@ -91,7 +115,7 @@ Useful single events:
 
 ## Exit codes
 
-`0` ran; `1` emulator failure (look for `internal-error` in `runs` and report it as a tool
+`0` ran (including a run stopped on request); `1` emulator failure (look for `internal-error` in `runs` and report it as a tool
 defect); `2` usage or config error (the message names the bad key); `3` instruction or time
 limit reached.
 

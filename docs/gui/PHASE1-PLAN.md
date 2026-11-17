@@ -56,8 +56,10 @@ Records may gain fields; readers ignore fields they do not know.
   run ends after a short grace period, as a timeout does today.
 - **Progress comes from the emulator thread**, at the same checkpoint, so it never reads data
   while it is being changed.
-- **Overhead budget.** The event stream may add at most 2% to run time on the differential
-  fixtures; the measurement is recorded in `docs/TESTING.md`.
+- **Overhead budget.** Under 10 µs per event for the trace and the stream together. (The first
+  version of this plan said "2% on the differential fixtures"; those finish in milliseconds, so
+  a percentage there measures the wrong thing. Measured: about 4 µs and 3 µs; see
+  `docs/TESTING.md`, "Cost of the live features".)
 
 ## Rust side
 
@@ -83,7 +85,7 @@ Records may gain fields; readers ignore fields they do not know.
 - every feature above has tests, and the Java suite passes on Java 17, 21 and 25;
 - the Rust drift check passes;
 - the runner passes on Linux and Windows;
-- the overhead is measured and recorded.
+- the overhead is measured and recorded (done: about 7 µs per event in total).
 
 ## Not in this phase
 

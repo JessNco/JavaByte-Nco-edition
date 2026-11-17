@@ -1,0 +1,13 @@
+{
+  "valid" : false,
+  "problems" : [ {
+    "key" : "limitz",
+    "message" : "Unknown option 'limitz'; did you mean 'limits'?"
+  }, {
+    "key" : "limits.timeoutSeconds",
+    "message" : "limits.timeoutSeconds must be a whole number, found 'soon'"
+  }, {
+    "key" : "network.http[0].url",
+    "message" : "network.http[0].url is required"
+  } ]
+}

@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>This test produces real output from harmless fixtures (the event stream, a report,
  * {@code inspect}, {@code schema} and {@code validate}) and compares it with the copies committed
- * in {@code gui/crates/protocol/tests/samples/}. The Rust tests in that crate read the same
+ * in {@code gui/crates/protocol/tests/tool-output/}. The Rust tests in that crate read the same
  * copies. A change to any format therefore fails here until the samples are regenerated, and
  * then fails in Rust until the GUI's types agree.
  *
@@ -37,7 +37,11 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class ContractSamplesTest {
 
-    static final Path SAMPLES = Path.of("gui/crates/protocol/tests/samples");
+    /**
+     * Not called "samples": the repository ignores every folder of that name, to keep live
+     * malware out of git, and these files must be committed.
+     */
+    static final Path SAMPLES = Path.of("gui/crates/protocol/tests/tool-output");
     private static final boolean UPDATE = Boolean.getBoolean("javabyte.updateSamples")
             || "true".equals(System.getenv("JAVABYTE_UPDATE_SAMPLES"));
 
@@ -179,6 +183,6 @@ class ContractSamplesTest {
 
     @Test
     void samplesFolderIsWhereTheRustTestsLook() {
-        assertEquals(Path.of("gui", "crates", "protocol", "tests", "samples"), SAMPLES);
+        assertEquals(Path.of("gui", "crates", "protocol", "tests", "tool-output"), SAMPLES);
     }
 }

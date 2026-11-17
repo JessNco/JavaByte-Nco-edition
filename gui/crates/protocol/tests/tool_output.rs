@@ -1,6 +1,6 @@
 //! Reads real output of the command-line tool with this crate's types.
 //!
-//! The files in `tests/samples/` are written by the Java test `ContractSamplesTest` from
+//! The files in `tests/tool-output/` are written by the Java test `ContractSamplesTest` from
 //! harmless fixtures, and that test fails if they no longer match the tool's output. These
 //! tests fail if the GUI's types can no longer read them. Together they stop the two sides
 //! drifting apart.
@@ -12,7 +12,7 @@ use javabyte_gui_protocol::stream::{STREAM_VERSION, StreamRecord, parse_line};
 use javabyte_gui_protocol::validate::Validation;
 
 fn sample(name: &str) -> String {
-    std::fs::read_to_string(format!("{}/tests/samples/{name}", env!("CARGO_MANIFEST_DIR")))
+    std::fs::read_to_string(format!("{}/tests/tool-output/{name}", env!("CARGO_MANIFEST_DIR")))
         .unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 

@@ -66,7 +66,7 @@ Records may gain fields; readers ignore fields they do not know.
 - **`protocol` crate:** types for the event stream records, the report, `inspect` output, the
   config schema and `validate` output.
 - **Drift check:** a Java test writes real outputs from harmless fixtures into
-  `gui/crates/protocol/tests/samples/` and fails if they differ from what is committed. The Rust
+  `gui/crates/protocol/tests/tool-output/` and fails if they differ from what is committed. The Rust
   tests read the committed files. A format change on the Java side therefore fails a build
   until both sides agree.
 - **`backend::runner`:** finds Java and the jar, starts a run with the event stream and stop

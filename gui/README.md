@@ -71,7 +71,7 @@ The desktop app embeds the built screens, so build them before testing it:
 cargo test
 ```
 
-`crates/protocol/tests/samples/` holds real output of the command-line tool, written by the Java
+`crates/protocol/tests/tool-output/` holds real output of the command-line tool, written by the Java
 test `ContractSamplesTest`; the Rust tests read it, so the two cannot drift apart. The runner
 tests drive the real tool on harmless fixtures and need it built (`mvn package` at the
 repository root):

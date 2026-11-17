@@ -3,8 +3,8 @@
 //! `validate` output.
 //!
 //! This is the only place the GUI defines the shape of data it passes around, so all sides
-//! agree. The tool's formats are checked against real output: `tests/samples/` is written by the
-//! Java test `ContractSamplesTest`, and `tests/samples.rs` reads it with these types. Readers
+//! agree. The tool's formats are checked against real output: `tests/tool-output/` is written by the
+//! Java test `ContractSamplesTest`, and `tests/tool_output.rs` reads it with these types. Readers
 //! ignore fields they do not know, so the tool may add fields without breaking the GUI.
 //!
 //! Only `serde` and `serde_json` are needed, so the crate compiles for both targets.

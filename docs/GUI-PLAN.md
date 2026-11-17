@@ -30,6 +30,11 @@ Not goals: replacing the command line, downloading samples, running the test cor
 | Accessibility target | WCAG 2.2 AA |
 | Native bridge | Bundled |
 | Samples | Local files only; no MalwareBazaar download, no corpus runner |
+| Saving dropped files | Password-protected zip (`infected`) by default; saving as is only after a very clear warning |
+| Code signing | No certificate yet; release unsigned at first with honest install instructions, and obtain signing before a wide release (see [Code signing](#code-signing)) |
+| Isolation on Windows | A virtual machine is the standard guidance. A built-in sandbox is explored as an optional add-on, not shipped as standard (see [Future: Windows sandbox add-on](#future-windows-sandbox-add-on)) |
+| Runs at once | One analysis at a time |
+| Languages | English first; every piece of text in resource files so translations can be added |
 
 **Why Tauri.** It draws its screens with the system web view (WebView2 on Windows, WebKitGTK on
 Linux), which gives the most mature screen-reader, zoom, high-contrast and keyboard support
@@ -152,6 +157,9 @@ is **Change settings first**.
 - A short live list of the most important events (processes, network, files written, classes
   defined), newest first.
 - **Stop** (keeps results) and a keyboard shortcut for it.
+- Only one analysis runs at a time. While it runs, **Analyse** elsewhere in the app is
+  disabled with a visible reason ("An analysis is running. Stop it or wait for it to finish."),
+  rather than queued or hidden.
 - Screen readers hear a short summary at most every few seconds ("12 events, 1 network
   connection"), never one announcement per event, and a clear message when the run ends.
 
@@ -165,7 +173,7 @@ Tabs, each reachable by keyboard and with its own heading:
 | **Indicators** | Programs started, network (HTTP, connections, DNS), files written, classes defined, native libraries, decrypted strings and crypto output. Each list can be copied as text |
 | **Events** | Every event in an accessible data grid: filter by category and action, full-text search, jump to sequence number. Rows are fetched a page at a time from the backend |
 | **Limits and gaps** | Blocked calls, gap events, dropped-event counts, why the run stopped, each with what it means and what to try next |
-| **Files** | Artifacts: dropped files, defined classes, network payloads. View as text or hex inside the app; save a copy (see open questions) |
+| **Files** | Artifacts: dropped files, defined classes, network payloads. View as text or hex inside the app; save a copy (see [Saving files a sample produced](#saving-files-a-sample-produced)) |
 | **Settings used** | The effective config, with **Run again with changes** |
 
 **Compare runs** puts two reports side by side and lists what was added or removed per
@@ -276,7 +284,32 @@ neither eyes nor screen readers are misled.
 - **Linux isolation**: runs start in a network namespace with no network by default, as
   `scripts/run-isolated.sh` does today. The setting can be turned off, with an explanation.
 - **Windows** has no equivalent that works without administrator rights. The GUI says so
-  plainly and recommends a virtual machine (see open questions).
+  plainly on the first run and in Preferences, and recommends running JavaByte inside a
+  virtual machine. A built-in sandbox may come later as an add-on (see below).
+
+### Saving files a sample produced
+
+Dropped files, payloads and run-time-defined classes may be live malware: a dropped `.jar` or
+`.exe` is exactly what the sample meant to run.
+
+- **Default: password-protected zip.** **Save a copy** writes a zip encrypted with AES-256 and
+  the password `infected`, the convention MalwareBazaar and most analysis tools use. The zip
+  holds the file under its original name plus a small text file with its SHA-256, the run it
+  came from and a warning. Several files can be saved into one zip. ZipCrypto (the old, weak
+  zip encryption) is not used, so the archive also passes mail and antivirus filters that
+  reject it.
+- **Save as is, behind a very clear warning.** A separate, secondary button, never the
+  default. It opens an alert dialog that:
+  - says in plain words what the file is and what can happen if it is opened ("This file was
+    created by the sample. It may be malware. Opening it may infect this computer.");
+  - gives the file's name, type and SHA-256;
+  - requires ticking "I understand this file may be harmful" before **Save as is** becomes
+    available, and puts keyboard focus on **Cancel**;
+  - uses no countdown or timer, so it works for everyone (WCAG 2.2.1), and is announced in
+    full by screen readers (`role="alertdialog"`, with the warning as its description).
+  The choice is recorded in the run's log. The warning cannot be switched off permanently.
+- The GUI never offers to open a saved file, and never saves into the folder the sample came
+  from.
 
 ## Packaging
 
@@ -287,11 +320,50 @@ neither eyes nor screen readers are misled.
 | Java | `jlink` runtime with only the modules JavaByte uses | same |
 | Native bridge | Bundled standalone Python with Speakeasy and Unicorn, wheels pre-built in CI | same |
 
+### Code signing
+
+There is no code-signing certificate yet. Without one, Windows SmartScreen shows "Windows
+protected your PC" when the installer is first run, which is likely to put off the people this
+GUI is for. The plan:
+
+1. **Early releases unsigned**, with install instructions on the download page and in the
+   README that show the SmartScreen screen, explain why it appears, and list the SHA-256 of
+   each installer so it can be checked. Linux packages are signed with a GPG key, which needs
+   no certificate authority.
+2. **Before a wide release, obtain signing.** Options to compare at that time, as prices and
+   eligibility change:
+   - **Microsoft's cloud signing service** (Azure Trusted Signing): low monthly cost and no
+     hardware token, but eligibility for individuals depends on country and identity checks.
+   - **SignPath Foundation**: free signing for open-source projects that meet its conditions,
+     with signing done in CI from the public repository.
+   - **A standard OV certificate** from a certificate authority: requires a hardware token or
+     cloud key storage under current rules.
+   Note that since 2024 no type of certificate, including EV, gives immediate SmartScreen
+   reputation; a signed installer builds reputation as people install it.
+3. The release pipeline is built so that signing is one added step: unsigned and signed builds
+   come from the same CI job.
+
 Rough sizes: app 10–15 MB, Java runtime 40–60 MB, JavaByte 4 MB, native bridge 150–250 MB.
 Total roughly 200–330 MB installed. The bridge is most of it; it can become a separate
 download later without changing the design.
 
 The Java tool and the GUI share one version number and are released together.
+
+## Text and translation
+
+English is the only language at first, but nothing in the code holds user-visible text.
+
+- All text lives in [Fluent](https://projectfluent.org/) resource files (`gui/ui/locales/en/`),
+  read through the `fluent` crates. Fluent handles plurals and grammar properly ("1 file",
+  "3 files"), which matters for the plain-language summaries.
+- The page's `lang` attribute is set from the active language, so screen readers use the right
+  voice and pronunciation. Text that comes from a sample is marked as of unknown language.
+- Labels, help text, errors and the plain-language summaries all come from the resource files.
+  A test fails if a screen contains text that is not from a resource.
+- Layouts allow for text up to twice as long as the English, which translations often need and
+  which also covers large text sizes.
+- A short writing guide sits next to the English resources: plain words, short sentences,
+  terms explained on first use, the same word for the same thing everywhere.
 
 ## Phases
 
@@ -302,7 +374,7 @@ The Java tool and the GUI share one version number and are released together.
 | 2. Open, inspect, run, summary | Start, Sample overview, Running, Report summary and indicators | First user sessions |
 | 3. Config editor | Generated forms, YAML tab, validation, import/export, presets | Parity test passes for every option |
 | 4. Full report | Events grid, limits and gaps, files viewer, compare | Second user sessions |
-| 5. Packaging | jlink runtime, bundled bridge, installers, Linux isolation | Clean install and first run on fresh Windows 11 and Ubuntu LTS machines |
+| 5. Packaging | jlink runtime, bundled bridge, installers, Linux isolation, GPG-signed Linux packages, unsigned-install instructions | Clean install and first run on fresh Windows 11 and Ubuntu LTS machines |
 | 6. Accessibility audit | Full manual script, fixes, accessibility statement | No open AA issues |
 
 ## Testing
@@ -323,19 +395,37 @@ The Java tool and the GUI share one version number and are released together.
 | Accessible data grids are hard to get right | Use the ARIA grid pattern as written, test with both screen readers in phase 0, and offer a plain paginated table view as an alternative |
 | Leptos and Tauri change faster than the Java side | Pin versions; the `protocol` and `backend` crates do not depend on either |
 | Bundled Python adds size and update work | Pre-built in CI from pinned versions; can later move to a separate download |
-| An analyst exports a dropped file and runs it | See open question on exports |
+| An analyst exports a dropped file and runs it | Encrypted zip by default; "save as is" only after an explicit warning; the GUI never opens saved files |
+| Unsigned installer puts off new users | Clear install instructions with published hashes now; signing before a wide release |
 
-## Open questions
+## Future: Windows sandbox add-on
 
-1. **Exporting dropped files.** Should "save a copy" write files as they are, or inside a zip
-   with the password `infected` (the MalwareBazaar convention) so they cannot be run by
-   accident? Recommendation: zip by default, with "save as is" behind a warning.
-2. **Code signing on Windows.** Unsigned installers trigger SmartScreen warnings, which put off
-   exactly the users this GUI is for. Is a code-signing certificate available?
-3. **Windows isolation.** Accept "use a virtual machine" as the guidance, or invest in
-   something stronger (for example an AppContainer launcher, which is a significant piece of
-   work)?
-4. **Several runs at once.** One analysis at a time is simpler and clearer for screen-reader
-   users. Is running two side by side needed?
-5. **Languages.** English only at first, with all text in resource files so translations can
-   be added? Any languages needed from the start?
+Not part of the first release. On Windows the standard guidance stays "run JavaByte in a
+virtual machine". This section records what an optional add-on could look like, so that the
+first release leaves room for it.
+
+**What it would add.** On Linux, runs already have no network. The add-on would give Windows a
+comparable second layer: if the emulator ever had a flaw, the Java process still could not
+reach the network or most of the disk.
+
+**Room left in the first release.** The backend starts Java through a small "launcher"
+interface. The first release has two launchers: plain (Windows) and network namespace (Linux).
+An add-on supplies another launcher, and Preferences lists whichever are installed. Nothing
+else in the GUI needs to change.
+
+**Options to explore**
+
+| Option | How it works | Needs administrator rights | Strengths | Weaknesses |
+| --- | --- | --- | --- | --- |
+| AppContainer | Starts Java in a Windows AppContainer with no network capability and access only to the sample, the runtime and the output folder | No | Built into Windows 10/11 Home and up; light; nothing to install | Folder permissions must be granted per run; Java and the bundled Python must be tested inside it; significant engineering |
+| Windows Sandbox | Starts a throwaway Windows desktop from a `.wsb` file with networking off and only the sample and output folders mapped | No, once the feature is enabled (enabling it does need administrator rights) | Strong isolation from Microsoft; everything inside is discarded afterwards | Windows Pro, Enterprise or Education only; virtualisation must be on; slower start (tens of seconds); one sandbox at a time |
+| Restricted token and job object | Starts Java with a reduced-privilege token, in a job object limiting processes and memory | No | Simple; works on every edition | No network blocking on its own; weaker than the others |
+| Firewall rule for the bundled Java | Blocks network access for the bundled `java.exe` | Yes, once at install time | Easy to understand | Needs administrator rights; network only |
+
+A likely shape is a separately downloaded add-on that offers AppContainer where it works and
+Windows Sandbox where it is available, with job-object limits in both. It would ship only after
+its own escape testing, along the lines of the existing `EscapeTest`, run inside each launcher.
+
+**Questions for then:** which Windows editions to support; whether a slower but stronger
+option (Windows Sandbox) is acceptable for the people using it; and how the add-on is
+distributed and signed.

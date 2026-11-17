@@ -13,7 +13,10 @@ mod egress_probe;
 
 use javabyte_gui_backend::runner::Launcher;
 use javabyte_gui_backend::session::Session;
-use javabyte_gui_protocol::views::{EngineStatus, EntryChoice, Overview, RecentRun, ReportView, SampleChoice};
+use javabyte_gui_protocol::t;
+use javabyte_gui_protocol::schema::Schema;
+use javabyte_gui_protocol::validate::Validation;
+use javabyte_gui_protocol::views::{EngineStatus, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -46,9 +49,9 @@ async fn choose_sample(app: tauri::AppHandle) -> Result<Option<SampleChoice>, St
     let picked = app
         .dialog()
         .file()
-        .set_title("Choose a sample to analyse")
-        .add_filter("Java programs and classes", &["jar", "zip", "class"])
-        .add_filter("All files", &["*"])
+        .set_title(t!("picker-sample"))
+        .add_filter(t!("picker-java-files"), &["jar", "zip", "class"])
+        .add_filter(t!("picker-all-files"), &["*"])
         .blocking_pick_file();
     match picked.and_then(|p| p.into_path().ok()) {
         Some(path) => Session::choose(&path).map(Some),
@@ -59,7 +62,7 @@ async fn choose_sample(app: tauri::AppHandle) -> Result<Option<SampleChoice>, St
 /// The same picker for a folder of classes.
 #[tauri::command]
 async fn choose_sample_folder(app: tauri::AppHandle) -> Result<Option<SampleChoice>, String> {
-    match app.dialog().file().set_title("Choose a folder of classes").blocking_pick_folder().and_then(|p| p.into_path().ok()) {
+    match app.dialog().file().set_title(t!("picker-folder")).blocking_pick_folder().and_then(|p| p.into_path().ok()) {
         Some(path) => Session::choose(&path).map(Some),
         None => Ok(None),
     }
@@ -80,14 +83,107 @@ async fn inspect_sample(sample: SampleChoice, state: tauri::State<'_, AppState>)
 }
 
 #[tauri::command]
-fn command_line(sample: SampleChoice, entry: EntryChoice) -> String {
-    Session::command_line(&sample, &entry)
+fn command_line(state: tauri::State<'_, AppState>) -> String {
+    session(&state).command_line()
 }
 
 #[tauri::command]
-fn start_run(sample: SampleChoice, entry: EntryChoice, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    Session::choose(Path::new(&sample.path))?;
-    session(&state).start(sample, &entry)
+fn start_run(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    session(&state).start()
+}
+
+// --- Settings ---
+
+#[tauri::command]
+fn settings_text(state: tauri::State<'_, AppState>) -> Option<String> {
+    session(&state).settings_text()
+}
+
+#[tauri::command]
+fn set_settings_text(text: String, state: tauri::State<'_, AppState>) {
+    session(&state).set_settings_text(text)
+}
+
+#[tauri::command]
+async fn config_schema(state: tauri::State<'_, AppState>) -> Result<Schema, String> {
+    session(&state).schema()
+}
+
+#[tauri::command]
+async fn check_settings(text: String, state: tauri::State<'_, AppState>) -> Result<Validation, String> {
+    // The check runs the tool for about a second; the session is held only to read what it
+    // needs, so the Running screen's updates are not held up.
+    let checker = session(&state).checker()?;
+    checker.check(&text)
+}
+
+#[tauri::command]
+fn presets(state: tauri::State<'_, AppState>) -> Vec<Preset> {
+    session(&state).presets()
+}
+
+#[tauri::command]
+fn presets_folder(state: tauri::State<'_, AppState>) -> String {
+    session(&state).presets_folder().display().to_string()
+}
+
+#[tauri::command]
+fn save_preset(name: String, text: String, state: tauri::State<'_, AppState>) -> Result<Preset, String> {
+    session(&state).save_preset(&name, &text)
+}
+
+#[tauri::command]
+fn load_preset(name: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    session(&state).load_preset(&name)
+}
+
+#[tauri::command]
+fn delete_preset(name: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    session(&state).delete_preset(&name)
+}
+
+/// Opens a settings file the person picks in the system picker.
+#[tauri::command]
+async fn import_settings(app: tauri::AppHandle) -> Result<Option<Imported>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_title(t!("picker-import"))
+        .add_filter(t!("picker-settings-files"), &["yaml", "yml", "json"])
+        .add_filter(t!("picker-all-files"), &["*"])
+        .blocking_pick_file();
+    match picked.and_then(|p| p.into_path().ok()) {
+        Some(path) => Session::import(&path).map(Some),
+        None => Ok(None),
+    }
+}
+
+/// Saves the settings where the person chooses in the system picker. `true` if saved.
+#[tauri::command]
+async fn export_settings(text: String, app: tauri::AppHandle) -> Result<bool, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_title(t!("picker-export"))
+        .set_file_name("javabyte-settings.yaml")
+        .add_filter(t!("picker-settings-files"), &["yaml", "yml"])
+        .blocking_save_file();
+    match picked.and_then(|p| p.into_path().ok()) {
+        Some(path) => Session::export(&path, &text).map(|()| true),
+        None => Ok(false),
+    }
+}
+
+/// A file on this computer for a setting that reads one (a reply body, a file for the pretend
+/// disk). Only the path is returned; the tool reads the file when it runs.
+#[tauri::command]
+async fn choose_host_file(app: tauri::AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title(t!("picker-host-file"))
+        .blocking_pick_file()
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.display().to_string())
 }
 
 #[tauri::command]
@@ -139,10 +235,7 @@ fn find_engine() -> Result<Launcher, String> {
             }
         }
     }
-    let jar = candidates.into_iter().find(|p| p.is_file()).ok_or(
-        "The analysis engine (javabyte.jar) was not found. Set JAVABYTE_JAR to its location, or build it with \
-         'mvn package' in the JavaByte folder.",
-    )?;
+    let jar = candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| t!("error-engine-missing"))?;
     let launcher = Launcher::find(jar)?;
     // Java must answer before anything is promised to the person.
     let works = std::process::Command::new(&launcher.java)
@@ -154,9 +247,7 @@ fn find_engine() -> Result<Launcher, String> {
     if works {
         Ok(launcher)
     } else {
-        Err("Java 17 or later is needed and was not found. Install it, or set JAVA_HOME to it. (The installer will \
-             include it.)"
-            .into())
+        Err(t!("error-java-missing"))
     }
 }
 
@@ -190,7 +281,9 @@ fn main() {
     macro_rules! commands {
         ($($extra:path),*) => {
             tauri::generate_handler![engine_status, choose_sample, choose_sample_folder, take_dropped, inspect_sample,
-                command_line, start_run, run_status, stop_run, current_report, recent_runs, open_recent, events_page $(, $extra)*]
+                command_line, start_run, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
+                settings_text, set_settings_text, config_schema, check_settings, presets, presets_folder, save_preset,
+                load_preset, delete_preset, import_settings, export_settings, choose_host_file $(, $extra)*]
         };
     }
     #[cfg(not(feature = "egress-probe"))]

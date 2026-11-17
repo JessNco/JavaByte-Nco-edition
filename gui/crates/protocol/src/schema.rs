@@ -7,6 +7,17 @@ use serde::{Deserialize, Serialize};
 pub struct Schema {
     pub schema_version: u32,
     pub options: Vec<ConfigOption>,
+    /// Plugins the tool has, with their settings (paths relative to `plugins.<id>`).
+    #[serde(default)]
+    pub plugins: Vec<PluginSchema>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PluginSchema {
+    pub id: String,
+    pub description: String,
+    #[serde(default)]
+    pub settings: Vec<ConfigOption>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

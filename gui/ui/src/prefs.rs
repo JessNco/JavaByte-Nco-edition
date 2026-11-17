@@ -4,6 +4,7 @@
 //! system settings do not suit this app, and they are remembered in the web view's storage.
 
 use crate::util::announcer;
+use javabyte_gui_protocol::t;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -80,21 +81,18 @@ pub fn DisplayPanel() -> impl IntoView {
             p.save();
         });
     };
-    let themes = [
-        ("system", "Follow the system setting"),
-        ("light", "Light"),
-        ("dark", "Dark"),
-        ("contrast", "High contrast"),
-    ];
+    // Each theme's label is the message `theme-<value>`.
+    let themes = ["system", "light", "dark", "contrast"];
     view! {
-        <h2 id="display-heading" tabindex="-1">"Display settings"</h2>
-        <p>"Changes apply at once and are remembered. By default the app follows your system settings."</p>
+        <h2 id="display-heading" tabindex="-1">{t!("display-heading")}</h2>
+        <p>{t!("display-intro")}</p>
         <fieldset>
-            <legend>"Colours"</legend>
+            <legend>{t!("display-colours")}</legend>
             {themes
                 .into_iter()
-                .map(|(value, label)| {
+                .map(|value| {
                     let id = format!("theme-{value}");
+                    let label = javabyte_gui_protocol::i18n::tr(&format!("theme-{value}"), None);
                     view! {
                         <div class="choice">
                             <input
@@ -112,8 +110,8 @@ pub fn DisplayPanel() -> impl IntoView {
                 .collect_view()}
         </fieldset>
         <div class="field">
-            <label for="text-size">"Text size"</label>
-            <p class="hint" id="text-size-hint">"Relative to your system's text size. Browser zoom (Control and plus) also works."</p>
+            <label for="text-size">{t!("display-text-size")}</label>
+            <p class="hint" id="text-size-hint">{t!("display-text-size-hint")}</p>
             <select
                 id="text-size"
                 aria-describedby="text-size-hint"
@@ -127,7 +125,7 @@ pub fn DisplayPanel() -> impl IntoView {
                     .map(|size| {
                         view! {
                             <option value=size.to_string() selected=move || prefs.with(|p| p.text_size == size)>
-                                {format!("{size}%")}
+                                {t!("display-text-size-option", percent = size)}
                             </option>
                         }
                     })
@@ -135,7 +133,7 @@ pub fn DisplayPanel() -> impl IntoView {
             </select>
         </div>
         <div class="field">
-            <label for="motion">"Animation"</label>
+            <label for="motion">{t!("display-animation")}</label>
             <select
                 id="motion"
                 on:change=move |ev| {
@@ -143,13 +141,13 @@ pub fn DisplayPanel() -> impl IntoView {
                     update(Box::new(move |p| p.motion = motion));
                 }
             >
-                <option value="system" selected=move || prefs.with(|p| p.motion == "system")>"Follow the system setting"</option>
-                <option value="reduce" selected=move || prefs.with(|p| p.motion == "reduce")>"Always reduce"</option>
+                <option value="system" selected=move || prefs.with(|p| p.motion == "system")>{t!("motion-system")}</option>
+                <option value="reduce" selected=move || prefs.with(|p| p.motion == "reduce")>{t!("motion-reduce")}</option>
             </select>
         </div>
         <div class="field">
-            <label for="announce-every">"Progress announcements for screen readers"</label>
-            <p class="hint" id="announce-every-hint">"How often a running analysis reports its progress. The start and the end are always announced."</p>
+            <label for="announce-every">{t!("display-announce")}</label>
+            <p class="hint" id="announce-every-hint">{t!("display-announce-hint")}</p>
             <select
                 id="announce-every"
                 aria-describedby="announce-every-hint"
@@ -158,9 +156,10 @@ pub fn DisplayPanel() -> impl IntoView {
                     update(Box::new(move |p| p.announce_every = seconds));
                 }
             >
-                {[(5u32, "Every 5 seconds"), (15, "Every 15 seconds"), (30, "Every 30 seconds"), (0, "Only start and finish")]
+                {[5u32, 15, 30, 0]
                     .into_iter()
-                    .map(|(seconds, label)| {
+                    .map(|seconds| {
+                        let label = if seconds == 0 { t!("announce-never") } else { t!("announce-every", seconds = seconds) };
                         view! {
                             <option value=seconds.to_string() selected=move || prefs.with(|p| p.announce_every == seconds)>
                                 {label}
@@ -174,10 +173,10 @@ pub fn DisplayPanel() -> impl IntoView {
             type="button"
             on:click=move |_| {
                 update(Box::new(|p| *p = Preferences::default()));
-                announcer().say("Display settings reset to follow the system.");
+                announcer().say(t!("display-reset-done"));
             }
         >
-            "Reset to system settings"
+            {t!("display-reset")}
         </button>
     }
 }

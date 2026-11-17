@@ -77,7 +77,7 @@ impl Simulation {
             events: produced,
             by_category,
             notable: self.notable(produced),
-            ended: outcome.as_deref().map(|o| javabyte_gui_protocol::report::describe_outcome(o).to_string()),
+            ended: outcome.as_deref().map(|o| javabyte_gui_protocol::report::describe_outcome(o)),
             report_ready: outcome.is_some(),
             outcome,
             sample_name: "example.jar".into(),

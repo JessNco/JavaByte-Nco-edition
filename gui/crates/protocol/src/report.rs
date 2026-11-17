@@ -67,20 +67,11 @@ pub struct Summary {
 }
 
 /// What a run's outcome means, in plain words, for people who have not read the manual.
-pub fn describe_outcome(outcome: &str) -> &'static str {
-    match outcome {
-        "completed" => "The sample ran to its end.",
-        "uncaught-exception" => "The sample stopped with an error it did not handle.",
-        "exit" => "The sample ended itself.",
-        "sleep-budget" => "The sample kept waiting, so the analysis moved on. It was probably waiting for an answer from a server.",
-        "blocked" => "The sample waited for something that would never happen, so the analysis moved on.",
-        "instruction-limit" => "The analysis reached its instruction limit before the sample finished.",
-        "timeout" => "The analysis reached its time limit before the sample finished.",
-        "policy" => "The analysis stopped the sample because of a safety rule.",
-        "stopped" => "You stopped the analysis. Everything found until then is kept.",
-        "no-entry-point" => "There was nowhere to start: the sample names no main class. Choose where to start in the settings.",
-        "config-error" => "The settings have a problem; nothing was run.",
-        "internal-error" => "The analysis tool itself failed. This is a fault in the tool, not something the sample did.",
-        _ => "The analysis ended in a way this version of the app does not know.",
-    }
+pub fn describe_outcome(outcome: &str) -> String {
+    const KNOWN: &[&str] = &[
+        "completed", "uncaught-exception", "exit", "sleep-budget", "blocked", "instruction-limit", "timeout",
+        "policy", "stopped", "no-entry-point", "config-error", "internal-error",
+    ];
+    let id = if KNOWN.contains(&outcome) { format!("outcome-{outcome}") } else { "outcome-unknown".into() };
+    crate::i18n::tr(&id, None)
 }

@@ -9,3 +9,7 @@ license.workspace = true
 javabyte-gui-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+yaml-edit = { version = "0.3.6", default-features = false }
+
+[dev-dependencies]
+serde_yaml = "0.9"

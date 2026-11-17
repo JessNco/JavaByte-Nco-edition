@@ -1,0 +1,27 @@
+# JavaByte config for example.jar
+# Run with: javabyte run -c <this file>. Every option: javabyte defaults
+sample: 'C:\Samples\example.jar'
+
+entryPoints:
+  - type: main
+    class: dev.javabyte.guest.NativeUser
+    args: []
+  # Uncomment to also run every static initialiser (harvests decrypted strings):
+  # - type: clinit-sweep
+
+limits:
+  timeoutSeconds: 120
+  maxSleeps: 40        # ends beacon loops
+
+environment:
+  os: windows          # or linux
+  userName: admin
+  # files:             # files the sample should find
+  #   - path: 'C:\Users\admin\AppData\Roaming\config.dat'
+  #     text: 'example'
+
+network:
+  mode: respond        # or offline
+  # http:              # canned answers; first matching rule wins
+  #   - url: 'example\.com/gate'
+  #     body: 'OK'

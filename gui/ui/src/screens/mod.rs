@@ -4,4 +4,5 @@
 pub mod overview;
 pub mod report;
 pub mod running;
+pub mod settings;
 pub mod start;

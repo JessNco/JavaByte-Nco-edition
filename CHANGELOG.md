@@ -6,6 +6,12 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Desktop app, phase 3: a Settings screen for every option, with forms built from the tool's
+  schema and the same settings as YAML (comments kept), problems shown at their fields, nine
+  presets for common next steps plus saved presets, import, export and copy as command line.
+  All app text now comes from translatable resource files. See docs/gui/PHASE3-PLAN.md.
+- `schema --json` lists plugins with their descriptions and settings
+  (`EmulatorPlugin.description()` and `settings()`).
 - Desktop app (`gui/`), phase 2: open a sample (picker, drag and drop, or on the command
   line), see what it is and choose where to start, watch and stop the analysis, and read the
   report's summary, indicators and events. Recent analyses can be reopened. See

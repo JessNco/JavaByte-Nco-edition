@@ -3,11 +3,14 @@
 A graphical interface for JavaByte, for people who prefer not to use a command line. The design
 is in [docs/GUI-PLAN.md](../docs/GUI-PLAN.md).
 
-**Status: phase 2.** The app opens a sample, shows what it is, runs the analysis with the
-command-line tool, and shows the report's summary, indicators and events. The settings editor
-(phase 3) and the remaining report tabs (phase 4) come next. What is built and how it is tested
-is in [docs/gui/PHASE2.md](../docs/gui/PHASE2.md); the phase 0 accessibility trial and its
-result are in [docs/gui/PHASE0-TESTING.md](../docs/gui/PHASE0-TESTING.md).
+**Status: phase 3.** The app opens a sample, shows what it is, lets people change every setting
+(forms or YAML), runs the analysis with the command-line tool, and shows the report's summary,
+indicators and events. The remaining report tabs come in phase 4. What each phase built and how
+it is tested: [phase 2](../docs/gui/PHASE2.md), [phase 3](../docs/gui/PHASE3-PLAN.md); the
+phase 0 accessibility trial and its result are in
+[docs/gui/PHASE0-TESTING.md](../docs/gui/PHASE0-TESTING.md).
+
+All text the app shows is in [`locales/en/`](locales/en/), with a short writing guide.
 
 The app needs `java` on the path and the tool's jar: set `JAVABYTE_JAR`, put `javabyte.jar`
 next to the app, or build it with `mvn package` at the repository root.
@@ -16,9 +19,10 @@ next to the app, or build it with `mvn package` at the repository root.
 
 | Folder | What | Built with |
 | --- | --- | --- |
-| `crates/protocol` | Data types shared by screens and backend; safe display of untrusted text | Rust |
-| `crates/backend` | Starting and watching the command-line tool (`runner`); one window's sample, run, report and recent list (`session`); event storage, filtering and paging; report reading; the pretend run for browser tests | Rust, no UI code |
+| `crates/protocol` | Data types shared by screens and backend; safe display of untrusted text; the text resources (`i18n`); the settings form's layout (`form`) | Rust |
+| `crates/backend` | Starting and watching the command-line tool (`runner`); one window's sample, settings, run, report and recent list (`session`); settings as YAML edited in place (`config`); event storage, filtering and paging; report reading; the pretend run for browser tests | Rust, no UI code |
 | `ui` | The screens | Rust (Leptos), compiled to WebAssembly with Trunk |
+| `locales` | Every word the app shows, per language | Fluent |
 | `app` | The desktop window and the commands the screens may call | Rust (Tauri 2) |
 | `tests/a11y` | Automated accessibility checks in Chromium | Node.js, Playwright, axe-core |
 | `tests/atspi` | What the Linux accessibility bus receives from the real window | Python, AT-SPI |

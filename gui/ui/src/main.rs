@@ -5,6 +5,7 @@ mod bridge;
 mod events;
 mod prefs;
 mod screens;
+mod settings;
 mod util;
 
 fn main() {

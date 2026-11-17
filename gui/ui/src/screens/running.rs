@@ -7,7 +7,7 @@ use crate::app::{Screen, flow, open_report};
 use crate::bridge;
 use crate::prefs::preferences;
 use crate::util::{announcer, fmt_num};
-use javabyte_gui_protocol::{RunState, RunStatus, display_text};
+use javabyte_gui_protocol::{RunState, RunStatus, display_text, t};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
@@ -39,7 +39,7 @@ pub fn RunningScreen() -> impl IntoView {
                         announcer().say(progress_sentence(&now));
                     }
                 } else if before == RunState::Running && now.state == RunState::Finished {
-                    announcer().say(format!("Analysis finished. {}", now.ended.clone().unwrap_or_default()));
+                    announcer().say(t!("run-finished-announce", ended = now.ended.clone().unwrap_or_default()));
                 }
                 status.set(now);
             });
@@ -52,10 +52,10 @@ pub fn RunningScreen() -> impl IntoView {
     let stop = move || {
         // Said before asking, so that "Analysis finished" (which may come back first) is the
         // last word rather than being replaced by this.
-        announcer().say("Stopping. What was found so far is kept.");
+        announcer().say(t!("run-stopping"));
         spawn_local(async move {
             if let Err(message) = bridge::stop_run().await {
-                announcer().say(format!("The analysis could not be stopped. {message}"));
+                announcer().say(t!("run-stop-failed", detail = message));
             }
         });
     };
@@ -82,58 +82,58 @@ pub fn RunningScreen() -> impl IntoView {
         <h2 id="running-heading" tabindex="-1">
             {move || {
                 let name = display_text(&status.with(|s| s.sample_name.clone()), 120).text;
-                if running() { format!("Analysing {name}") } else { format!("Analysis of {name}") }
+                t!(if running() { "run-heading-running" } else { "run-heading-done" }, name = name)
             }}
         </h2>
         <div class="buttons">
             <button type="button" disabled=move || !running() aria-keyshortcuts="Control+Period" on:click=move |_| stop()>
-                "Stop analysis"
+                {t!("run-stop")}
             </button>
         </div>
         <p class="hint">
             {move || if running() {
-                "Only one analysis runs at a time. Stop it with the button or Control and full stop; what was found so far is kept."
+                t!("run-one-at-a-time")
             } else {
-                ""
+                String::new()
             }}
         </p>
         <Show when=move || status.with(|s| s.state == RunState::Finished)>
             <div class="outcome" role="region" aria-labelledby="outcome-heading">
-                <h3 id="outcome-heading">"Finished"</h3>
+                <h3 id="outcome-heading">{t!("run-finished-heading")}</h3>
                 <p>{move || status.with(|s| s.ended.clone().unwrap_or_default())}</p>
                 {move || if status.with(|s| s.report_ready) {
                     view! {
-                        <button type="button" class="primary" disabled=move || opening.get() on:click=view_report>"View the report"</button>
+                        <button type="button" class="primary" disabled=move || opening.get() on:click=view_report>{t!("run-view-report")}</button>
                     }.into_any()
                 } else {
-                    view! { <p>"No report was written. The analysis results folder may still hold a trace file."</p> }.into_any()
+                    view! { <p>{t!("run-no-report")}</p> }.into_any()
                 }}
-                <button type="button" on:click=move |_| crate::app::show(Screen::Start)>"Analyse another sample"</button>
+                <button type="button" on:click=move |_| crate::app::show(Screen::Start)>{t!("run-another")}</button>
             </div>
         </Show>
-        <h3>"Progress"</h3>
+        <h3>{t!("run-progress-heading")}</h3>
         <dl class="stats">
-            <dt>"State"</dt>
+            <dt>{t!("run-state")}</dt>
             <dd>{move || status.with(|s| match s.state {
-                RunState::Idle => "Starting".to_string(),
-                RunState::Running => "Running".to_string(),
-                RunState::Finished => format!("Finished: {}", s.outcome.clone().unwrap_or_default()),
+                RunState::Idle => t!("run-state-starting"),
+                RunState::Running => t!("run-state-running"),
+                RunState::Finished => t!("run-state-finished", outcome = s.outcome.clone().unwrap_or_default()),
             })}</dd>
-            <dt>"Starting point"</dt>
+            <dt>{t!("run-start-point")}</dt>
             <dd class="untrusted">{move || display_text(&status.with(|s| s.entry.clone()), 200).text}</dd>
-            <dt>"Time"</dt>
-            <dd>{move || format!("{:.1} seconds", status.with(|s| s.elapsed_ms) as f64 / 1000.0)}</dd>
-            <dt>"Instructions run"</dt>
+            <dt>{t!("run-time")}</dt>
+            <dd>{move || t!("run-seconds", seconds = format!("{:.1}", status.with(|s| s.elapsed_ms) as f64 / 1000.0))}</dd>
+            <dt>{t!("run-instructions")}</dt>
             <dd>{move || fmt_num(status.with(|s| s.instructions))}</dd>
-            <dt>"Events"</dt>
+            <dt>{t!("run-events")}</dt>
             <dd>{move || fmt_num(status.with(|s| s.events))}</dd>
         </dl>
-        <h3 id="by-category-heading">"Events by category"</h3>
+        <h3 id="by-category-heading">{t!("run-by-category")}</h3>
         <table class="simple-table compact" aria-labelledby="by-category-heading">
             <thead>
                 <tr>
-                    <th scope="col">"Category"</th>
-                    <th scope="col" class="number">"Events"</th>
+                    <th scope="col">{t!("run-category")}</th>
+                    <th scope="col" class="number">{t!("run-events")}</th>
                 </tr>
             </thead>
             <tbody>
@@ -145,12 +145,12 @@ pub fn RunningScreen() -> impl IntoView {
                 }).collect_view()}
             </tbody>
         </table>
-        <h3>"Latest notable events"</h3>
+        <h3>{t!("run-notable")}</h3>
         <ul class="notable">
             {move || {
                 let notable = status.get().notable;
                 if notable.is_empty() {
-                    view! { <li>"None yet."</li> }.into_any()
+                    view! { <li>{t!("run-notable-none")}</li> }.into_any()
                 } else {
                     notable.into_iter().map(|row| view! {
                         <li>
@@ -168,12 +168,12 @@ pub fn RunningScreen() -> impl IntoView {
 /// about most, nothing else.
 fn progress_sentence(status: &RunStatus) -> String {
     let count = |name: &str| status.by_category.iter().find(|(n, _)| n == name).map_or(0, |(_, c)| *c);
-    format!(
-        "{} seconds, {} events, including {} network, {} programs started and {} classes created.",
-        status.elapsed_ms / 1000,
-        fmt_num(status.events),
-        fmt_num(count("net")),
-        fmt_num(count("process")),
-        fmt_num(count("class")),
+    t!(
+        "run-progress",
+        seconds = status.elapsed_ms / 1000,
+        events = status.events,
+        network = count("net"),
+        programs = count("process"),
+        classes = count("class"),
     )
 }

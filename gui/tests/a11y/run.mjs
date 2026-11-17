@@ -105,6 +105,25 @@ async function toOverview(page) {
   return focusIs(page, 'overview-heading', 5000);
 }
 
+async function toSettings(page) {
+  await page.getByRole('button', { name: 'Change settings first' }).click();
+  const ok = await focusIs(page, 'settings-heading', 5000);
+  // The forms appear once the schema has loaded.
+  await page.waitForSelector('#section-limits');
+  return ok;
+}
+
+/** Opens every "More settings" group and the presets, so what they hold is checked too. */
+async function openAllDisclosures(page) {
+  await page.evaluate(() => document.querySelectorAll('.disclosure-toggle[aria-expanded="false"]').forEach((b) => b.click()));
+  await page.waitForTimeout(100);
+}
+
+/** The YAML text as the YAML tab holds it. */
+function yamlText(page) {
+  return page.locator('#settings-yaml').inputValue();
+}
+
 async function toRunning(page) {
   await toOverview(page);
   await page.getByRole('button', { name: 'Analyse', exact: true }).click();
@@ -134,6 +153,19 @@ await section(`axe, ${theme}, ${textSize}%`, async () => {
   await axe(page, `start with notice, ${theme}, ${textSize}%`);
   await toOverview(page);
   await axe(page, `overview, ${theme}, ${textSize}%`);
+  await toSettings(page);
+  // Every folded group open, so the fields inside are checked too.
+  await openAllDisclosures(page);
+  await page.getByRole('button', { name: 'Add web answer' }).click();
+  // An answer needs an address; without one, Analyse would rightly refuse to start.
+  await page.locator('#field-network-http-0-url').fill('gate\\.example');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(200);
+  await axe(page, `settings forms, ${theme}, ${textSize}%`);
+  await page.getByRole('tab', { name: /^YAML/ }).click();
+  await axe(page, `settings YAML, ${theme}, ${textSize}%`);
+  await page.getByRole('tab', { name: 'Forms' }).click();
+  await page.getByRole('button', { name: 'Back to the overview' }).click();
   await page.getByRole('button', { name: 'Analyse', exact: true }).click();
   await page.waitForTimeout(400);
   await axe(page, `running, ${theme}, ${textSize}%`);
@@ -176,10 +208,10 @@ await section('screens and focus', async () => {
   const radios = page.getByRole('radio');
   check((await radios.count()) >= 2, 'start options are radio buttons');
   check(await radios.first().isChecked(), 'the recommended start is chosen');
-  check((await page.locator('pre.command').textContent()).startsWith('javabyte run'), 'the equivalent command is shown');
+  check((await page.locator('#overview-command').textContent()).startsWith('javabyte run'), 'the equivalent command is shown');
   await radios.last().check();
   await page.waitForTimeout(200);
-  check((await page.locator('pre.command').textContent()).includes('clinit-sweep'), 'the command follows the choice');
+  check((await page.locator('#overview-command').textContent()).includes('clinit-sweep'), 'the command follows the choice');
   check((await page.getByText('Important: Part of it is native code').count()) === 1, 'findings say what matters, in words');
 
   await page.getByRole('button', { name: 'Analyse', exact: true }).click();
@@ -210,6 +242,125 @@ await section('screens and focus', async () => {
   await page.getByRole('button', { name: /^Open report: earlier\.jar/ }).click();
   check(await focusIs(page, 'report-heading', 5000), 'a recent run opens its report');
   check((await page.locator('#report-heading').textContent()).includes('earlier.jar'), 'the opened report is the chosen one');
+  await context.close();
+});
+
+// 3b. Settings: forms that edit YAML in place, problems tied to fields, lists by keyboard,
+// the YAML tab, presets, import, and the command line.
+await section('settings', async () => {
+  const { page, context, errors } = await open();
+  await toOverview(page);
+  check(await toSettings(page), 'Change settings first focuses the settings heading');
+  check((await page.title()) === 'Settings – JavaByte', `settings title: ${await page.title()}`);
+  check((await page.locator('#settings-panel-forms input, #settings-panel-forms select, #settings-panel-forms textarea').count()) > 20, 'the forms have fields');
+
+  // A field changes only its line; the comment on it stays.
+  const sleeps = page.getByLabel('Sleeps per thread', { exact: true });
+  check((await sleeps.inputValue()) === '40', 'fields show the suggested settings');
+  check((await sleeps.getAttribute('aria-describedby')) !== null, 'fields are tied to their description');
+  await sleeps.fill('200');
+  await sleeps.press('Tab');
+  check((await yamlText(page)).includes('  maxSleeps: 200        # ends beacon loops'), 'a form change edits only its line and keeps the comment');
+  check((await yamlText(page)).includes('# Uncomment to also run every static initialiser'), 'other comments are kept');
+
+  // A problem: shown in a summary with a link, and at the field, in words.
+  // A problem inside a closed group: the summary link opens the group to reach the field.
+  await sleeps.fill('lots');
+  await sleeps.press('Tab');
+  await page.waitForSelector('#settings-problems-title', { timeout: 5000 });
+  check((await page.locator('#settings-problems-title').textContent()).includes('1 problem'), 'the summary counts the problems');
+  check((await sleeps.getAttribute('aria-invalid')) === 'true', 'the field is marked invalid');
+  const described = (await sleeps.getAttribute('aria-describedby')).split(' ');
+  const errorText = await page.locator(`#${described[described.length - 1]}`).textContent();
+  check(errorText.startsWith('Problem:'), `the field's problem is in words, tied to it: ${errorText}`);
+  await page.locator('#settings-problems-title ~ ul a').first().click();
+  check(await focusIs(page, 'field-limits-maxSleeps'), 'the summary link moves focus to the field');
+  // Analysing with a problem shows the problems instead of starting.
+  await page.getByRole('button', { name: 'Analyse with these settings' }).click();
+  check(await focusIs(page, 'settings-problems-title', 3000), 'analysing with problems focuses the summary');
+  check((await page.title()) === 'Settings – JavaByte', 'analysing with problems stays on the settings');
+  await page.getByRole('button', { name: 'Reset Sleeps per thread to its default' }).click();
+  await page.waitForTimeout(1500);
+  check((await page.locator('#settings-problems-title').count()) === 0, 'fixing the problem clears the summary');
+  check(!(await yamlText(page)).includes('maxSleeps'), 'reset to default removes the setting');
+
+  // Lists by keyboard: add, edit, move, remove.
+  await page.getByRole('button', { name: 'Add web answer' }).click();
+  check(await focusIs(page, 'field-network-http-0-url'), 'adding an item focuses its first field');
+  check((await page.locator('h4', { hasText: 'Editing web answer 1 of 1' }).count()) === 1, 'the editor says which item it edits');
+  await page.keyboard.type('gate\\.example');
+  await page.keyboard.press('Tab');
+  await page.getByRole('button', { name: 'Done' }).click();
+  check(await focusIs(page, 'field-network-http-edit-0'), 'Done returns focus to the item');
+  await page.getByRole('button', { name: 'Add web answer' }).click();
+  check(await focusIs(page, 'field-network-http-1-url'), 'the second item opens at its first field');
+  await page.keyboard.type('second');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => ({ inEditor: !!document.activeElement?.closest('.item-editor'), label: document.activeElement?.getAttribute('aria-label') }));
+  check(after.inEditor && after.label === 'Reset Address pattern to its default', `after a change, Tab moves on inside the editor (focus: ${JSON.stringify(after)})`);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Move web answer 2 up' }).click();
+  check(await focusIs(page, 'field-network-http-down-0'), 'after moving to the top, focus stays with the item');
+  const yaml = await yamlText(page);
+  check(yaml.indexOf('url: second') < yaml.indexOf("url: 'gate\\.example'"), `the move is in the YAML:\n${yaml}`);
+  check(yaml.includes('  http:\n    - url: second'), `new lists are written in block style:\n${yaml}`);
+  await page.getByRole('button', { name: 'Remove web answer 1' }).click();
+  check(!(await yamlText(page)).includes('second'), 'remove takes the item out');
+
+  // Names and values: keys with dots are one name.
+  const more = page.locator('#section-environment').locator('..').getByRole('button', { name: 'More settings' });
+  check((await more.getAttribute('aria-expanded')) === 'false', 'More settings starts closed and says so');
+  await more.press('Enter');
+  check((await more.getAttribute('aria-expanded')) === 'true', 'Enter opens More settings, and it says so');
+  await page.locator('#field-environment-properties-new-name').fill('java.version');
+  await page.locator('#field-environment-properties-new-value').fill('17');
+  await page.getByRole('button', { name: 'Add to Java system properties' }).click();
+  check((await yamlText(page)).includes("java.version: '17'"), 'a name with dots is one key, and text stays text');
+
+  // The YAML tab: arrow keys between tabs; line numbers are hidden from screen readers.
+  await page.getByRole('tab', { name: 'Forms' }).focus();
+  await page.keyboard.press('ArrowRight');
+  check(await focusIs(page, 'settings-tab-yaml'), 'ArrowRight moves to the YAML tab');
+  await page.keyboard.press('Enter');
+  check((await page.locator('.yaml-editor .gutter').getAttribute('aria-hidden')) === 'true', 'line numbers are hidden from screen readers');
+  const area = page.locator('#settings-yaml');
+  await area.fill((await area.inputValue()) + 'limits: [broken\n');
+  await page.waitForSelector('#syntax-title', { timeout: 3000 });
+  check((await page.locator('#settings-panel-forms').textContent()).includes('hidden until the YAML can be read'), 'forms step aside while the YAML cannot be read');
+  await page.locator('#syntax-title ~ ul a').first().click();
+  check(await focusIs(page, 'settings-yaml'), 'the syntax link puts the caret in the YAML');
+  const fixed = (await area.inputValue()).replace('limits: [broken\n', '');
+  await area.fill(fixed);
+  await page.waitForTimeout(600);
+  check((await page.locator('#syntax-title').count()) === 0, 'fixing the YAML brings the forms back');
+  await page.getByRole('tab', { name: 'Forms' }).click();
+
+  // Presets: fill in fields people can see, focus the first, and can be undone.
+  await page.getByRole('button', { name: 'Presets' }).click();
+  const before = await yamlText(page);
+  await page.getByRole('button', { name: 'Let a waiting loop run longer' }).click();
+  check(await focusIs(page, 'field-limits-maxSleeps'), 'a preset shows the field it changed');
+  check((await page.getByLabel('Sleeps per thread', { exact: true }).inputValue()) === '200', 'the preset filled in the field');
+  await page.getByRole('button', { name: 'Undo the last preset' }).click();
+  check((await yamlText(page)) === before, 'undo puts the settings back exactly');
+  await page.locator('#preset-new-name').fill('Slow beacon');
+  await page.getByRole('button', { name: 'Save as preset' }).click();
+  await page.getByRole('button', { name: 'Apply preset Slow beacon' }).waitFor({ timeout: 3000 });
+  await page.getByRole('button', { name: 'Delete preset Slow beacon' }).click();
+  await page.waitForTimeout(300);
+  check((await page.getByRole('button', { name: 'Apply preset Slow beacon' }).count()) === 0, 'a saved preset can be deleted');
+
+  // Import keeps the chosen sample, and says the file was for another one.
+  await page.getByRole('button', { name: 'Import…' }).click();
+  await page.waitForTimeout(300);
+  check((await page.locator('#announcer').textContent()).includes('made for another sample'), 'import says the file was for another sample');
+  check((await yamlText(page)).includes('example.jar') && !(await yamlText(page)).includes('dropper.jar'), 'the imported settings use the chosen sample');
+  check((await page.getByLabel('Sleeps per thread', { exact: true }).inputValue()) === '200', 'imported values reach the forms');
+
+  // The command line follows the settings.
+  check((await page.locator('#settings-command-heading + pre').textContent()).includes('-s limits.maxSleeps=200'), 'the command line follows the settings');
+  check(errors.length === 0, `page errors: ${errors.join('; ')}`);
   await context.close();
 });
 
@@ -300,6 +451,16 @@ await section('reflow', async () => {
   check((await overflow()) <= 1, `start at 320 px scrolls sideways by ${await overflow()} px`);
   await toOverview(page);
   check((await overflow()) <= 1, `overview at 320 px scrolls sideways by ${await overflow()} px`);
+  await toSettings(page);
+  await openAllDisclosures(page);
+  await page.getByRole('button', { name: 'Add web answer' }).click();
+  await page.locator('#field-network-http-0-url').fill('gate\\.example');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(200);
+  check((await overflow()) <= 1, `settings forms at 320 px scroll sideways by ${await overflow()} px`);
+  await page.getByRole('tab', { name: /^YAML/ }).click();
+  check((await overflow()) <= 1, `settings YAML at 320 px scrolls sideways by ${await overflow()} px`);
+  await page.getByRole('button', { name: 'Back to the overview' }).click();
   await page.getByRole('button', { name: 'Analyse', exact: true }).click();
   await page.waitForTimeout(400);
   check((await overflow()) <= 1, `running at 320 px scrolls sideways by ${await overflow()} px`);

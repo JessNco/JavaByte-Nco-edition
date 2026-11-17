@@ -38,7 +38,8 @@ Class names may be written with dots or slashes. Method patterns use slashes, as
 | `plugins` | `{}` | Settings per plugin id; a plugin runs only if it has an entry here |
 
 `javabyte schema` prints every option with its type, default, allowed values and meaning, from
-the same descriptions this page is checked against. `javabyte validate -c FILE` checks a config
+the same descriptions this page is checked against; `--json` also lists the plugins and their
+settings. `javabyte validate -c FILE` checks a config
 and lists every problem at once.
 
 ## `entryPoints[]`

@@ -19,7 +19,7 @@ rust-version = "1.85"
 javabyte-gui-protocol = { path = "crates/protocol" }
 javabyte-gui-backend = { path = "crates/backend" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [profile.release]
 # Small WebAssembly and a fast native binary; the GUI has no hot loops worth unwinding for.

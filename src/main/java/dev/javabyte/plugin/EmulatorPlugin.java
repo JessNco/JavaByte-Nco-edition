@@ -1,6 +1,8 @@
 package dev.javabyte.plugin;
 
+import dev.javabyte.config.ConfigSchema;
 import dev.javabyte.vm.VirtualMachine;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,6 +20,20 @@ public interface EmulatorPlugin {
 
     /** Stable identifier used as the key under {@code plugins} in the config. */
     String id();
+
+    /** What the plugin does, in one sentence, for {@code javabyte schema} and settings forms. */
+    default String description() {
+        return "";
+    }
+
+    /**
+     * The settings the plugin reads from its section of the config, described like config
+     * options ({@code path} relative to the section), so {@code javabyte schema} lists them and
+     * the desktop app can build a form for them.
+     */
+    default List<ConfigSchema.Option> settings() {
+        return List.of();
+    }
 
     /**
      * Called once, after the built-in stubs are installed and before the sample is loaded.

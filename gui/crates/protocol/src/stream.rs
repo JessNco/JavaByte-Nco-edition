@@ -111,5 +111,5 @@ pub struct Finish {
 
 /// Reads one line of the stream.
 pub fn parse_line(line: &str) -> Result<StreamRecord, String> {
-    serde_json::from_str(line).map_err(|e| format!("Unreadable line from the tool: {e}"))
+    serde_json::from_str(line).map_err(|e| crate::t!("error-unreadable-line", detail = e.to_string()))
 }

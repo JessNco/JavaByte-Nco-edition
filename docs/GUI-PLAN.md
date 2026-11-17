@@ -368,7 +368,7 @@ The Java tool and the GUI share one version number and are released together.
 
 English is the only language at first, but nothing in the code holds user-visible text.
 
-- All text lives in [Fluent](https://projectfluent.org/) resource files (`gui/ui/locales/en/`),
+- All text lives in [Fluent](https://projectfluent.org/) resource files (`gui/locales/en/`), shared by the screens and the backend,
   read through the `fluent` crates. Fluent handles plurals and grammar properly ("1 file",
   "3 files"), which matters for the plain-language summaries.
 - The page's `lang` attribute is set from the active language, so screen readers use the right
@@ -387,7 +387,7 @@ English is the only language at first, but nothing in the code holds user-visibl
 | 0. Spike | Tauri + Leptos window with a form, a tab set, a large data grid and a live region, on Windows and Linux | NVDA and Orca read and operate all four correctly; the grid scrolls 300,000 rows smoothly. Go or no-go for WebKitGTK |
 | 1. Command-line additions | `schema`, `validate`, `--events jsonl`, graceful stop, trace flushing, `--progress`; `protocol` crate; see [gui/PHASE1-PLAN.md](gui/PHASE1-PLAN.md) | Tests for each; event streaming overhead measured |
 | 2. Open, inspect, run, summary | Start, Sample overview, Running, Report summary and indicators; see [gui/PHASE2.md](gui/PHASE2.md) | First user sessions |
-| 3. Config editor | Generated forms, YAML tab, validation, import/export, presets | Parity test passes for every option |
+| 3. Config editor | Generated forms, YAML tab, validation, import/export, presets; see [gui/PHASE3-PLAN.md](gui/PHASE3-PLAN.md) | Parity test passes for every option |
 | 4. Full report | Events grid, limits and gaps, files viewer, compare | Second user sessions |
 | 5. Packaging | jlink runtime, bundled bridge, installers, Linux isolation, GPG-signed Linux packages, unsigned-install instructions | Clean install and first run on fresh Windows 11 and Ubuntu LTS machines |
 | 6. Accessibility audit | Full manual script, fixes, accessibility statement | No open AA issues |

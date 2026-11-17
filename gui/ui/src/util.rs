@@ -1,5 +1,6 @@
 //! Small helpers shared by the screens.
 
+use javabyte_gui_protocol::t;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -83,15 +84,53 @@ pub fn copy_text(text: &str) -> bool {
 }
 
 /// The message after a copy attempt.
-pub fn copied_message(done: bool) -> &'static str {
-    if done { "Copied." } else { "Copying is not available here. Select the text and press Control and C." }
+pub fn copied_message(done: bool) -> String {
+    if done { t!("copied") } else { t!("copy-unavailable") }
 }
 
 /// File size for people: "13.6 KB".
 pub fn fmt_size(bytes: u64) -> String {
     match bytes {
-        0..=1023 => format!("{bytes} bytes"),
-        1024..=1_048_575 => format!("{:.1} KB", bytes as f64 / 1024.0),
-        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+        0..=1023 => t!("size-bytes", count = bytes),
+        1024..=1_048_575 => t!("size-kb", size = format!("{:.1}", bytes as f64 / 1024.0)),
+        _ => t!("size-mb", size = format!("{:.1}", bytes as f64 / 1_048_576.0)),
+    }
+}
+
+/// A button that shows or hides what follows it (the WAI-ARIA disclosure pattern). Used instead
+/// of `<details>`, which WebKitGTK reports to screen readers with no role and no open or closed
+/// state; a button with `aria-expanded` is announced properly everywhere.
+#[component]
+pub fn Disclosure(label: String, #[prop(optional)] class: &'static str, children: Children) -> impl IntoView {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let id = format!("disclosure-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let open = RwSignal::new(false);
+    view! {
+        <div class=format!("disclosure {class}")>
+            <button
+                type="button"
+                class="disclosure-toggle"
+                aria-expanded=move || open.get().to_string()
+                aria-controls=id.clone()
+                on:click=move |_| open.update(|o| *o = !*o)
+            >
+                <span class="marker" aria-hidden="true">{move || if open.get() { "▾" } else { "▸" }}</span>
+                {label}
+            </button>
+            <div class="disclosure-body" id=id.clone() hidden=move || !open.get()>{children()}</div>
+        </div>
+    }
+}
+
+/// Opens every closed disclosure around an element, so that it can be shown and take focus.
+pub fn open_disclosures_around(element: &web_sys::Element) {
+    let mut node = element.parent_element();
+    while let Some(parent) = node {
+        if parent.class_list().contains("disclosure-body") && parent.has_attribute("hidden") {
+            if let Some(toggle) = parent.previous_element_sibling().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
+                toggle.click();
+            }
+        }
+        node = parent.parent_element();
     }
 }

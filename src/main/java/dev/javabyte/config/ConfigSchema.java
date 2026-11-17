@@ -65,6 +65,34 @@ public final class ConfigSchema {
     }
 
     /** The schema as plain data, for {@code javabyte schema --json}. */
+    /** The plugins on the class path, each with its description and settings. */
+    public static List<Map<String, Object>> plugins() {
+        List<Map<String, Object>> plugins = new ArrayList<>();
+        for (dev.javabyte.plugin.EmulatorPlugin plugin : java.util.ServiceLoader.load(dev.javabyte.plugin.EmulatorPlugin.class)) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("id", plugin.id());
+            entry.put("description", plugin.description());
+            List<Map<String, Object>> settings = new ArrayList<>();
+            for (Option option : plugin.settings()) {
+                Map<String, Object> setting = new LinkedHashMap<>();
+                setting.put("path", option.path());
+                setting.put("type", option.type());
+                if (option.defaultValue() != null) {
+                    setting.put("default", option.defaultValue());
+                }
+                if (!option.allowed().isEmpty()) {
+                    setting.put("allowed", option.allowed());
+                }
+                setting.put("description", option.description());
+                settings.add(setting);
+            }
+            entry.put("settings", settings);
+            plugins.add(entry);
+        }
+        plugins.sort(java.util.Comparator.comparing(p -> (String) p.get("id")));
+        return plugins;
+    }
+
     public static Map<String, Object> toMap() {
         List<Map<String, Object>> options = new ArrayList<>();
         for (Option option : options()) {
@@ -86,6 +114,7 @@ public final class ConfigSchema {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", 1);
         root.put("options", options);
+        root.put("plugins", plugins());
         return root;
     }
 

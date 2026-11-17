@@ -1,6 +1,8 @@
 # Phase 4: the full report
 
-Status: **in progress** on branch `claude/gui-phase4`.
+Status: **built and tested** on branch `claude/gui-phase4`. The plan's own criterion, the
+second user sessions, needs people; everything automated passes. What was learned is under
+"As built" at the end.
 
 ## Goal
 
@@ -73,3 +75,37 @@ passes on Linux and Windows CI.
 ## Not in this phase
 
 Packaging and the bundled Java runtime (phase 5); the full manual accessibility audit (phase 6).
+
+## As built
+
+Everything in the plan was built. Notes:
+
+- **The warning is a native modal dialog** (`<dialog>` opened as modal, with
+  `role="alertdialog"`). On Linux the accessibility bus shows it as an alert named by its title,
+  with the tick box, **Cancel** and an unavailable **Save as is**; while it is open only its 23
+  objects reach screen readers, so the rest of the window is truly out of reach.
+- **Zip copies** are AES-256 with the password `infected`. The tests check the raw headers (AES
+  on every entry, nothing readable without the password) and decrypt them; an independent
+  reader, `pyzipper`, opened one during development.
+- **Origins of saved files** come from the report's events: the path the sample wrote, the
+  address a request body went to, the name of a class it defined.
+- **Comparing** works on any two analyses in the recent list, which now includes reports opened
+  from disk. Settings that only change where results go or what the command prints are not
+  counted as differences.
+- `javabyte disasm` is a new command-line feature in its own right, documented in README.md and
+  AGENTS.md, and fuzzed with 600 damaged class files per run.
+
+Found and fixed on the way:
+
+- The browser stand-in borrowed its own state twice when opening a report (a crash the browser
+  checks caught at once).
+- A disabled main button was dark text on dark blue, unreadable; automated contrast checks skip
+  disabled controls, so it showed only in a screenshot. Disabled main buttons now look like any
+  disabled button.
+- The files table was cramped by full SHA-256 values; the table shows the first 12 characters
+  and the viewer and the warning show the whole hash.
+- Two tables lacked their scrolling wrapper and made the window scroll sideways at 320 px.
+
+Not built: the **Tools** screen of the GUI plan (viewers for `javabyte policy` and `javabyte
+defaults`) belongs to no phase yet; the same information is in **Settings** (defaults beside
+each field, the policy options under Java features it may use).

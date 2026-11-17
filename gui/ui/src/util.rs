@@ -96,3 +96,41 @@ pub fn fmt_size(bytes: u64) -> String {
         _ => t!("size-mb", size = format!("{:.1}", bytes as f64 / 1_048_576.0)),
     }
 }
+
+/// A button that shows or hides what follows it (the WAI-ARIA disclosure pattern). Used instead
+/// of `<details>`, which WebKitGTK reports to screen readers with no role and no open or closed
+/// state; a button with `aria-expanded` is announced properly everywhere.
+#[component]
+pub fn Disclosure(label: String, #[prop(optional)] class: &'static str, children: Children) -> impl IntoView {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let id = format!("disclosure-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let open = RwSignal::new(false);
+    view! {
+        <div class=format!("disclosure {class}")>
+            <button
+                type="button"
+                class="disclosure-toggle"
+                aria-expanded=move || open.get().to_string()
+                aria-controls=id.clone()
+                on:click=move |_| open.update(|o| *o = !*o)
+            >
+                <span class="marker" aria-hidden="true">{move || if open.get() { "▾" } else { "▸" }}</span>
+                {label}
+            </button>
+            <div class="disclosure-body" id=id.clone() hidden=move || !open.get()>{children()}</div>
+        </div>
+    }
+}
+
+/// Opens every closed disclosure around an element, so that it can be shown and take focus.
+pub fn open_disclosures_around(element: &web_sys::Element) {
+    let mut node = element.parent_element();
+    while let Some(parent) = node {
+        if parent.class_list().contains("disclosure-body") && parent.has_attribute("hidden") {
+            if let Some(toggle) = parent.previous_element_sibling().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
+                toggle.click();
+            }
+        }
+        node = parent.parent_element();
+    }
+}

@@ -1,7 +1,7 @@
 //! Report: what the sample did. Tabs for the summary, the indicators and every event.
 
 use crate::app::{EventsPanel, flow};
-use crate::util::{copied_message, copy_text, focus_id, fmt_num};
+use crate::util::{Disclosure, copied_message, copy_text, focus_id, fmt_num};
 use javabyte_gui_protocol::{display_text, t};
 use leptos::prelude::*;
 
@@ -69,10 +69,9 @@ pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
                             <li>
                                 <strong class="untrusted">{display_text(&run.entry, 200).text}</strong>": "{run.meaning.clone()}
                                 {run.detail.clone().map(|detail| view! {
-                                    <details>
-                                        <summary>{t!("report-details")}</summary>
+                                    <Disclosure label=t!("report-details")>
                                         <pre class="untrusted detail-text">{display_text(&detail, 4000).text}</pre>
-                                    </details>
+                                    </Disclosure>
                                 })}
                             </li>
                         }).collect_view()}

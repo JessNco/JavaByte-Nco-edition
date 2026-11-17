@@ -75,3 +75,4 @@ finding-damaged-detail = { $count ->
         [one] is
        *[other] are
     } damaged or decoys. This is common in protected samples.
+overview-change-settings = Change settings first

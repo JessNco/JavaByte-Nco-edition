@@ -1,13 +1,12 @@
 //! Sample overview: what the sample is, what that means, and where to start.
 
 use crate::app::{ErrorBox, Screen, flow, report_error, show};
-use crate::bridge;
-use crate::util::{announcer, copied_message, copy_text, fmt_num, fmt_size};
+use crate::util::{copied_message, copy_text, fmt_num, fmt_size};
 use javabyte_gui_protocol::display_text;
 use javabyte_gui_protocol::t;
+use javabyte_gui_backend::config::ConfigPath;
 use javabyte_gui_protocol::views::EntryChoice;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 
 #[component]
 pub fn OverviewScreen() -> impl IntoView {
@@ -15,7 +14,6 @@ pub fn OverviewScreen() -> impl IntoView {
     // Index into the overview's entries; usize::MAX means "another class" from the list.
     let chosen = RwSignal::new(0usize);
     let other = RwSignal::new(String::new());
-    let command = RwSignal::new(String::new());
     let copied = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
     let starting = RwSignal::new(false);
@@ -39,33 +37,17 @@ pub fn OverviewScreen() -> impl IntoView {
         })
     };
 
-    // Keep the equivalent command in step with the choice.
-    Effect::new(move |_| {
-        let (Some(sample), Some(entry)) = (flow.sample.get(), entry()) else { return };
-        spawn_local(async move {
-            if let Ok(text) = bridge::command_line(&sample, &entry).await {
-                command.set(text);
-            }
-        });
-    });
-
-    let start = move |_| {
-        let (Some(sample), Some(entry)) = (flow.sample.get_untracked(), entry()) else { return };
-        starting.set(true);
-        spawn_local(async move {
-            match bridge::start_run(&sample, &entry).await {
-                Ok(()) => {
-                    flow.run_started.set(true);
-                    flow.report.set(None);
-                    show(Screen::Running);
-                    announcer().say(t!("overview-started", name = &sample.name));
-                }
-                Err(message) => report_error(error, "overview-error", message),
-            }
-            starting.set(false);
-        });
+    // The choice is part of the settings: changing it sets `entryPoints` there. The first
+    // option is what the suggested settings already say, so nothing changes until the person
+    // picks something else.
+    let choose = move |index: usize| {
+        chosen.set(index);
+        if let Some(entry) = entry() {
+            crate::settings::set_value(&ConfigPath::parse("entryPoints"), Some(entry.entry_points()));
+        }
     };
 
+    let start = move |_| crate::settings::analyse(starting, move |message| report_error(error, "overview-error", message));
     view! {
         <h2 id="overview-heading" tabindex="-1">
             {move || t!("overview-heading", name = flow.sample.with(|s| s.as_ref().map(|s| display_text(&s.name, 120).text).unwrap_or_default()))}
@@ -122,7 +104,7 @@ pub fn OverviewScreen() -> impl IntoView {
                                     id=id.clone()
                                     aria-describedby=help_id.clone()
                                     prop:checked=move || chosen.get() == index
-                                    on:change=move |_| chosen.set(index)
+                                    on:change=move |_| choose(index)
                                 />
                                 <div>
                                     <label for=id class="untrusted">{display_text(&option.label, 200).text}</label>
@@ -141,7 +123,7 @@ pub fn OverviewScreen() -> impl IntoView {
                                     id="entry-other"
                                     aria-describedby="entry-other-help"
                                     prop:checked=move || chosen.get() == usize::MAX
-                                    on:change=move |_| chosen.set(usize::MAX)
+                                    on:change=move |_| choose(usize::MAX)
                                 />
                                 <div>
                                     <label for="entry-other">{t!("overview-other")}</label>
@@ -153,7 +135,10 @@ pub fn OverviewScreen() -> impl IntoView {
                                 <select
                                     id="entry-other-class"
                                     disabled=move || chosen.get() != usize::MAX
-                                    on:change=move |ev| other.set(event_target_value(&ev))
+                                    on:change=move |ev| {
+                                        other.set(event_target_value(&ev));
+                                        choose(usize::MAX);
+                                    }
                                 >
                                     {others.into_iter().map(|class| {
                                         let shown = display_text(&class, 200).text;
@@ -167,13 +152,14 @@ pub fn OverviewScreen() -> impl IntoView {
             })}
         </fieldset>
         <h3 id="overview-command-heading">{t!("overview-command-heading")}</h3>
-        <pre class="command untrusted" aria-labelledby="overview-command-heading" tabindex="0"><code>{move || command.get()}</code></pre>
+        <pre class="command untrusted" id="overview-command" aria-labelledby="overview-command-heading" tabindex="0"><code>{crate::settings::command_line}</code></pre>
         <div class="buttons">
-            <button type="button" on:click=move |_| copied.set(copied_message(copy_text(&command.get_untracked())))>{t!("overview-copy-command")}</button>
+            <button type="button" on:click=move |_| copied.set(copied_message(copy_text(&crate::settings::command_line())))>{t!("overview-copy-command")}</button>
             <span role="status" class="inline-status">{move || copied.get()}</span>
         </div>
         <div class="buttons">
             <button type="button" class="primary" disabled=move || starting.get() on:click=start>{t!("overview-analyse")}</button>
+            <button type="button" on:click=move |_| show(Screen::Settings)>{t!("overview-change-settings")}</button>
             <button type="button" on:click=move |_| show(Screen::Start)>{t!("overview-different-sample")}</button>
         </div>
     }

@@ -5,7 +5,7 @@
 //! window title, so screen-reader users always know where they are (the usual pattern for
 //! single-window apps, since no page load announces it).
 
-use crate::screens::{overview, report, running, start};
+use crate::screens::{overview, report, running, settings as settings_screen, start};
 use crate::util::{announcer, focus_id};
 use crate::{events, prefs};
 use javabyte_gui_protocol::t;
@@ -16,6 +16,7 @@ use leptos::prelude::*;
 pub enum Screen {
     Start,
     Overview,
+    Settings,
     Running,
     Report,
     Display,
@@ -26,6 +27,7 @@ impl Screen {
         t!(match self {
             Screen::Start => "screen-start",
             Screen::Overview => "screen-overview",
+            Screen::Settings => "screen-settings",
             Screen::Running => "screen-running",
             Screen::Report => "screen-report",
             Screen::Display => "screen-display",
@@ -36,6 +38,7 @@ impl Screen {
         match self {
             Screen::Start => "start-heading",
             Screen::Overview => "overview-heading",
+            Screen::Settings => "settings-heading",
             Screen::Running => "running-heading",
             Screen::Report => "report-heading",
             Screen::Display => "display-heading",
@@ -87,6 +90,8 @@ pub fn App() -> impl IntoView {
     let announcer = announcer();
     prefs::preferences().get_untracked().apply();
     let flow = flow();
+    // Created here too, for the same reason as the flow.
+    let _ = crate::settings::settings();
     document().set_title(&t!("window-title", screen = Screen::Start.title()));
     // Screen readers choose voice and pronunciation from this.
     if let Some(root) = document().document_element() {
@@ -122,6 +127,7 @@ pub fn App() -> impl IntoView {
                 <ul class="nav-list">
                     {nav_item(Screen::Start, Signal::derive(|| true), "")}
                     {nav_item(Screen::Overview, Signal::derive(move || flow.overview.with(Option::is_some)), "nav-overview-unavailable")}
+                    {nav_item(Screen::Settings, Signal::derive(move || flow.overview.with(Option::is_some)), "nav-settings-unavailable")}
                     {nav_item(Screen::Running, Signal::derive(move || flow.run_started.get()), "nav-running-unavailable")}
                     {nav_item(Screen::Report, Signal::derive(move || flow.report.with(Option::is_some)), "nav-report-unavailable")}
                     {nav_item(Screen::Display, Signal::derive(|| true), "")}
@@ -136,6 +142,9 @@ pub fn App() -> impl IntoView {
             </section>
             <section aria-labelledby="overview-heading" hidden=move || flow.screen.get() != Screen::Overview>
                 <overview::OverviewScreen />
+            </section>
+            <section aria-labelledby="settings-heading" hidden=move || flow.screen.get() != Screen::Settings>
+                <settings_screen::SettingsScreen />
             </section>
             <section aria-labelledby="running-heading" hidden=move || flow.screen.get() != Screen::Running>
                 <running::RunningScreen />

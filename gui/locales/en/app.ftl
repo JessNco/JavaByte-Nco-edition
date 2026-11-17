@@ -27,3 +27,5 @@ size-bytes = { $count ->
 # $size is already formatted, with one decimal place.
 size-kb = { $size } KB
 size-mb = { $size } MB
+screen-settings = Settings
+nav-settings-unavailable = Choose a sample first.

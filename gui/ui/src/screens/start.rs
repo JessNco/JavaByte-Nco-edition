@@ -50,6 +50,8 @@ pub fn StartScreen() -> impl IntoView {
                 Ok(overview) => {
                     flow.sample.set(Some(sample));
                     flow.overview.set(Some(overview));
+                    // Settings start afresh for each sample, from the tool's suggestions.
+                    crate::settings::load();
                     show(Screen::Overview);
                 }
                 Err(message) => report_error(error, "start-error", message),

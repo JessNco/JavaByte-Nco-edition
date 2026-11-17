@@ -490,13 +490,12 @@ mod tests {
     }
 
     #[test]
-    fn entry_choices_become_overrides() {
-        assert_eq!(EntryChoice::Main.override_value(), None);
-        assert_eq!(EntryChoice::MainOf { class: "a.B".into() }.override_value().unwrap(), "entryPoints=[{class: 'a.B'}]");
-        assert!(EntryChoice::Agent { class: "a.B".into() }.override_value().unwrap().contains("method: premain"));
-        assert_eq!(EntryChoice::ClinitSweep.override_value().unwrap(), "entryPoints=[{type: clinit-sweep}]");
-        // A quote in a class name cannot end the YAML string early.
-        assert_eq!(EntryChoice::MainOf { class: "a'b".into() }.override_value().unwrap(), "entryPoints=[{class: 'a''b'}]");
+    fn entry_choices_become_entry_points() {
+        use serde_json::json;
+        assert_eq!(EntryChoice::Main.entry_points(), json!([{"type": "main"}]));
+        assert_eq!(EntryChoice::MainOf { class: "a'b".into() }.entry_points(), json!([{"type": "main", "class": "a'b"}]));
+        assert_eq!(EntryChoice::Agent { class: "a.B".into() }.entry_points()[0]["method"], "premain");
+        assert_eq!(EntryChoice::ClinitSweep.entry_points(), json!([{"type": "clinit-sweep"}]));
     }
 
     #[test]

@@ -24,6 +24,7 @@ pub const RESOURCES: &[(&str, &[(&str, &str)])] = &[(
         ("report.ftl", include_str!("../../../locales/en/report.ftl")),
         ("events.ftl", include_str!("../../../locales/en/events.ftl")),
         ("display.ftl", include_str!("../../../locales/en/display.ftl")),
+        ("settings.ftl", include_str!("../../../locales/en/settings.ftl")),
         ("outcomes.ftl", include_str!("../../../locales/en/outcomes.ftl")),
         ("errors.ftl", include_str!("../../../locales/en/errors.ftl")),
     ],

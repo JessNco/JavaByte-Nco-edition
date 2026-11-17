@@ -12,6 +12,7 @@ Usage, with the app already running on an accessibility bus:
 
 Exit status 0 if every expected object was found. Needs python3-pyatspi.
 """
+import os
 import sys
 import time
 
@@ -34,6 +35,18 @@ EXPECTED_OVERVIEW = [
     ("heading", "Same analysis on the command line"),
     ("radio button", None),          # how to run it
     ("push button", "Analyse"),
+]
+
+# Settings, reached with "Change settings first".
+EXPECTED_SETTINGS = [
+    ("heading", "Settings for http-rat.jar"),
+    ("page tab", "Forms"),
+    ("push button", "Presets"),             # a disclosure button, not an unnamed group
+    ("push button", "More settings"),
+    ("entry", "Sleeps per thread"),
+    ("radio button", "Connections work and get made-up answers (respond)"),
+    ("push button", "Add web answer"),
+    ("push button", "Analyse with these settings"),
 ]
 
 # The report's Events tab: the grid and its parts. WebKitGTK reports an ARIA grid as a table.
@@ -120,11 +133,50 @@ def main():
     nodes = wait_for(app, "push button", "Analyse", 60)
     show(nodes, "overview", printing)
     missing += check(nodes, EXPECTED_OVERVIEW)
-    if not press(app, "push button", "Analyse"):
-        missing.append(("push button", "Analyse (to press)"))
+    # Settings: change one through the bus, as a screen reader user would, and analyse with it.
+    if not press(app, "push button", "Change settings first"):
+        missing.append(("push button", "Change settings first (to press)"))
+        return report(missing)
+    nodes = wait_for(app, "entry", "Sleeps per thread", 30)
+    show(nodes, "settings", printing, 140)
+    missing += check(nodes, EXPECTED_SETTINGS)
+    # Change a setting with the screen reader's Press action: open Presets and press one.
+    # (Typing needs keyboard focus, which a bare virtual display without a window manager does
+    # not give; the browser checks cover typing.)
+    if not press(app, "push button", "Presets"):
+        missing.append(("push button", "Presets (to press)"))
+        return report(missing)
+    wait_for(app, "push button", "Let a waiting loop run longer", 10)
+    if not press(app, "push button", "Let a waiting loop run longer"):
+        missing.append(("push button", "Let a waiting loop run longer (to press)"))
+        return report(missing)
+    yaml_text = ""
+    for _ in range(20):
+        time.sleep(0.5)
+        sleeps = next(find_nodes(app, "entry", "Sleeps per thread"), None)
+        if sleeps is not None:
+            text = sleeps.queryText()
+            yaml_text = text.getText(0, text.characterCount)
+            if yaml_text == "200":
+                break
+    print(f"after the preset, Sleeps per thread holds {yaml_text!r}")
+    if yaml_text != "200":
+        missing.append(("entry", "Sleeps per thread = 200 after the preset"))
+    if not press(app, "push button", "Analyse with these settings"):
+        missing.append(("push button", "Analyse with these settings (to press)"))
         return report(missing)
     nodes = wait_for(app, "push button", "View the report", 120)
     show(nodes, "running, finished", printing, 120)
+    # The run used the settings as shown: each run keeps them beside its report.
+    # (os.walk, not glob: results may be under a hidden folder such as ~/.local/share.)
+    saved = sorted(
+        (os.path.join(folder, "config.yaml") for folder, _, files in os.walk(os.path.expanduser("~")) if "config.yaml" in files),
+        key=os.path.getmtime,
+    )
+    used = open(saved[-1], encoding="utf-8").read() if saved else ""
+    print(f"the run's saved settings have maxSleeps: 200: {'maxSleeps: 200' in used}")
+    if "maxSleeps: 200" not in used:
+        missing.append(("run settings", "config.yaml beside the report with maxSleeps: 200"))
     if not press(app, "push button", "View the report"):
         missing.append(("push button", "View the report (to press)"))
         return report(missing)

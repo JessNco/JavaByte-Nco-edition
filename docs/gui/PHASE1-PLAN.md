@@ -1,6 +1,6 @@
 # Phase 1: making the command-line tool drivable
 
-Status: **in progress** on branch `claude/gui-phase1`.
+Status: **complete** on branch `claude/gui-phase1`, pending CI on Windows.
 
 ## Goal
 

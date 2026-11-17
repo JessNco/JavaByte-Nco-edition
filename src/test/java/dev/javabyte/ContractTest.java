@@ -264,6 +264,14 @@ class ContractTest {
         }
         assertEquals(0, cli("inspect", basics.toString()).exitCode());
         assertEquals(2, cli("inspect", temp.resolve("nothing.jar").toString()).exitCode());
+        assertEquals(2, cli("inspect", write("notes.txt", "plain text").toString()).exitCode(), "not a jar or class file");
+
+        // A folder of classes, which 'run' also accepts.
+        Path folder = Files.createDirectories(temp.resolve("classes/dev/javabyte/guest"));
+        Files.write(folder.resolve("Basics.class"), Fixtures.classBytes(Basics.class));
+        Cli fromFolder = cli("inspect", "--json", temp.resolve("classes").toString());
+        assertEquals(0, fromFolder.exitCode(), fromFolder.err());
+        assertTrue(fromFolder.json().get("mainCandidates").toString().contains("dev/javabyte/guest/Basics"), fromFolder.out());
     }
 
     @Test

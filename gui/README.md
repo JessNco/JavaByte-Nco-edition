@@ -15,7 +15,7 @@ whether the design goes ahead, is in
 | Folder | What | Built with |
 | --- | --- | --- |
 | `crates/protocol` | Data types shared by screens and backend; safe display of untrusted text | Rust |
-| `crates/backend` | Event storage, filtering and paging; report reading; the pretend run | Rust, no UI code |
+| `crates/backend` | Starting and watching the command-line tool (`runner`); event storage, filtering and paging; report reading; the pretend run | Rust, no UI code |
 | `ui` | The screens | Rust (Leptos), compiled to WebAssembly with Trunk |
 | `app` | The desktop window and the commands the screens may call | Rust (Tauri 2) |
 | `tests/a11y` | Automated accessibility checks in Chromium | Node.js, Playwright, axe-core |
@@ -69,6 +69,15 @@ The desktop app embeds the built screens, so build them before testing it:
 
 ```bash
 cargo test
+```
+
+`crates/protocol/tests/samples/` holds real output of the command-line tool, written by the Java
+test `ContractSamplesTest`; the Rust tests read it, so the two cannot drift apart. The runner
+tests drive the real tool on harmless fixtures and need it built (`mvn package` at the
+repository root):
+
+```bash
+JAVABYTE_JAR=$PWD/../target/javabyte-0.1.0.jar JAVABYTE_TEST_CLASSES=$PWD/../target/test-classes cargo test -p javabyte-gui-backend
 ```
 
 The accessibility checks run the screens in Chromium:

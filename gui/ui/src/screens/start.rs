@@ -3,6 +3,7 @@
 use crate::app::{ErrorBox, Screen, flow, open_report, report_error, show};
 use crate::bridge;
 use crate::util::{announcer, fmt_num};
+use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::views::{EngineStatus, RecentRun, SampleChoice};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -43,7 +44,7 @@ pub fn StartScreen() -> impl IntoView {
     let open_sample = move |sample: SampleChoice| {
         busy.set(true);
         error.set(None);
-        announcer().say(format!("Reading {}…", sample.name));
+        announcer().say(t!("start-reading", name = &sample.name));
         spawn_local(async move {
             match bridge::inspect_sample(&sample).await {
                 Ok(overview) => {
@@ -84,18 +85,12 @@ pub fn StartScreen() -> impl IntoView {
     }
 
     view! {
-        <h2 id="start-heading" tabindex="-1">"Analyse a sample"</h2>
+        <h2 id="start-heading" tabindex="-1">{t!("start-heading")}</h2>
         <Show when=move || show_notice.get()>
             <div class="notice" role="region" aria-labelledby="notice-heading">
-                <h3 id="notice-heading">"Before you start"</h3>
-                <p>
-                    "JavaByte reads the sample and imitates what it would do. It never runs it on your computer, and "
-                    "nothing it tries to send leaves the analysis."
-                </p>
-                <p>
-                    "The sample file itself is still live malware. Keep it in its own folder, do not open it with other "
-                    "programs, and for real malware use a virtual machine."
-                </p>
+                <h3 id="notice-heading">{t!("notice-heading")}</h3>
+                <p>{t!("notice-emulated")}</p>
+                <p>{t!("notice-live")}</p>
                 <button
                     type="button"
                     on:click=move |_| {
@@ -106,54 +101,54 @@ pub fn StartScreen() -> impl IntoView {
                         crate::util::focus_id("choose-file".into());
                     }
                 >
-                    "I understand"
+                    {t!("notice-understood")}
                 </button>
             </div>
         </Show>
         {move || {
             engine.get().filter(|e| !e.ready).map(|e| view! {
                 <div class="error-summary" role="region" aria-labelledby="engine-problem">
-                    <h3 id="engine-problem">"The analysis engine is not available"</h3>
+                    <h3 id="engine-problem">{t!("engine-unavailable")}</h3>
                     <p>{e.problem.unwrap_or_default()}</p>
                 </div>
             })
         }}
         <ErrorBox id="start-error" message=Signal::derive(move || error.get()) />
-        <p>"Choose a Java program (.jar), a single class file, or a folder of classes."</p>
+        <p>{t!("start-intro")}</p>
         <div class="buttons">
             <button type="button" class="primary" id="choose-file" disabled=move || busy.get() || !ready() on:click=move |_| pick(false)>
-                "Choose a sample file…"
+                {t!("choose-file")}
             </button>
             <button type="button" disabled=move || busy.get() || !ready() on:click=move |_| pick(true)>
-                "Choose a folder of classes…"
+                {t!("choose-folder")}
             </button>
         </div>
-        <p class="hint">"You can also drop a file anywhere on this window."</p>
-        <p class="inline-status" role="status">{move || if busy.get() { "Reading the sample…" } else { "" }}</p>
+        <p class="hint">{t!("drop-hint")}</p>
+        <p class="inline-status" role="status">{move || if busy.get() { t!("reading-sample") } else { String::new() }}</p>
 
-        <h3 id="recent-heading">"Recent analyses"</h3>
+        <h3 id="recent-heading">{t!("recent-heading")}</h3>
         {move || {
             let runs = recent.get();
             if runs.is_empty() {
-                view! { <p>"None yet. Results are kept in your Documents folder, under JavaByte."</p> }.into_any()
+                view! { <p>{t!("recent-none")}</p> }.into_any()
             } else {
                 view! {
                     <div class="table-wrap" tabindex="0" role="region" aria-labelledby="recent-heading">
                         <table class="simple-table">
-                            <caption class="visually-hidden">"Recent analyses, newest first"</caption>
+                            <caption class="visually-hidden">{t!("recent-caption")}</caption>
                             <thead>
                                 <tr>
-                                    <th scope="col">"Sample"</th>
-                                    <th scope="col">"When (UTC)"</th>
-                                    <th scope="col">"How it ended"</th>
-                                    <th scope="col" class="number">"Events"</th>
-                                    <th scope="col"><span class="visually-hidden">"Action"</span></th>
+                                    <th scope="col">{t!("recent-sample")}</th>
+                                    <th scope="col">{t!("recent-when")}</th>
+                                    <th scope="col">{t!("recent-outcome")}</th>
+                                    <th scope="col" class="number">{t!("recent-events")}</th>
+                                    <th scope="col"><span class="visually-hidden">{t!("recent-action")}</span></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {runs.into_iter().map(|run| {
                                     let id = run.id.clone();
-                                    let label = format!("Open report: {}, {}", run.sample_name, run.when);
+                                    let label = t!("recent-open-label", name = &run.sample_name, when = &run.when);
                                     view! {
                                         <tr>
                                             <th scope="row" class="untrusted">{run.sample_name.clone()}</th>
@@ -174,7 +169,7 @@ pub fn StartScreen() -> impl IntoView {
                                                         });
                                                     }
                                                 >
-                                                    "Open report"
+                                                    {t!("recent-open")}
                                                 </button>
                                             </td>
                                         </tr>

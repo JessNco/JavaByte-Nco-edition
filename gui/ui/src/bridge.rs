@@ -10,6 +10,7 @@ use javabyte_gui_backend::simulation::Simulation;
 use javabyte_gui_backend::synthetic::SyntheticEvents;
 use javabyte_gui_protocol::inspect::Inspection;
 use javabyte_gui_protocol::report::Report;
+use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::views::{self, EngineStatus, EntryChoice, Overview, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{Page, PageRequest, RunState, RunStatus};
 use serde::Serialize;
@@ -61,21 +62,21 @@ pub fn in_desktop_app() -> bool {
 }
 
 async fn invoke<T: DeserializeOwned>(command: &str, args: impl Serialize) -> Result<T, String> {
-    let core = tauri_core().ok_or("The desktop backend is not available.")?;
+    let core = tauri_core().ok_or_else(|| t!("error-backend-missing"))?;
     let function: js_sys::Function = js_sys::Reflect::get(&core, &"invoke".into())
-        .map_err(|_| "Tauri has no invoke function.")?
+        .map_err(|_| t!("error-backend-call", detail = "no invoke function"))? // not-ui-text: technical detail
         .dyn_into()
-        .map_err(|_| "Tauri's invoke is not a function.")?;
+        .map_err(|_| t!("error-backend-call", detail = "invoke is not a function"))?; // not-ui-text: technical detail
     let args = args
         .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-        .map_err(|e| format!("Could not prepare the request: {e}"))?;
+        .map_err(|e| t!("error-backend-call", detail = e.to_string()))?;
     let promise: js_sys::Promise = function
         .call2(&core, &JsValue::from_str(command), &args)
         .map_err(|e| format!("{e:?}"))?
         .dyn_into()
-        .map_err(|_| "Tauri's invoke did not return a promise.")?;
+        .map_err(|_| t!("error-backend-call", detail = "invoke did not return a promise"))?; // not-ui-text: technical detail
     let value = JsFuture::from(promise).await.map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")))?;
-    serde_wasm_bindgen::from_value(value).map_err(|e| format!("Unexpected reply from the backend: {e}"))
+    serde_wasm_bindgen::from_value(value).map_err(|e| t!("error-backend-reply", detail = e.to_string()))
 }
 
 #[derive(Serialize)]
@@ -150,8 +151,8 @@ pub async fn command_line(sample: &SampleChoice, entry: &EntryChoice) -> Result<
         invoke("command_line", RunArgs { sample, entry }).await
     } else {
         Ok(match entry.override_value() {
-            Some(value) => format!("javabyte run '{}' -s '{}'", sample.path, value),
-            None => format!("javabyte run '{}'", sample.path),
+            Some(value) => format!("javabyte run '{}' -s '{}'", sample.path, value), // not-ui-text: a command
+            None => format!("javabyte run '{}'", sample.path), // not-ui-text: a command
         })
     }
 }
@@ -211,7 +212,7 @@ pub async fn recent_runs() -> Vec<RecentRun> {
             id: "2026-11-16 09-30-00 earlier.jar".into(),
             sample_name: "earlier.jar".into(),
             when: "2026-11-16 09:30".into(),
-            outcome: "The sample ran to its end.".into(),
+            outcome: javabyte_gui_protocol::report::describe_outcome("completed"),
             events: 27,
             output_dir: "C:\\Users\\you\\Documents\\JavaByte\\2026-11-16 09-30-00 earlier.jar".into(),
         }]

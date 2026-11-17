@@ -13,6 +13,7 @@ mod egress_probe;
 
 use javabyte_gui_backend::runner::Launcher;
 use javabyte_gui_backend::session::Session;
+use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::views::{EngineStatus, EntryChoice, Overview, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
@@ -46,9 +47,9 @@ async fn choose_sample(app: tauri::AppHandle) -> Result<Option<SampleChoice>, St
     let picked = app
         .dialog()
         .file()
-        .set_title("Choose a sample to analyse")
-        .add_filter("Java programs and classes", &["jar", "zip", "class"])
-        .add_filter("All files", &["*"])
+        .set_title(t!("picker-sample"))
+        .add_filter(t!("picker-java-files"), &["jar", "zip", "class"])
+        .add_filter(t!("picker-all-files"), &["*"])
         .blocking_pick_file();
     match picked.and_then(|p| p.into_path().ok()) {
         Some(path) => Session::choose(&path).map(Some),
@@ -59,7 +60,7 @@ async fn choose_sample(app: tauri::AppHandle) -> Result<Option<SampleChoice>, St
 /// The same picker for a folder of classes.
 #[tauri::command]
 async fn choose_sample_folder(app: tauri::AppHandle) -> Result<Option<SampleChoice>, String> {
-    match app.dialog().file().set_title("Choose a folder of classes").blocking_pick_folder().and_then(|p| p.into_path().ok()) {
+    match app.dialog().file().set_title(t!("picker-folder")).blocking_pick_folder().and_then(|p| p.into_path().ok()) {
         Some(path) => Session::choose(&path).map(Some),
         None => Ok(None),
     }
@@ -139,10 +140,7 @@ fn find_engine() -> Result<Launcher, String> {
             }
         }
     }
-    let jar = candidates.into_iter().find(|p| p.is_file()).ok_or(
-        "The analysis engine (javabyte.jar) was not found. Set JAVABYTE_JAR to its location, or build it with \
-         'mvn package' in the JavaByte folder.",
-    )?;
+    let jar = candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| t!("error-engine-missing"))?;
     let launcher = Launcher::find(jar)?;
     // Java must answer before anything is promised to the person.
     let works = std::process::Command::new(&launcher.java)
@@ -154,9 +152,7 @@ fn find_engine() -> Result<Launcher, String> {
     if works {
         Ok(launcher)
     } else {
-        Err("Java 17 or later is needed and was not found. Install it, or set JAVA_HOME to it. (The installer will \
-             include it.)"
-            .into())
+        Err(t!("error-java-missing"))
     }
 }
 

@@ -1,5 +1,6 @@
 //! Small helpers shared by the screens.
 
+use javabyte_gui_protocol::t;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -83,15 +84,15 @@ pub fn copy_text(text: &str) -> bool {
 }
 
 /// The message after a copy attempt.
-pub fn copied_message(done: bool) -> &'static str {
-    if done { "Copied." } else { "Copying is not available here. Select the text and press Control and C." }
+pub fn copied_message(done: bool) -> String {
+    if done { t!("copied") } else { t!("copy-unavailable") }
 }
 
 /// File size for people: "13.6 KB".
 pub fn fmt_size(bytes: u64) -> String {
     match bytes {
-        0..=1023 => format!("{bytes} bytes"),
-        1024..=1_048_575 => format!("{:.1} KB", bytes as f64 / 1024.0),
-        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+        0..=1023 => t!("size-bytes", count = bytes),
+        1024..=1_048_575 => t!("size-kb", size = format!("{:.1}", bytes as f64 / 1024.0)),
+        _ => t!("size-mb", size = format!("{:.1}", bytes as f64 / 1_048_576.0)),
     }
 }

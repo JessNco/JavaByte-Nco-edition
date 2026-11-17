@@ -9,3 +9,7 @@ license.workspace = true
 serde.workspace = true
 # Event data and the effective config are free-form JSON.
 serde_json.workspace = true
+# All user-visible text comes from Fluent resource files (gui/locales), for both the screens and
+# the backend, so the same words are used everywhere and can be translated.
+fluent-bundle = "0.16"
+unic-langid = "0.9"

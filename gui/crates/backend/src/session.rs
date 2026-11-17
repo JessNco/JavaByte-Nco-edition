@@ -67,7 +67,7 @@ impl Session {
     /// Checks a path someone picked or dropped.
     pub fn choose(path: &Path) -> Result<SampleChoice, String> {
         if !path.exists() {
-            return Err(format!("{} could not be found.", path.display()));
+            return Err(javabyte_gui_protocol::t!("error-not-found", path = path.display().to_string()));
         }
         let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
         Ok(SampleChoice { path: path.display().to_string(), name })
@@ -92,10 +92,10 @@ impl Session {
     /// Starts an analysis. Refused while another is running.
     pub fn start(&mut self, sample: SampleChoice, entry: &EntryChoice) -> Result<(), String> {
         if self.active.as_ref().is_some_and(|a| a.ended.is_none()) {
-            return Err("An analysis is already running. Stop it or wait for it to finish.".into());
+            return Err(javabyte_gui_protocol::t!("error-already-running"));
         }
         let output = self.runs_root.join(format!("{} {}", timestamp(SystemTime::now(), true), safe_name(&sample.name)));
-        std::fs::create_dir_all(&output).map_err(|e| format!("The results folder could not be created: {e}"))?;
+        std::fs::create_dir_all(&output).map_err(|e| javabyte_gui_protocol::t!("error-results-folder", detail = e.to_string()))?;
         let request = RunRequest {
             sample: PathBuf::from(&sample.path),
             output: output.clone(),
@@ -185,7 +185,7 @@ impl Session {
                 id: active.output.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
                 sample_name: active.sample.name.clone(),
                 when: timestamp(SystemTime::now(), false),
-                outcome: ended.tally.entries.first().map_or("", |e| describe_outcome(&e.outcome)).to_string(),
+                outcome: ended.tally.entries.first().map(|e| describe_outcome(&e.outcome)).unwrap_or_default(),
                 events: opened.view.event_count,
                 output_dir: active.output.display().to_string(),
             };
@@ -205,12 +205,12 @@ impl Session {
 
     /// The report of the last finished or opened run.
     pub fn report(&self) -> Result<ReportView, String> {
-        self.report.as_ref().map(|r| r.view.clone()).ok_or_else(|| "No report is open.".to_string())
+        self.report.as_ref().map(|r| r.view.clone()).ok_or_else(|| javabyte_gui_protocol::t!("error-no-report"))
     }
 
     /// Opens the report of a run in the recent list.
     pub fn open_recent(&mut self, id: &str) -> Result<ReportView, String> {
-        let recent = self.recent().into_iter().find(|r| r.id == id).ok_or("That run is no longer in the list.")?;
+        let recent = self.recent().into_iter().find(|r| r.id == id).ok_or_else(|| javabyte_gui_protocol::t!("error-run-gone"))?;
         let opened = open_report(Path::new(&recent.output_dir), &recent.sample_name)?;
         let view = opened.view.clone();
         self.report = Some(opened);
@@ -239,8 +239,8 @@ impl Session {
 
 fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport, String> {
     let file = output.join("report.json");
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("The report could not be read: {e}"))?;
-    let report: Report = serde_json::from_str(&text).map_err(|e| format!("The report could not be read: {e}"))?;
+    let text = std::fs::read_to_string(&file).map_err(|e| javabyte_gui_protocol::t!("error-report-unreadable", detail = e.to_string()))?;
+    let report: Report = serde_json::from_str(&text).map_err(|e| javabyte_gui_protocol::t!("error-report-unreadable", detail = e.to_string()))?;
     let events = ReportEventsSource::read(text.as_bytes())?;
     Ok(OpenReport {
         view: views::report_view(&report, sample_name, &output.display().to_string()),

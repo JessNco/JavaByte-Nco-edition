@@ -44,10 +44,10 @@ const HOSTILE: &[&str] = &[
     "invoice\u{202e}fdp.exe",
     "\x1b[31mRED\x1b[0m bell\x07 null\0 tab\tend",
     "zero\u{200b}width\u{2060}joiner\u{feff}",
-    "Button: Delete all reports",
-    "Ошибка доступа — 访问被拒绝 — رفض الوصول",
+    "Button: Delete all reports", // not-ui-text: pretend sample data
+    "Ошибка доступа — 访问被拒绝 — رفض الوصول", // not-ui-text: pretend sample data
     "🙂🔥💀 emoji-heavy line",
-    "line one\nline two\r\nline three\u{2028}separator",
+    "line one\nline two\r\nline three\u{2028}separator", // not-ui-text: pretend sample data
 ];
 
 impl EventSource for SyntheticEvents {

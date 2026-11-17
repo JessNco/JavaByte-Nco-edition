@@ -10,6 +10,7 @@
 //! Only `serde` and `serde_json` are needed, so the crate compiles for both targets.
 
 mod display;
+pub mod i18n;
 pub mod inspect;
 pub mod report;
 pub mod schema;

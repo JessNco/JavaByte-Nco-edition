@@ -4,6 +4,7 @@ use crate::app::{ErrorBox, Screen, flow, report_error, show};
 use crate::bridge;
 use crate::util::{announcer, copied_message, copy_text, fmt_num, fmt_size};
 use javabyte_gui_protocol::display_text;
+use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::views::EntryChoice;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -15,7 +16,7 @@ pub fn OverviewScreen() -> impl IntoView {
     let chosen = RwSignal::new(0usize);
     let other = RwSignal::new(String::new());
     let command = RwSignal::new(String::new());
-    let copied = RwSignal::new("");
+    let copied = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
     let starting = RwSignal::new(false);
 
@@ -57,7 +58,7 @@ pub fn OverviewScreen() -> impl IntoView {
                     flow.run_started.set(true);
                     flow.report.set(None);
                     show(Screen::Running);
-                    announcer().say(format!("Analysis of {} started.", sample.name));
+                    announcer().say(t!("overview-started", name = &sample.name));
                 }
                 Err(message) => report_error(error, "overview-error", message),
             }
@@ -67,35 +68,35 @@ pub fn OverviewScreen() -> impl IntoView {
 
     view! {
         <h2 id="overview-heading" tabindex="-1">
-            {move || format!("Before analysing: {}", flow.sample.with(|s| s.as_ref().map(|s| display_text(&s.name, 120).text).unwrap_or_default()))}
+            {move || t!("overview-heading", name = flow.sample.with(|s| s.as_ref().map(|s| display_text(&s.name, 120).text).unwrap_or_default()))}
         </h2>
         <ErrorBox id="overview-error" message=Signal::derive(move || error.get()) />
         {move || flow.overview.get().map(|o| {
             let i = &o.inspection;
             let start_point = match (&i.main_class, &i.agent_class) {
                 (Some(main), _) => main.replace('/', "."),
-                (None, Some(agent)) => format!("none; it is a Java agent ({})", agent.replace('/', ".")),
-                (None, None) => "none named".to_string(),
+                (None, Some(agent)) => t!("overview-start-agent", class = agent.replace('/', ".")),
+                (None, None) => t!("overview-start-none"),
             };
             view! {
-                <h3>"What it is"</h3>
+                <h3>{t!("overview-what-heading")}</h3>
                 <dl class="stats">
-                    <dt>"File"</dt><dd class="untrusted">{display_text(&o.sample.path, 300).text}</dd>
-                    <dt>"Size"</dt><dd>{fmt_size(i.size)}</dd>
-                    <dt>"Classes"</dt><dd>{fmt_num(i.class_count)}</dd>
-                    <dt>"Starting point"</dt><dd class="untrusted">{display_text(&start_point, 300).text}</dd>
-                    <dt>"Native code"</dt><dd>{if i.native_method_count == 0 && i.native_libraries.is_empty() { "None".to_string() } else {
-                        format!("{} native methods, {} libraries", fmt_num(i.native_method_count), i.native_libraries.len())
+                    <dt>{t!("overview-file")}</dt><dd class="untrusted">{display_text(&o.sample.path, 300).text}</dd>
+                    <dt>{t!("overview-size")}</dt><dd>{fmt_size(i.size)}</dd>
+                    <dt>{t!("overview-classes")}</dt><dd>{fmt_num(i.class_count)}</dd>
+                    <dt>{t!("overview-start-point")}</dt><dd class="untrusted">{display_text(&start_point, 300).text}</dd>
+                    <dt>{t!("overview-native")}</dt><dd>{if i.native_method_count == 0 && i.native_libraries.is_empty() { t!("overview-native-none") } else {
+                        t!("overview-native-some", methods = i.native_method_count, libraries = i.native_libraries.len())
                     }}</dd>
-                    <dt>"Hidden calls"</dt><dd>{fmt_num(i.obfuscated_call_sites)}</dd>
-                    <dt>"Own class loaders"</dt><dd>{fmt_num(i.class_loaders.len() as u64)}</dd>
+                    <dt>{t!("overview-hidden-calls")}</dt><dd>{fmt_num(i.obfuscated_call_sites)}</dd>
+                    <dt>{t!("overview-loaders")}</dt><dd>{fmt_num(i.class_loaders.len() as u64)}</dd>
                 </dl>
                 {(!o.findings.is_empty()).then(|| view! {
-                    <h3>"What this means"</h3>
+                    <h3>{t!("overview-meaning-heading")}</h3>
                     <ul class="findings">
                         {o.findings.iter().map(|f| view! {
                             <li>
-                                <strong>{if f.level == "attention" { "Important: " } else { "Note: " }}{f.title.clone()}"."</strong>
+                                <strong>{t!(if f.level == "attention" { "finding-important" } else { "finding-note" }, title = &f.title)}</strong>
                                 " "{f.detail.clone()}
                             </li>
                         }).collect_view()}
@@ -104,8 +105,8 @@ pub fn OverviewScreen() -> impl IntoView {
             }
         })}
         <fieldset>
-            <legend>"Where to start"</legend>
-            <p class="hint" id="entry-hint">"The analysis runs the sample's code from this point."</p>
+            <legend>{t!("overview-start-heading")}</legend>
+            <p class="hint" id="entry-hint">{t!("overview-start-hint")}</p>
             {move || flow.overview.get().map(|o| {
                 let entries = o.entries.clone();
                 let others = o.other_classes.clone();
@@ -143,12 +144,12 @@ pub fn OverviewScreen() -> impl IntoView {
                                     on:change=move |_| chosen.set(usize::MAX)
                                 />
                                 <div>
-                                    <label for="entry-other">"Another class with a main method"</label>
-                                    <p class="hint" id="entry-other-help">{format!("{count} more classes have one. Choose below.")}</p>
+                                    <label for="entry-other">{t!("overview-other")}</label>
+                                    <p class="hint" id="entry-other-help">{t!("overview-other-help", count = count)}</p>
                                 </div>
                             </div>
                             <div class="field indented">
-                                <label for="entry-other-class">"Class to start from"</label>
+                                <label for="entry-other-class">{t!("overview-other-class")}</label>
                                 <select
                                     id="entry-other-class"
                                     disabled=move || chosen.get() != usize::MAX
@@ -165,16 +166,15 @@ pub fn OverviewScreen() -> impl IntoView {
                 }
             })}
         </fieldset>
-        <h3 id="overview-command-heading">"Same analysis on the command line"</h3>
+        <h3 id="overview-command-heading">{t!("overview-command-heading")}</h3>
         <pre class="command untrusted" aria-labelledby="overview-command-heading" tabindex="0"><code>{move || command.get()}</code></pre>
         <div class="buttons">
-            <button type="button" on:click=move |_| copied.set(copied_message(copy_text(&command.get_untracked())))>"Copy command"</button>
+            <button type="button" on:click=move |_| copied.set(copied_message(copy_text(&command.get_untracked())))>{t!("overview-copy-command")}</button>
             <span role="status" class="inline-status">{move || copied.get()}</span>
         </div>
-        <p class="hint">"More settings, such as made-up server answers and time limits, come in a later version. Until then they can be set on the command line."</p>
         <div class="buttons">
-            <button type="button" class="primary" disabled=move || starting.get() on:click=start>"Analyse"</button>
-            <button type="button" on:click=move |_| show(Screen::Start)>"Choose a different sample"</button>
+            <button type="button" class="primary" disabled=move || starting.get() on:click=start>{t!("overview-analyse")}</button>
+            <button type="button" on:click=move |_| show(Screen::Start)>{t!("overview-different-sample")}</button>
         </div>
     }
 }

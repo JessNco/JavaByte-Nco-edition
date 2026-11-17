@@ -55,7 +55,7 @@ impl Launcher {
     pub fn find(jar: impl Into<PathBuf>) -> Result<Self, String> {
         let jar = jar.into();
         if !jar.is_file() {
-            return Err(format!("The JavaByte program was not found at {}.", jar.display()));
+            return Err(javabyte_gui_protocol::t!("error-jar-missing", path = jar.display().to_string()));
         }
         let executable = if cfg!(windows) { "java.exe" } else { "java" };
         let java = std::env::var_os("JAVABYTE_JAVA")
@@ -85,15 +85,12 @@ impl Launcher {
             .command(args)
             .stdin(Stdio::null())
             .output()
-            .map_err(|e| format!("Java could not be started ({}): {e}", self.java.display()))?;
+            .map_err(|e| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string()))?;
         let code = output.status.code().unwrap_or(-1);
         if !accept.contains(&code) {
-            return Err(format!(
-                "The JavaByte tool failed (exit code {code}): {}",
-                last_lines(&String::from_utf8_lossy(&output.stderr), 5)
-            ));
+            return Err(javabyte_gui_protocol::t!("error-tool-failed", code = code, detail = last_lines(&String::from_utf8_lossy(&output.stderr), 5)));
         }
-        serde_json::from_slice(&output.stdout).map_err(|e| format!("Unexpected output from the JavaByte tool: {e}"))
+        serde_json::from_slice(&output.stdout).map_err(|e| javabyte_gui_protocol::t!("error-tool-output", detail = e.to_string()))
     }
 
     /// Describes a sample without running it.
@@ -150,7 +147,7 @@ impl Launcher {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Java could not be started ({}): {e}", self.java.display()))?;
+            .map_err(|e| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string()))?;
 
         // One thread per output pipe, so a full pipe can never stall the tool.
         let (sender, records) = channel();
@@ -283,7 +280,7 @@ impl Run {
             Some(stdin) => stdin
                 .write_all(b"stop\n")
                 .and_then(|_| stdin.flush())
-                .map_err(|e| format!("The stop request could not be sent: {e}")),
+                .map_err(|e| javabyte_gui_protocol::t!("error-stop-not-sent", detail = e.to_string())),
             None => Ok(()),
         }
     }
@@ -371,29 +368,23 @@ impl Drop for Run {
 /// One or two sentences about how a run ended, for the screen and for screen readers.
 pub fn summarise(exit_code: Option<i32>, forced: bool, tally: &Tally) -> String {
     if forced {
-        return "The analysis did not stop when asked, so it was ended. Results may be incomplete; the trace file has \
-                everything recorded until then."
-            .into();
+        return javabyte_gui_protocol::t!("run-forced");
     }
     let outcome = tally.entries.first().map(|entry| describe_outcome(&entry.outcome));
     match exit_code {
         Some(exit_code::OK) | Some(exit_code::LIMIT_REACHED) => {
             let events = tally.finish.as_ref().map_or(tally.events, |f| f.summary.event_counts.values().sum());
-            format!(
-                "{} {} {} recorded.",
-                outcome.unwrap_or("The analysis finished."),
-                events,
-                if events == 1 { "event was" } else { "events were" }
-            )
+            javabyte_gui_protocol::t!("run-ended-events", outcome = outcome.unwrap_or_else(|| javabyte_gui_protocol::t!("run-finished")), count = events)
         }
-        Some(exit_code::BAD_SETTINGS) => "The settings have a problem, so nothing was run. Check the settings and try again.".into(),
-        Some(exit_code::TOOL_FAULT) => "The analysis tool itself failed. This is a fault in the tool, not something the sample did.".into(),
-        Some(other) => format!("The analysis tool ended unexpectedly (exit code {other})."),
-        None => "The analysis tool ended unexpectedly.".into(),
+        Some(exit_code::BAD_SETTINGS) => javabyte_gui_protocol::t!("run-bad-settings"),
+        Some(exit_code::TOOL_FAULT) => javabyte_gui_protocol::t!("run-tool-fault"),
+        Some(other) => javabyte_gui_protocol::t!("run-ended-code", code = other),
+        None => javabyte_gui_protocol::t!("run-ended"),
     }
 }
 
 fn last_lines(text: &str, count: usize) -> String {
-    let lines: Vec<_> = text.lines().filter(|l| !l.starts_with("Picked up JAVA_TOOL_OPTIONS")).collect();
+    let java_notice = "Picked up JAVA_TOOL_OPTIONS"; // not-ui-text: matches Java's own output
+    let lines: Vec<_> = text.lines().filter(|l| !l.starts_with(java_notice)).collect();
     lines[lines.len().saturating_sub(count)..].join(" / ")
 }

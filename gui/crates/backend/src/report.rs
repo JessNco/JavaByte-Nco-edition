@@ -35,12 +35,9 @@ pub struct ReportEventsSource {
 impl ReportEventsSource {
     pub fn read(reader: impl Read) -> Result<Self, String> {
         let report: ReportEvents =
-            serde_json::from_reader(std::io::BufReader::new(reader)).map_err(|e| format!("This is not a JavaByte report: {e}"))?;
+            serde_json::from_reader(std::io::BufReader::new(reader)).map_err(|e| javabyte_gui_protocol::t!("error-not-a-report", detail = e.to_string()))?;
         if report.schema_version != SUPPORTED_SCHEMA {
-            return Err(format!(
-                "This report uses layout version {}, but this version of the app reads version {SUPPORTED_SCHEMA}.",
-                report.schema_version
-            ));
+            return Err(javabyte_gui_protocol::t!("error-report-version", found = report.schema_version, supported = SUPPORTED_SCHEMA));
         }
         let rows = report
             .events

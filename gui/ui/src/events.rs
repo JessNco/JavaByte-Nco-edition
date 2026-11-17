@@ -10,7 +10,8 @@
 
 use crate::bridge;
 use crate::util::{announcer, fmt_num, focus_id, non_empty};
-use javabyte_gui_protocol::{EventFilter, EventRow, PageRequest, display_text};
+use javabyte_gui_protocol::i18n::tr;
+use javabyte_gui_protocol::{EventFilter, EventRow, PageRequest, display_text, t};
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -19,23 +20,22 @@ use wasm_bindgen::JsCast;
 /// Rows rendered above and below the visible area, so that arrow keys and small scrolls never
 /// meet an empty row.
 const OVERSCAN: u64 = 20;
-const COLUMNS: [&str; 5] = ["Number", "Category", "Action", "Details", "Location"];
+/// Column headings: messages `col-<stem>`.
+const COLUMNS: [&str; 5] = ["number", "category", "action", "details", "location"];
 const CELL_CHARS: usize = 160;
 const DETAIL_CHARS: usize = 4_000;
 const TABLE_PAGE: u64 = 50;
-const CATEGORIES: [(&str, &str); 11] = [
-    ("process", "Programs started"),
-    ("net", "Network"),
-    ("file", "Files"),
-    ("class", "Classes"),
-    ("crypto", "Encryption"),
-    ("string", "Decoded text"),
-    ("reflect", "Reflection"),
-    ("thread", "Threads"),
-    ("console", "Console output"),
-    ("policy", "Blocked calls"),
-    ("gap", "Gaps in emulation"),
-];
+/// Categories offered in the filter; each one's label is the message `category-<name>`.
+const CATEGORIES: [&str; 11] = ["process", "net", "file", "class", "crypto", "string", "reflect", "thread", "console", "policy", "gap"];
+
+fn column_name(stem: &str) -> String {
+    tr(&format!("col-{stem}"), None)
+}
+
+/// The mark after shortened text: an ellipsis people see, and words screen readers say.
+fn shortened_mark() -> impl IntoView {
+    view! { <span class="shortened">{t!("events-shortened-mark")}<span class="visually-hidden">{t!("events-shortened")}</span></span> }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Layout {
@@ -69,19 +69,19 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
     });
 
     view! {
-        <h3 id="events-heading">"Events"</h3>
-        <p>"Everything the sample did, in order."</p>
+        <h3 id="events-heading">{t!("events-heading")}</h3>
+        <p>{t!("events-intro")}</p>
         <form
             class="filters"
             role="search"
-            aria-label="Filter events"
+            aria-label=t!("events-filter")
             on:submit=move |ev| {
                 ev.prevent_default();
                 apply();
             }
         >
             <div class="field">
-                <label for="filter-category">"Category"</label>
+                <label for="filter-category">{t!("events-category")}</label>
                 <select
                     id="filter-category"
                     on:change=move |ev| {
@@ -89,15 +89,15 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                         apply();
                     }
                 >
-                    <option value="">"All categories"</option>
+                    <option value="">{t!("events-all-categories")}</option>
                     {CATEGORIES
                         .iter()
-                        .map(|(value, label)| view! { <option value=*value>{format!("{label} ({value})")}</option> })
+                        .map(|value| view! { <option value=*value>{t!("events-category-option", label = tr(&format!("category-{value}"), None), value = *value)}</option> })
                         .collect_view()}
                 </select>
             </div>
             <div class="field">
-                <label for="filter-text">"Containing text"</label>
+                <label for="filter-text">{t!("events-text")}</label>
                 <input
                     id="filter-text"
                     type="search"
@@ -108,7 +108,7 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                 />
             </div>
             <div class="buttons">
-                <button type="submit">"Apply filter"</button>
+                <button type="submit">{t!("events-apply")}</button>
                 <button
                     type="button"
                     on:click=move |_| {
@@ -120,21 +120,21 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                         apply();
                     }
                 >
-                    "Clear filter"
+                    {t!("events-clear")}
                 </button>
             </div>
         </form>
         // A status region: announced when the count changes after filtering, not on scrolling.
         <p id="events-count" role="status">
             {move || match counts.get() {
-                None => "Loading events…".to_string(),
-                Some((matching, all)) if matching == all => format!("Showing all {} events.", fmt_num(all)),
-                Some((0, all)) => format!("No events match this filter (out of {}).", fmt_num(all)),
-                Some((matching, all)) => format!("{} of {} events match.", fmt_num(matching), fmt_num(all)),
+                None => t!("events-loading"),
+                Some((matching, all)) if matching == all => t!("events-showing-all", count = all),
+                Some((0, all)) => t!("events-none-match", count = all),
+                Some((matching, all)) => t!("events-some-match", matching = matching, count = all),
             }}
         </p>
         <fieldset class="inline">
-            <legend>"Show events as"</legend>
+            <legend>{t!("events-layout")}</legend>
             <div class="choice">
                 <input
                     type="radio"
@@ -143,7 +143,7 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                     prop:checked=move || layout.get() == Layout::Grid
                     on:change=move |_| layout.set(Layout::Grid)
                 />
-                <label for="layout-grid">"A scrolling grid"</label>
+                <label for="layout-grid">{t!("events-layout-grid")}</label>
             </div>
             <div class="choice">
                 <input
@@ -153,7 +153,7 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                     prop:checked=move || layout.get() == Layout::Table
                     on:change=move |_| layout.set(Layout::Table)
                 />
-                <label for="layout-table">"A simple table, 50 events per page"</label>
+                <label for="layout-table">{t!("events-layout-table")}</label>
             </div>
         </fieldset>
         <Show
@@ -237,7 +237,7 @@ fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: 
                     rows.set(page.rows);
                 }
                 Ok(_) => {}
-                Err(message) => announcer().say(format!("The events could not be loaded. {message}")),
+                Err(message) => announcer().say(t!("events-load-failed", detail = message)),
             }
         });
     });
@@ -308,8 +308,8 @@ fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: 
             "ArrowLeft" => (row, column.saturating_sub(1)),
             "PageDown" => ((row + page).min(total - 1), column),
             "PageUp" => (row.saturating_sub(page), column),
-            "Home" if control => (0, 0),
-            "End" if control => (total - 1, last_column),
+            "Home" if control => (0, 0), // not-ui-text: key name
+            "End" if control => (total - 1, last_column), // not-ui-text: key name
             "Home" => (row, 0),
             "End" => (row, last_column),
             _ => return,
@@ -335,8 +335,7 @@ fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: 
 
     view! {
         <p id="grid-help" class="hint">
-            "In the grid, arrow keys move between cells, Page Up and Page Down move a screenful, "
-            "and Control with Home or End goes to the first or last event. Details of the current event are shown below the grid."
+            {t!("events-grid-help")}
         </p>
         <div
             role="grid"
@@ -354,10 +353,10 @@ fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: 
                     {COLUMNS
                         .iter()
                         .enumerate()
-                        .map(|(i, name)| {
-                            view! {
+                        .map(|(i, stem)| {
+                                view! {
                                 <div role="columnheader" class=format!("col col-{i}") aria-colindex=(i + 1).to_string()>
-                                    {*name}
+                                    {column_name(stem)}
                                 </div>
                             }
                         })
@@ -393,7 +392,7 @@ fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: 
                                                 }
                                             >
                                                 {text}
-                                                {truncated.then(|| view! { <span class="shortened">"… "<span class="visually-hidden">"(shortened)"</span></span> })}
+                                                {truncated.then(shortened_mark)}
                                             </div>
                                         }
                                     })
@@ -451,7 +450,7 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
                     selected.set(result.rows.first().cloned());
                     rows.set(result.rows);
                 }
-                Err(message) => announcer().say(format!("The events could not be loaded. {message}")),
+                Err(message) => announcer().say(t!("events-load-failed", detail = message)),
             }
         });
     });
@@ -461,17 +460,17 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
         page.set(target);
         let first = target * TABLE_PAGE + 1;
         let last = ((target + 1) * TABLE_PAGE).min(counts.get_untracked().map_or(0, |c| c.0));
-        announcer().say(format!("Page {} of {}: events {} to {}.", fmt_num(target + 1), fmt_num(pages()), fmt_num(first), fmt_num(last)));
+        announcer().say(t!("events-page-announce", page = target + 1, pages = pages(), first = first, last = last));
     };
 
     view! {
-        <nav aria-label="Event pages" class="pager">
+        <nav aria-label=t!("events-pages") class="pager">
             <button type="button" disabled=move || page.get() == 0 on:click=move |_| show_page(page.get_untracked().saturating_sub(1))>
-                "Previous page"
+                {t!("events-previous")}
             </button>
-            <span>{move || format!("Page {} of {}", fmt_num(page.get() + 1), fmt_num(pages()))}</span>
+            <span>{move || t!("events-page", page = page.get() + 1, pages = pages())}</span>
             <button type="button" disabled=move || { page.get() + 1 >= pages() } on:click=move |_| show_page(page.get_untracked() + 1)>
-                "Next page"
+                {t!("events-next")}
             </button>
             <form
                 class="go-to"
@@ -479,11 +478,11 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
                     ev.prevent_default();
                     match go_to.get_untracked().trim().replace(',', "").parse::<u64>() {
                         Ok(n) if n >= 1 && n <= pages() => show_page(n - 1),
-                        _ => announcer().say(format!("Enter a page number from 1 to {}.", fmt_num(pages()))),
+                        _ => announcer().say(t!("events-page-range", pages = pages())),
                     }
                 }
             >
-                <label for="go-to-page">"Page number"</label>
+                <label for="go-to-page">{t!("events-page-number")}</label>
                 <input
                     id="go-to-page"
                     type="text"
@@ -493,14 +492,14 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
                     prop:value=move || go_to.get()
                     on:input=move |ev| go_to.set(event_target_value(&ev))
                 />
-                <button type="submit">"Go to page"</button>
+                <button type="submit">{t!("events-go")}</button>
             </form>
         </nav>
         <div class="table-wrap" tabindex="0" role="region" aria-labelledby="table-caption">
             <table class="simple-table">
-                <caption id="table-caption">{move || format!("Events, page {} of {}", fmt_num(page.get() + 1), fmt_num(pages()))}</caption>
+                <caption id="table-caption">{move || t!("events-table-caption", page = page.get() + 1, pages = pages())}</caption>
                 <thead>
-                    <tr>{COLUMNS.iter().map(|name| view! { <th scope="col">{*name}</th> }).collect_view()}</tr>
+                    <tr>{COLUMNS.iter().map(|stem| view! { <th scope="col">{column_name(stem)}</th> }).collect_view()}</tr>
                 </thead>
                 <tbody>
                     <For
@@ -513,7 +512,7 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
                                     <th scope="row">
                                         <button type="button" class="link-button" on:click=move |_| selected.set(Some(details.clone()))>
                                             {fmt_num(row.seq)}
-                                            <span class="visually-hidden">": show details"</span>
+                                            <span class="visually-hidden">{t!("events-show-details")}</span>
                                         </button>
                                     </th>
                                     {(1..COLUMNS.len())
@@ -522,7 +521,7 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
                                             view! {
                                                 <td>
                                                     {text}
-                                                    {truncated.then(|| view! { <span class="shortened">"… "<span class="visually-hidden">"(shortened)"</span></span> })}
+                                                    {truncated.then(shortened_mark)}
                                                 </td>
                                             }
                                         })
@@ -548,35 +547,35 @@ fn EventDetails(selected: RwSignal<Option<EventRow>>) -> impl IntoView {
     });
     view! {
         <section class="details" aria-labelledby="details-heading">
-            <h4 id="details-heading">"Current event"</h4>
+            <h4 id="details-heading">{t!("details-heading")}</h4>
             {move || match selected.get() {
-                None => view! { <p>"No event selected."</p> }.into_any(),
+                None => view! { <p>{t!("details-none")}</p> }.into_any(),
                 Some(row) => {
                     let limit = if show_all.get() { usize::MAX } else { DETAIL_CHARS };
                     let details = display_text(&row.details, limit);
-                    let location = display_text(row.caller.as_deref().unwrap_or("not known"), 400);
+                    let location = display_text(&row.caller.clone().unwrap_or_else(|| t!("details-location-unknown")), 400);
                     view! {
                         <dl>
-                            <dt>"Number"</dt>
+                            <dt>{t!("details-number")}</dt>
                             <dd>{fmt_num(row.seq)}</dd>
-                            <dt>"Category"</dt>
+                            <dt>{t!("details-category")}</dt>
                             <dd>{row.category.clone()}</dd>
-                            <dt>"Action"</dt>
+                            <dt>{t!("details-action")}</dt>
                             <dd>{row.action.clone()}</dd>
-                            <dt>"Location in the sample"</dt>
+                            <dt>{t!("details-location")}</dt>
                             <dd class="untrusted">{location.text}</dd>
-                            <dt>"Details"</dt>
+                            <dt>{t!("details-details")}</dt>
                             <dd class="untrusted">
                                 {details.text}
                                 {details.truncated.then(|| view! {
                                     <p>
-                                        {format!("Showing {} of {} characters. ", fmt_num(DETAIL_CHARS as u64), fmt_num(details.original_chars as u64))}
-                                        <button type="button" on:click=move |_| show_all.set(true)>"Show all"</button>
+                                        {t!("details-showing", shown = DETAIL_CHARS, count = details.original_chars)}
+                                        <button type="button" on:click=move |_| show_all.set(true)>{t!("details-show-all")}</button>
                                     </p>
                                 })}
                             </dd>
                         </dl>
-                        <p class="hint">"Text from the sample is shown exactly as written. Invisible and control characters are shown as codes such as \\x07."</p>
+                        <p class="hint">{t!("details-untrusted")}</p>
                     }
                         .into_any()
                 }

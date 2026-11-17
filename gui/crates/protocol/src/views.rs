@@ -5,6 +5,7 @@
 //! screens only display them. Wording for people lives here so it can be tested in one place.
 
 use crate::inspect::Inspection;
+use crate::t;
 use crate::report::{Report, describe_outcome};
 use serde::{Deserialize, Serialize};
 
@@ -85,34 +86,26 @@ pub fn overview(sample: SampleChoice, inspection: Inspection) -> Overview {
 
     match (&inspection.main_class, &inspection.agent_class) {
         (Some(main), _) => entries.push(EntryOption {
-            label: format!("The sample's own starting point ({})", dotted(main)),
-            help: "Runs the main method the sample names, as double-clicking it would.".into(),
+            label: t!("entry-main", class = dotted(main)),
+            help: t!("entry-main-help"),
             entry: EntryChoice::Main,
         }),
         (None, Some(agent)) => {
             findings.push(Finding {
                 level: "attention".into(),
-                title: "This is a Java agent".into(),
-                detail: "It has no main method. It is meant to be loaded into another Java program, which starts it \
-                         through its premain method. The analysis can start it the same way."
-                    .into(),
+                title: t!("finding-agent"),
+                detail: t!("finding-agent-detail"),
             });
             entries.push(EntryOption {
-                label: format!("Start it as an agent ({}.premain)", dotted(agent)),
-                help: "Calls premain as the Java runtime would, with no options.".into(),
+                label: t!("entry-agent", class = dotted(agent)),
+                help: t!("entry-agent-help"),
                 entry: EntryChoice::Agent { class: dotted(agent) },
             });
         }
         (None, None) => findings.push(Finding {
             level: "attention".into(),
-            title: "The sample names no starting point".into(),
-            detail: if inspection.main_candidates.is_empty() {
-                "No class has a main method. Plugins and mods are started by the program that loads them; collecting \
-                 hidden text from every class's start-up code is the best first step."
-                    .into()
-            } else {
-                "Choose a class to start from below. Classes with a main method are listed.".into()
-            },
+            title: t!("finding-no-entry"),
+            detail: if inspection.main_candidates.is_empty() { t!("finding-no-entry-none") } else { t!("finding-no-entry-choose") },
         }),
     }
     /// Classes offered as their own option; the rest go in a list.
@@ -128,62 +121,43 @@ pub fn overview(sample: SampleChoice, inspection: Inspection) -> Overview {
             continue;
         }
         entries.push(EntryOption {
-            label: format!("Start from {class}"),
-            help: "Runs this class's main method.".into(),
+            label: t!("entry-class", class = &class),
+            help: t!("entry-class-help"),
             entry: EntryChoice::MainOf { class },
         });
     }
     entries.push(EntryOption {
-        label: "Collect hidden text from every class's start-up code".into(),
-        help: "Runs only the code each class runs when it is first used. Most obfuscators decrypt their hidden text \
-               there, so this often reveals addresses and names without running the program itself."
-            .into(),
+        label: t!("entry-sweep"),
+        help: t!("entry-sweep-help"),
         entry: EntryChoice::ClinitSweep,
     });
 
     if inspection.native_method_count > 0 || !inspection.native_libraries.is_empty() {
         findings.push(Finding {
             level: "attention".into(),
-            title: "Part of it is native code".into(),
-            detail: format!(
-                "{} method{} and {} bundled librar{} are machine code, not Java. Without the native bridge their \
-                 behaviour is reported but not run.",
-                inspection.native_method_count,
-                plural(inspection.native_method_count),
-                inspection.native_libraries.len(),
-                if inspection.native_libraries.len() == 1 { "y" } else { "ies" }
-            ),
+            title: t!("finding-native"),
+            detail: t!("finding-native-detail", methods = inspection.native_method_count, libraries = inspection.native_libraries.len()),
         });
     }
     if inspection.obfuscated_call_sites > 0 {
         findings.push(Finding {
             level: "info".into(),
-            title: "Calls are hidden by an obfuscator".into(),
-            detail: format!(
-                "{} call{} go through the sample's own lookup code. The analysis follows them as it runs.",
-                inspection.obfuscated_call_sites,
-                plural(inspection.obfuscated_call_sites)
-            ),
+            title: t!("finding-hidden-calls"),
+            detail: t!("finding-hidden-calls-detail", count = inspection.obfuscated_call_sites),
         });
     }
     if !inspection.class_loaders.is_empty() {
         findings.push(Finding {
             level: "info".into(),
-            title: "It loads code of its own".into(),
-            detail: "The sample defines class loaders, a common way to unpack hidden stages. Classes it creates while \
-                     running are saved and analysed too."
-                .into(),
+            title: t!("finding-loaders"),
+            detail: t!("finding-loaders-detail"),
         });
     }
     if !inspection.unparseable_classes.is_empty() {
         findings.push(Finding {
             level: "info".into(),
-            title: "Some files could not be read".into(),
-            detail: format!(
-                "{} entr{} look like classes but are damaged or decoys. This is common in protected samples.",
-                inspection.unparseable_classes.len(),
-                if inspection.unparseable_classes.len() == 1 { "y" } else { "ies" }
-            ),
+            title: t!("finding-damaged"),
+            detail: t!("finding-damaged-detail", count = inspection.unparseable_classes.len()),
         });
     }
     Overview { sample, inspection, findings, entries, other_classes }
@@ -248,16 +222,16 @@ pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> Repo
     };
     let s = &report.summary;
     let mut sections = vec![
-        section("processes", "Programs it tried to start", "Command lines. Nothing was really started.", text(&s.processes)),
-        section("http", "Web addresses it contacted", "Nothing was really sent; answers came from the settings.", text(&s.http_requests)),
-        section("connections", "Network connections", "Host and port of each connection it opened.", text(&s.connections)),
-        section("dns", "Host names it looked up", "Often the first sign of its servers.", text(&s.dns_lookups)),
-        section("files", "Files it wrote", "On the pretend disk. Copies are saved with the report.", text(&s.files_written)),
-        section("classes", "Code it created while running", "Hidden stages unpacked at run time. Saved with the report.", text(&s.classes_defined)),
-        section("native", "Native libraries it loaded", "Machine code outside Java.", text(&s.native_libraries)),
-        section("decoded", "Text it decoded", "Text returned by its decoding methods: often addresses, keys and commands.", events_of("string", "returned", "value")),
-        section("crypto", "Decrypted data", "The start of what its decryption produced.", events_of("crypto", "cipher-output", "preview")),
-        section("blocked", "Calls that were refused", "Java features it tried to use that the analysis does not allow.", text(&s.blocked_calls)),
+        section("processes", text(&s.processes)),
+        section("http", text(&s.http_requests)),
+        section("connections", text(&s.connections)),
+        section("dns", text(&s.dns_lookups)),
+        section("files", text(&s.files_written)),
+        section("classes", text(&s.classes_defined)),
+        section("native", text(&s.native_libraries)),
+        section("decoded", events_of("string", "returned", "value")),
+        section("crypto", events_of("crypto", "cipher-output", "preview")),
+        section("blocked", text(&s.blocked_calls)),
     ];
     sections.retain(|section| !section.items.is_empty());
     ReportView {
@@ -271,7 +245,7 @@ pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> Repo
             .map(|run| RunLine {
                 entry: run.entry.clone(),
                 outcome: run.outcome.clone(),
-                meaning: describe_outcome(&run.outcome).to_string(),
+                meaning: describe_outcome(&run.outcome),
                 detail: run.detail.clone(),
             })
             .collect(),
@@ -283,68 +257,43 @@ pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> Repo
     }
 }
 
-fn section(id: &str, title: &str, explanation: &str, items: Vec<String>) -> IndicatorSection {
-    IndicatorSection { id: id.into(), title: title.into(), explanation: explanation.into(), items }
+fn section(id: &str, items: Vec<String>) -> IndicatorSection {
+    IndicatorSection {
+        id: id.into(),
+        title: crate::i18n::tr(&format!("indicator-{id}"), None),
+        explanation: crate::i18n::tr(&format!("indicator-{id}-about"), None),
+        items,
+    }
 }
 
 /// The paragraph that opens a report: what the sample tried to do, in one or two sentences.
 pub fn plain_summary(report: &Report) -> String {
     let s = &report.summary;
-    let mut parts = Vec::new();
-    let mut add = |count: usize, one: &str, many: &str| {
+    let mut actions: Vec<String> = Vec::new();
+    let mut add = |count: usize, id: &str| {
         if count > 0 {
-            parts.push(format!("{} {}", count, if count == 1 { one } else { many }));
+            actions.push(t!(id, count = count));
         }
     };
-    add(s.processes.len(), "program", "programs");
-    let started = parts.pop().map(|p| format!("tried to start {p}"));
-    let mut actions: Vec<String> = started.into_iter().collect();
+    add(s.processes.len(), "summary-started");
     // Distinct hosts, not requests: a beacon loop asks one server many times with different
     // addresses, and "contacted 42 servers" would be wrong.
     let hosts: std::collections::BTreeSet<String> =
         s.http_requests.iter().chain(&s.connections).filter_map(|v| v.as_str()).map(host_of).collect();
-    let servers = hosts.len();
-    if servers > 0 {
-        actions.push(format!("contacted {servers} {}", if servers == 1 { "server" } else { "servers" }));
-    }
-    if !s.dns_lookups.is_empty() {
-        actions.push(format!("looked up {} host {}", s.dns_lookups.len(), if s.dns_lookups.len() == 1 { "name" } else { "names" }));
-    }
-    if !s.files_written.is_empty() {
-        actions.push(format!("wrote {} {}", s.files_written.len(), if s.files_written.len() == 1 { "file" } else { "files" }));
-    }
-    if !s.classes_defined.is_empty() {
-        actions.push(format!(
-            "created {} {} of hidden code",
-            s.classes_defined.len(),
-            if s.classes_defined.len() == 1 { "class" } else { "classes" }
-        ));
-    }
-    if !s.native_libraries.is_empty() {
-        actions.push(format!(
-            "loaded {} native {}",
-            s.native_libraries.len(),
-            if s.native_libraries.len() == 1 { "library" } else { "libraries" }
-        ));
-    }
-    let mut summary = if actions.is_empty() {
-        "The sample did nothing the analysis counts as notable.".to_string()
-    } else {
-        format!("The sample {}.", join_list(&actions))
-    };
+    add(hosts.len(), "summary-contacted");
+    add(s.dns_lookups.len(), "summary-looked-up");
+    add(s.files_written.len(), "summary-wrote");
+    add(s.classes_defined.len(), "summary-created");
+    add(s.native_libraries.len(), "summary-loaded");
+    let mut summary =
+        if actions.is_empty() { t!("summary-nothing") } else { t!("summary-sentence", actions = join_list(&actions)) };
     if s.gaps > 0 {
-        summary.push_str(&format!(
-            " {} {} could not be emulated faithfully, so the real behaviour may differ there.",
-            s.gaps,
-            if s.gaps == 1 { "part" } else { "parts" }
-        ));
+        summary.push(' ');
+        summary.push_str(&t!("summary-gaps", count = s.gaps));
     }
     if !s.blocked_calls.is_empty() {
-        summary.push_str(&format!(
-            " {} Java {} refused.",
-            s.blocked_calls.len(),
-            if s.blocked_calls.len() == 1 { "feature it tried to use was" } else { "features it tried to use were" }
-        ));
+        summary.push(' ');
+        summary.push_str(&t!("summary-blocked", count = s.blocked_calls.len()));
     }
     summary
 }
@@ -367,13 +316,10 @@ fn join_list(items: &[String]) -> String {
     match items {
         [] => String::new(),
         [one] => one.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [rest @ .., last] => t!("list-and", first = rest.join(&t!("list-separator")), last = last),
     }
 }
 
-fn plural(n: u64) -> &'static str {
-    if n == 1 { "" } else { "s" }
-}
 
 /// A run in the recent list on the start screen.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

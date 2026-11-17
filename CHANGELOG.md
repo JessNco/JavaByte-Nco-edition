@@ -6,6 +6,14 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Desktop app, phase 5: installers. MSI and portable zip for Windows, .deb and AppImage for
+  Linux, each with its own Java runtime, in a standard edition and one with the native bridge.
+  On Linux each analysis runs with no network (the .deb adds the AppArmor permission Ubuntu
+  24.04 needs; otherwise the app asks first). Preferences for the output folder, the Java
+  runtime and isolation. "Open with" for .jar files without taking them over. A new icon.
+  `--self-check`. Tagging a version builds a draft release with checksums, signed when a key is
+  stored. See docs/INSTALL.md and docs/gui/PHASE5-PLAN.md.
+- The `native-bridge` plugin's default Python can be set with `JAVABYTE_BRIDGE_PYTHON`.
 - Desktop app, phase 4: the full report. Limits and gaps with what to try next, the files a run
   saved (viewed as text, hex or bytecode; saved as AES password zips, or as is behind a
   warning), the settings used with Run again with changes, filtering events by action and

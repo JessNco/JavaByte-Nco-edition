@@ -84,7 +84,9 @@ jobs:
               echo "SHA256SUMS lists the checksum of every file. It is not signed in this release."
             fi
             echo
-            sed -n '/^## Unreleased/,/^## [0-9]/p' CHANGELOG.md | sed '1d;$d'
+            # The changelog's section for this version, or "Unreleased" if it has none yet.
+            heading="$(grep -m1 -E "^## \[?$version\]?( |$)" CHANGELOG.md || echo "## Unreleased")"
+            awk -v h="$heading" '$0 == h {on = 1; next} on && /^## / {exit} on' CHANGELOG.md
           } > notes.md
           cat notes.md
       - name: Create the draft release

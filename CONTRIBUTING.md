@@ -162,11 +162,22 @@ For the Java ones: Raise the version property in
   run `cargo test`. A new Tauri minor version needs the egress test (Linux, root):
   see [gui/README.md](gui/README.md#testing). Keep `tauri` and `tauri-build` on matching
   minor versions.
-- **Trunk** is pinned in `.github/workflows/gui.yml` and `gui/README.md`; change both.
+- **Trunk** is pinned in `.github/workflows/gui.yml`, `.github/workflows/installers.yml` and
+  `gui/README.md`; change all three. The Tauri CLI used for bundling is pinned in
+  `gui/packaging/build.sh`; keep it on the same minor version as the `tauri` crate.
+- **The bundled Java** is Temurin 21 (`installers.yml`), trimmed by jlink to the modules listed
+  in `gui/packaging/stage.sh`. A newer LTS needs the whole Java suite run on it first (CI does)
+  and, if a module was renamed or removed, a change to that list (`jdk.crypto.ec` was merged
+  into `java.base` in Java 22).
+- **The bridge's Python** is CPython 3.12 fetched by uv; both versions are pinned in
+  `gui/packaging/stage.sh`. After changing either, run the Installers workflow with "Also build
+  the with native bridge edition" ticked: its self-check imports Speakeasy.
 - **Playwright and axe-core** are pinned in `gui/tests/a11y/package.json`. A new axe-core may
   find new problems; fix them rather than turning rules off.
 
 ### Releasing
 
-Change `<version>` in `pom.xml`. That is the only place the version is written; the tool reads
-it at run time. Move the "Unreleased" entries in `CHANGELOG.md` under the new version.
+The version is written in three places that must agree: `pom.xml` (the tool reads it at run
+time), `gui/app/tauri.conf.json` and `gui/Cargo.toml`. `gui/packaging/version.sh` checks them.
+Pushing a tag such as `v0.2.0` builds every installer and a draft release; the steps, and how
+to set up signing, are in [docs/gui/RELEASING.md](docs/gui/RELEASING.md).

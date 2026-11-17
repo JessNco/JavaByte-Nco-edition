@@ -64,9 +64,10 @@ For people who prefer not to use a command line, [`gui/`](gui/README.md) holds a
 for Windows and Linux. It opens a sample or an earlier report, lets you change every setting
 (the same YAML config the command line reads), runs the analysis with live progress, and shows
 the whole report: events, limits and gaps, saved files as text, hex or bytecode, and a
-comparison of two runs. It is built to WCAG 2.2 AA and its window has no network access. It is
-not packaged yet: build it from source as described in [gui/README.md](gui/README.md). The
-design is in [docs/GUI-PLAN.md](docs/GUI-PLAN.md).
+comparison of two runs. It is built to WCAG 2.2 AA, its window has no network access, and on
+Linux each analysis also runs with no network. The installers bring their own Java; see
+[docs/INSTALL.md](docs/INSTALL.md). Building it from source: [gui/README.md](gui/README.md).
+The design is in [docs/GUI-PLAN.md](docs/GUI-PLAN.md).
 
 ## Commands
 
@@ -227,6 +228,7 @@ The test suite is described in [docs/TESTING.md](docs/TESTING.md). In short:
 | [docs/NATIVE.md](docs/NATIVE.md) | Native libraries and the optional CPU-emulator bridge |
 | [docs/SELFTEST.md](docs/SELFTEST.md) | Results against real malware |
 | [docs/TESTING.md](docs/TESTING.md) | The test suite: what it proves, how to run and extend it |
+| [docs/INSTALL.md](docs/INSTALL.md) | Installing the desktop app, and checking a download |
 | [gui/README.md](gui/README.md) | The desktop app: building, testing, rules for its code |
 | [docs/GUI-PLAN.md](docs/GUI-PLAN.md) | The desktop app's design; each phase in [docs/gui/](docs/gui/) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |

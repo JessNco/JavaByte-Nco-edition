@@ -1,11 +1,10 @@
-//! The GUI's screens. Phase 0: an accessibility trial with one of each hard component.
+//! The GUI's screens: start, sample overview, running, report and display settings.
 
 mod app;
 mod bridge;
 mod events;
-mod form;
 mod prefs;
-mod run;
+mod screens;
 mod util;
 
 fn main() {

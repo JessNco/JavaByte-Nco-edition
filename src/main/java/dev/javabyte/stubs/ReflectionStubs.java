@@ -89,7 +89,7 @@ final class ReflectionStubs {
                 if (!(iface instanceof Class<?> cls)) {
                     // The JDK cannot proxy an interface it has no class for; the interpreter can.
                     vm.events.add("reflect", "proxy", "interfaces", java.util.Arrays.toString((Object[]) ctx.arg(1)));
-                    return new dev.javabyte.model.GuestProxy(List.of((Object[]) ctx.arg(1)), ctx.arg(2));
+                    return new dev.javabyte.model.GuestProxy(List.of((Object[]) ctx.arg(1)), ctx.arg(2), vm.router::invokeProxy);
                 }
                 interfaces.add(cls);
             }
@@ -99,6 +99,13 @@ final class ReflectionStubs {
             vm.events.add("reflect", "proxy", "interfaces", interfaces.toString());
             return Proxy.newProxyInstance(vm.shells.loader(), interfaces.toArray(Class<?>[]::new), handler);
         });
+
+        // Proxies for interpreted interfaces are not JDK proxies, so the JDK's own answers
+        // about them would be wrong.
+        stubs.on("java/lang/reflect/Proxy", "isProxyClass",
+                ctx -> ctx.arg(0) == Proxy.class || (ctx.arg(0) instanceof Class<?> cls && Proxy.isProxyClass(cls)) ? 1 : 0);
+        stubs.on("java/lang/reflect/Proxy", "getInvocationHandler",
+                ctx -> ctx.arg(0) instanceof dev.javabyte.model.GuestProxy proxy ? proxy.handler() : ctx.proceed());
 
         // Resource bundles are read from the sample's own archive, never from the class path.
         stubs.on("java/util/ResourceBundle", "getBundle", ctx -> {
@@ -205,13 +212,27 @@ final class ReflectionStubs {
         return mirror;
     }
 
+    /** The class's own entry in its InnerClasses attribute, or null for a top-level class. */
+    private static org.objectweb.asm.tree.InnerClassNode nestingOf(GuestClass cls) {
+        for (org.objectweb.asm.tree.InnerClassNode nested : cls.node.innerClasses) {
+            if (nested.name.equals(cls.name)) {
+                return nested;
+            }
+        }
+        return null;
+    }
+
     private static Object guestClassOperation(VirtualMachine vm, GuestClass cls, CallContext ctx) throws Exception {
         switch (ctx.name) {
             case "getName", "getTypeName", "getCanonicalName":
                 return cls.dottedName();
             case "getSimpleName": {
+                org.objectweb.asm.tree.InnerClassNode nested = nestingOf(cls);
+                if (nested != null) {
+                    return nested.innerName == null ? "" : nested.innerName; // anonymous classes have no simple name
+                }
                 String dotted = cls.dottedName();
-                return dotted.substring(Math.max(dotted.lastIndexOf('.'), dotted.lastIndexOf('$')) + 1);
+                return dotted.substring(dotted.lastIndexOf('.') + 1);
             }
             case "getPackageName", "getPackage": {
                 String dotted = cls.dottedName();
@@ -265,11 +286,43 @@ final class ReflectionStubs {
                 return (cls.node.access & Opcodes.ACC_ANNOTATION) != 0 ? 1 : 0;
             case "isSynthetic":
                 return (cls.node.access & Opcodes.ACC_SYNTHETIC) != 0 ? 1 : 0;
-            case "isArray", "isPrimitive", "isAnonymousClass", "isLocalClass", "isMemberClass", "isRecord", "isHidden",
-                    "desiredAssertionStatus", "isAnnotationPresent":
+            case "isArray", "isPrimitive", "isRecord", "isHidden", "desiredAssertionStatus", "isAnnotationPresent":
                 return 0;
-            case "getModifiers":
-                return cls.node.access & (Modifier.classModifiers() | Opcodes.ACC_INTERFACE);
+            case "isMemberClass": {
+                org.objectweb.asm.tree.InnerClassNode nested = nestingOf(cls);
+                return nested != null && nested.outerName != null ? 1 : 0;
+            }
+            case "isAnonymousClass": {
+                org.objectweb.asm.tree.InnerClassNode nested = nestingOf(cls);
+                return nested != null && nested.innerName == null ? 1 : 0;
+            }
+            case "isLocalClass": {
+                org.objectweb.asm.tree.InnerClassNode nested = nestingOf(cls);
+                return nested != null && nested.innerName != null && nested.outerName == null ? 1 : 0;
+            }
+            case "getModifiers": {
+                // For a nested class the real modifiers (static, private, ...) are recorded in
+                // the InnerClasses attribute; the class file's own flags cannot express them.
+                org.objectweb.asm.tree.InnerClassNode nested = nestingOf(cls);
+                return (nested != null ? nested.access : cls.node.access) & (Modifier.classModifiers() | Opcodes.ACC_INTERFACE);
+            }
+            case "getDeclaringClass", "getEnclosingClass": {
+                org.objectweb.asm.tree.InnerClassNode nested = nestingOf(cls);
+                String outer = nested != null && nested.outerName != null ? nested.outerName
+                        // Local and anonymous classes are enclosed, but not declared, by a class.
+                        : ctx.name.equals("getEnclosingClass") ? cls.node.outerClass : null;
+                return outer == null ? null : vm.types.classMirror(Type.getObjectType(outer));
+            }
+            case "getClasses", "getDeclaredClasses": {
+                java.util.List<Object> members = new java.util.ArrayList<>();
+                for (org.objectweb.asm.tree.InnerClassNode nested : cls.node.innerClasses) {
+                    boolean visible = ctx.name.equals("getDeclaredClasses") || (nested.access & Opcodes.ACC_PUBLIC) != 0;
+                    if (cls.name.equals(nested.outerName) && visible) {
+                        members.add(vm.types.classMirror(Type.getObjectType(nested.name)));
+                    }
+                }
+                return members.toArray();
+            }
             case "isInstance":
                 return ctx.arg(0) != null && vm.types.isInstance(ctx.arg(0), cls.name) ? 1 : 0;
             case "isAssignableFrom":
@@ -291,10 +344,7 @@ final class ReflectionStubs {
                 return cls.toString();
             case "getAnnotations", "getDeclaredAnnotations":
                 return new Annotation[0];
-            case "getClasses", "getDeclaredClasses":
-                return new Object[0];
-            case "getComponentType", "componentType", "getDeclaringClass", "getEnclosingClass",
-                    "getAnnotation", "getSigners", "getEnclosingMethod":
+            case "getComponentType", "componentType", "getAnnotation", "getSigners", "getEnclosingMethod":
                 return null;
             default:
                 return vm.router.gap("Class." + ctx.name + ctx.desc + " on interpreted class", ctx.desc);

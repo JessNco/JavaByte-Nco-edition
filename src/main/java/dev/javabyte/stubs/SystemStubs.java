@@ -284,7 +284,12 @@ final class SystemStubs {
         if (value instanceof Mirrors.ConstructorMirror) {
             return java.lang.reflect.Constructor.class;
         }
-        if (value instanceof GuestLambda || value instanceof Mirrors.LookupMirror || value instanceof dev.javabyte.model.GuestProxy) {
+        if (value instanceof dev.javabyte.model.GuestProxy) {
+            // The class of a real proxy is generated and extends Proxy; this is the nearest
+            // honest answer, and Proxy.isProxyClass recognises it.
+            return java.lang.reflect.Proxy.class;
+        }
+        if (value instanceof GuestLambda || value instanceof Mirrors.LookupMirror) {
             return Object.class;
         }
         if (value instanceof PhantomObject phantom) {

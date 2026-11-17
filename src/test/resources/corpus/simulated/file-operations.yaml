@@ -1,0 +1,33 @@
+description: Every common file API against the virtual disk - streams, readers and writers, random access, channels with locks, and java.nio.file - with each answer checked.
+techniques: [virtual-disk, java-io, random-access-file, file-channel, file-lock, nio-files, temp-files, environment-files]
+fixture: dev.javabyte.guest.sim.FileOps
+stages:
+  - name: run
+    config:
+      environment:
+        files:
+          - {path: 'C:\Users\admin\Documents\wallet.dat', text: 'fake-wallet'}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      stdout:
+        - '^mkdirs true true true false$'
+        - '^streams \[line one\]\[line two\]\[line three\] 28 28 l 4 o$'
+        - '^rename true false true renamed\.txt ops true true true$'
+        - '^list \[renamed\.txt, sub\] 1 2 false null$'
+        - '^delete false true true true false$'   # a directory with contents cannot be deleted
+        - '^random \[1, 2, 99, 1, 2, 3, 4, 8\] 1020304 4 4$'
+        - '^channel true true 10 10 true$'
+        - '^channel-read 8 012AB567 67 -1$'
+        - '^nio \[alpha, beta, gamma\] 18 false true true true 18 a\.txt a\.txt true false true$'
+        - '^nio-list \[a\.txt\]$'
+        - '^nio-missing NoSuchFileException$'
+        - '^io-missing FileNotFoundException$'
+        - '^temp true true true true$'
+        - '^planted true 11 fake-wallet$'
+      events:
+        - {category: file, action: write, where: {path: 'Roaming\\ops\\instance\.lock$'}}
+        - {category: file, action: delete, where: {path: 'c\.txt$', existed: 'true'}}
+        - {category: file, action: delete, where: {path: 'ops\\sub$', result: 'not empty'}}
+        - {category: file, action: read, where: {path: 'wallet\.dat$'}}
+      artifacts: ['dropped/.*ops/data\.bin$']

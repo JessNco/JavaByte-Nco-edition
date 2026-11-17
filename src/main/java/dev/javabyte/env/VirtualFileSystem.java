@@ -272,9 +272,22 @@ public final class VirtualFileSystem {
     }
 
     public boolean delete(String path) {
+        Node target = nodes.get(key(path));
+        if (target != null && target.directory && hasChildren(path)) {
+            // As on a real disk: wipers and cleanup code delete contents first and rely on
+            // this failing otherwise.
+            events.add("file", "delete", "path", absolute(path), "existed", true, "result", "refused: directory not empty");
+            return false;
+        }
         Node removed = nodes.remove(key(path));
         events.add("file", "delete", "path", absolute(path), "existed", removed != null);
         return removed != null;
+    }
+
+    private boolean hasChildren(String directory) {
+        String base = key(directory);
+        String prefix = base.endsWith(String.valueOf(separator)) ? base : base + separator;
+        return nodes.keySet().stream().anyMatch(candidate -> candidate.startsWith(prefix) && candidate.length() > prefix.length());
     }
 
     public boolean rename(String from, String to) {

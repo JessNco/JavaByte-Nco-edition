@@ -55,4 +55,14 @@ class DifferentialTest {
         assertEquals(expected, Fixtures.stdout(report), Fixtures.outcomes(report));
         assertEquals("alpha payload", expected.get(0), "fixture self-check");
     }
+
+    /** Reflection, method handles, dynamic proxies and executors: the tools obfuscators hide calls behind. */
+    @Test
+    void reflectionHandlesProxiesAndExecutorsMatchRealJvm() throws Exception {
+        List<String> expected = Fixtures.realOutput(dev.javabyte.guest.Introspection.class);
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.Introspection.class)));
+        assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
+        assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
+        assertTrue(expected.size() >= 14, "fixture self-check: " + expected);
+    }
 }

@@ -79,6 +79,34 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.6.1</version>
       </plugin>
+      <!-- Coverage of the emulator by its own tests. "mvn verify" writes target/site/jacoco/;
+           docs/TESTING.md explains how to read it. The agent is told to skip classes that are
+           not part of the emulator: the shells it generates at run time would otherwise be
+           instrumented too, and the test fixtures are interpreted, never executed. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.14</version>
+        <configuration>
+          <includes>
+            <include>dev/javabyte/**</include>
+          </includes>
+          <excludes>
+            <exclude>dev/javabyte/guest/**</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>coverage-agent</id>
+            <goals><goal>prepare-agent</goal></goals>
+          </execution>
+          <execution>
+            <id>coverage-report</id>
+            <phase>verify</phase>
+            <goals><goal>report</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
       <!-- Single runnable jar: analysts and agents should not need to assemble a classpath. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

@@ -6,6 +6,10 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Desktop app (`gui/`), phase 2: open a sample (picker, drag and drop, or on the command
+  line), see what it is and choose where to start, watch and stop the analysis, and read the
+  report's summary, indicators and events. Recent analyses can be reopened. See
+  docs/gui/PHASE2.md.
 - `run --events jsonl`: the run as JSON lines on standard output while it happens (start,
   event, progress, entry, finish; `streamVersion` 1).
 - `run --progress`: progress about every half second, in the stream or on standard error.

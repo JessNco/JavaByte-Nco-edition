@@ -71,8 +71,13 @@ jobs:
         run: cargo build --release -p javabyte-gui
       - name: Configuration and guard tests
         run: cargo test -p javabyte-gui
+      # Goes through a whole analysis of a harmless test fixture, pressing buttons through the
+      # bus as a screen reader would. The app finds the tool's jar next to the repository.
       - name: Accessibility bus check (WebKitGTK)
-        run: PYTHON=/usr/bin/python3 tests/atspi/run.sh "$PWD/target/release/javabyte-gui" --print
+        run: |
+          jar --create --file "$RUNNER_TEMP/http-rat.jar" --main-class dev.javabyte.guest.sim.HttpRat \
+            -C ../target/test-classes dev/javabyte/guest/sim/HttpRat.class
+          PYTHON=/usr/bin/python3 tests/atspi/run.sh "$PWD/target/release/javabyte-gui" --sample "$RUNNER_TEMP/http-rat.jar" --print
       - uses: actions/upload-artifact@v4
         with:
           name: javabyte-gui-trial-linux-x86_64

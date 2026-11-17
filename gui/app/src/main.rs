@@ -169,7 +169,9 @@ fn main() {
             let data = app.path().app_data_dir()?;
             app.manage(AppState {
                 session: Mutex::new(Session::new(find_engine(), documents.join("JavaByte"), data.join("recent-runs.json"))),
-                dropped: Mutex::new(None),
+                // A file named on the command line ("Open with" in a file manager) is treated
+                // like a dropped one: the start screen picks it up and inspects it.
+                dropped: Mutex::new(std::env::args_os().nth(1).map(PathBuf::from)),
             });
             Ok(())
         })

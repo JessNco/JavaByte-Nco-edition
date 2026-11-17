@@ -3,19 +3,21 @@
 A graphical interface for JavaByte, for people who prefer not to use a command line. The design
 is in [docs/GUI-PLAN.md](../docs/GUI-PLAN.md).
 
-**Status: phase 0, an accessibility trial.** The app contains one example of each hard
-component (a form with errors, tabs, a 300,000-row event list, live progress) so that screen
-reader, keyboard, zoom and high-contrast support can be tested on Windows and Linux before the
-real screens are built. It does not analyse anything yet. How to test it, and what decides
-whether the design goes ahead, is in
-[docs/gui/PHASE0-TESTING.md](../docs/gui/PHASE0-TESTING.md).
+**Status: phase 2.** The app opens a sample, shows what it is, runs the analysis with the
+command-line tool, and shows the report's summary, indicators and events. The settings editor
+(phase 3) and the remaining report tabs (phase 4) come next. What is built and how it is tested
+is in [docs/gui/PHASE2.md](../docs/gui/PHASE2.md); the phase 0 accessibility trial and its
+result are in [docs/gui/PHASE0-TESTING.md](../docs/gui/PHASE0-TESTING.md).
+
+The app needs `java` on the path and the tool's jar: set `JAVABYTE_JAR`, put `javabyte.jar`
+next to the app, or build it with `mvn package` at the repository root.
 
 ## Layout
 
 | Folder | What | Built with |
 | --- | --- | --- |
 | `crates/protocol` | Data types shared by screens and backend; safe display of untrusted text | Rust |
-| `crates/backend` | Starting and watching the command-line tool (`runner`); event storage, filtering and paging; report reading; the pretend run | Rust, no UI code |
+| `crates/backend` | Starting and watching the command-line tool (`runner`); one window's sample, run, report and recent list (`session`); event storage, filtering and paging; report reading; the pretend run for browser tests | Rust, no UI code |
 | `ui` | The screens | Rust (Leptos), compiled to WebAssembly with Trunk |
 | `app` | The desktop window and the commands the screens may call | Rust (Tauri 2) |
 | `tests/a11y` | Automated accessibility checks in Chromium | Node.js, Playwright, axe-core |
@@ -90,10 +92,17 @@ The accessibility checks run the screens in Chromium:
 cd tests/a11y && npm install && npx playwright install chromium && node run.mjs ../../ui/dist
 ```
 
-On Linux, the accessibility-bus check starts the real app on a virtual display:
+On Linux, the accessibility-bus check starts the real app on a virtual display. With
+`--sample`, the app opens that file and the check goes through a whole analysis to the event
+grid, pressing buttons through the bus. Use only a harmless sample, such as one of the test
+fixtures packed into a jar:
 
 ```bash
-PYTHON=/usr/bin/python3 tests/atspi/run.sh target/release/javabyte-gui --print
+jar --create --file /tmp/http-rat.jar --main-class dev.javabyte.guest.sim.HttpRat -C ../target/test-classes dev/javabyte/guest/sim/HttpRat.class
+```
+
+```bash
+PYTHON=/usr/bin/python3 tests/atspi/run.sh target/release/javabyte-gui --sample /tmp/http-rat.jar --print
 ```
 
 `PYTHON` must be the Python that the system's `python3-pyatspi` package was built for.

@@ -68,7 +68,7 @@ Everything here also works for a person; it is just written as a procedure.
 | `summary.gaps` | Count of `gap` events |
 | `summary.eventsDropped` | Per category, how many events were counted but not stored because `limits.maxEventsPerCategory` was reached. Empty for most runs; if not, `events[]` is incomplete for that category |
 | `events[]` | Everything, in order: `seq`, `category`, `action`, `caller`, `data` |
-| `artifacts[]` | Files saved under the output directory |
+| `artifacts[]` | Files saved under the output directory; paths are relative to it and use `/` on every system |
 
 `runs[].outcome` values: `completed`, `uncaught-exception`, `exit`, `sleep-budget`, `blocked`,
 `instruction-limit`, `timeout`, `policy`, `stopped`, `no-entry-point`, `config-error`,

@@ -4,10 +4,16 @@ use javabyte_gui_protocol::{EventFilter, EventRow, MAX_PAGE_ROWS, Page, PageRequ
 
 /// Anything that can produce event rows by position.
 ///
-/// The synthetic source computes rows on demand and stores nothing, which lets the trial
+/// The synthetic source computes rows on demand and stores nothing, which lets the browser tests
 /// exercise 300,000 rows at almost no memory cost; a loaded report stores its rows.
 pub trait EventSource {
+    /// Number of rows.
     fn len(&self) -> u64;
+    /// Whether there are no rows.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// The row at a position, from 0.
     fn row(&self, index: u64) -> EventRow;
     /// The category of a row, which filtering needs far more often than the whole row.
     fn category(&self, index: u64) -> &str;
@@ -21,14 +27,17 @@ pub struct EventStore {
 }
 
 impl EventStore {
+    /// A store over any source of rows.
     pub fn new(source: Box<dyn EventSource + Send + Sync>) -> Self {
         Self { source, cached: None }
     }
 
+    /// Rows in the source, unfiltered.
     pub fn len(&self) -> u64 {
         self.source.len()
     }
 
+    /// Whether the source has no rows.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -117,6 +126,7 @@ impl EventStore {
     }
 }
 
+/// Whether a filter lets every event through.
 fn is_empty_filter(filter: &EventFilter) -> bool {
     filter.category.as_deref().is_none_or(str::is_empty)
         && filter.action.as_deref().is_none_or(str::is_empty)
@@ -186,7 +196,7 @@ mod tests {
         assert!(connect.rows.iter().all(|row| row.action == "connect"));
     }
 
-    /// The trial's grid must stay smooth at 300,000 rows. Scrolling asks for a page at a time;
+    /// The event grid must stay smooth at 300,000 rows. Scrolling asks for a page at a time;
     /// a new filter scans everything once.
     #[test]
     fn large_lists_stay_fast() {

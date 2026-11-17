@@ -3,7 +3,7 @@
 A graphical interface for JavaByte, for people who prefer not to use a command line. The design
 is in [docs/GUI-PLAN.md](../docs/GUI-PLAN.md).
 
-**Status: phase 4.** The app opens a sample (or an earlier report, including one made on the
+**Status: phase 4 of 6.** The app opens a sample (or an earlier report, including one made on the
 command line), shows what it is, lets people change every setting, runs the analysis, and shows
 the whole report: summary, indicators, events, limits and gaps, saved files (viewed as text, hex
 or bytecode, kept as password zips), the settings used, and a comparison of any two analyses.
@@ -21,11 +21,11 @@ next to the app, or build it with `mvn package` at the repository root.
 
 | Folder | What | Built with |
 | --- | --- | --- |
-| `crates/protocol` | Data types shared by screens and backend; safe display of untrusted text; the text resources (`i18n`); the settings form's layout (`form`) | Rust |
-| `crates/backend` | Starting and watching the command-line tool (`runner`); one window's sample, settings, run, report and recent list (`session`); settings as YAML edited in place (`config`); saved files, pages and password zips (`artifacts`); event storage, filtering and paging; report reading; the pretend run for browser tests | Rust, no UI code |
-| `ui` | The screens | Rust (Leptos), compiled to WebAssembly with Trunk |
+| `crates/protocol` | Data types shared by screens and backend: the tool's stream and report (`stream`, `report`), sample facts (`inspect`), event views, limits and comparisons; safe display of untrusted text (`display`); the text resources (`i18n`); the settings form's layout (`form`) and the schema it is checked against (`schema`, `validate`) | Rust |
+| `crates/backend` | Starting and watching the command-line tool (`runner`); one window's sample, settings, run, report and recent list (`session/`); settings as YAML edited in place, and the matching command line (`config/`); saved files, pages and password zips (`artifacts`); event storage, filtering and paging (`events`); report reading (`report`); the pretend run and made-up events for browser tests (`simulation`, `synthetic`) | Rust, no UI code |
+| `ui` | The screens (`screens/`, with the settings editor in `screens/settings/`), the event grid and table (`events/`), and the bridge to the app or, in a plain browser, to the pretend backend (`bridge.rs`) | Rust (Leptos), compiled to WebAssembly with Trunk |
 | `locales` | Every word the app shows, per language | Fluent |
-| `app` | The desktop window and the commands the screens may call | Rust (Tauri 2) |
+| `app` | The desktop window, its network guard (`guard.rs`) and the commands the screens may call (`main.rs`) | Rust (Tauri 2) |
 | `tests/a11y` | Automated accessibility checks in Chromium | Node.js, Playwright, axe-core |
 | `tests/atspi` | What the Linux accessibility bus receives from the real window | Python, AT-SPI |
 | `tests/egress` | Hostile script inside the real window, in a private network with logging listeners | Python, Bash |
@@ -60,11 +60,11 @@ Build the screens first, then the app (from this folder):
 cargo build --release -p javabyte-gui
 ```
 
-The app is `target/release/javabyte-gui` (`.exe` on Windows). To show the events of a real
-report instead of made-up ones:
+The app is `target/release/javabyte-gui` (`.exe` on Windows). A file named as the first
+argument is opened at start, as if it had been dropped on the window:
 
 ```bash
-target/release/javabyte-gui --report path/to/report.json
+target/release/javabyte-gui path/to/sample.jar
 ```
 
 ## Testing
@@ -78,6 +78,17 @@ The desktop app embeds the built screens, so build them before testing it:
 ```bash
 cargo test
 ```
+
+Three tests keep the code honest without anyone remembering to:
+
+- `crates/protocol/tests/ui_text.rs` fails on text for people written in code instead of
+  `locales/`, on a message the code names that does not exist, and on a message nothing uses.
+  A line that only looks like words (a key, a command) can end with `// not-ui-text: why`.
+- `crates/protocol/tests/form_parity.rs` checks the settings form against the tool's config
+  schema (`crates/protocol/tests/tool-output/schema.json`): every option has a place, a widget and a label.
+- `crates/backend/tests/config_edits.rs` makes thousands of random edits to configs with
+  comments and checks an independent YAML reader reads what was meant and no comment was lost.
+  It uses a fixed seed; set `CONFIG_EDITS_SEED` to try others.
 
 `crates/protocol/tests/tool-output/` holds real output of the command-line tool, written by the Java
 test `ContractSamplesTest`; the Rust tests read it, so the two cannot drift apart. The runner

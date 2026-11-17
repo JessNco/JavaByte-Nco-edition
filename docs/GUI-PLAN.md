@@ -1,8 +1,10 @@
 # GUI plan
 
-Status: **proposal, nothing built.** This document plans a desktop interface for JavaByte for
-people who are not comfortable with a command line. It records the decisions made so far, the
-design, the small changes the command line needs, and the questions still open.
+Status: **phases 0 to 4 built; packaging (phase 5) is next.** This document plans a desktop
+interface for JavaByte for people who are not comfortable with a command line. It records the
+decisions made, the design, the changes the command line needed, and the questions still open.
+The code is in [`gui/`](../gui/README.md); what each phase built, and how it was tested, is in
+[`docs/gui/`](gui/). Where the code and this plan differ, the phase documents say why.
 
 ## Goals
 
@@ -80,20 +82,30 @@ would need a second, GUI-only code path through the emulator. Process separation
 gui/
   Cargo.toml                 workspace
   crates/
-    protocol/                serde types: report, event, inspect output, config schema.
+    protocol/                serde types: report, event, inspect output, config schema;
+                             the text resources and the settings form's layout.
                              The one place the GUI knows the JSON formats.
     backend/                 process control, report index, settings (no UI code; unit tested)
-  app/                       Tauri shell: windows, menus, permissions, wiring
+  app/                       Tauri shell: window, network guard, the commands screens may call
   ui/                        Leptos screens and components
-  tests/                     end-to-end tests through WebDriver (tauri-driver)
+  locales/                   every word the app shows, per language (Fluent)
+  tests/
+    a11y/                    axe-core and keyboard checks of every screen in Chromium
+    atspi/                   what the Linux accessibility bus receives from the real window
+    egress/                  hostile script in the real window, in a private network
 ```
+
+The plan was end-to-end tests through WebDriver (`tauri-driver`). They were not needed: the
+backend tests drive the real tool, the browser checks cover the screens, and the AT-SPI check
+goes through a whole analysis in the real window.
 
 `protocol` is checked against real output from the Java tool in CI, so a change to the report
 format that the GUI does not know about fails a build rather than a user's run.
 
 ## Changes needed in the command-line tool
 
-These are small, useful on their own, and keep the GUI from guessing. Each one is a normal,
+All of these were made in phase 1 ([gui/PHASE1-PLAN.md](gui/PHASE1-PLAN.md)), and
+`javabyte disasm` was added in phase 4 for the bytecode view. They are small, useful on their own, and keep the GUI from guessing. Each one is a normal,
 documented command-line feature, so the command line gains rather than diverges.
 
 | Change | Why the GUI needs it | Also helps |
@@ -181,7 +193,7 @@ indicator. Runs are repeatable (seeded randomness, fixed clock), so differences 
 
 ### 6. Tools
 
-Read-only viewers for `javabyte policy` (the allow-list) and `javabyte defaults`, with search.
+Not built yet. Read-only viewers for `javabyte policy` (the allow-list) and `javabyte defaults`, with search.
 
 ### 7. Preferences
 
@@ -202,6 +214,7 @@ spacing, and the isolation setting on Linux (below).
 | `init SAMPLE` | Settings → Start from this sample's suggestions; Export |
 | `defaults [--json]` | Tools → Defaults |
 | `policy` | Tools → Policy |
+| `disasm FILE [--class NAME]` | Report → Files → a saved class, shown as bytecode |
 | exit codes 0/1/2/3 | Outcome shown in words; 1 is shown as a tool fault with a "copy details" button |
 | `scripts/run-isolated.sh` | Linux: Preferences → "Run without network access" (on by default) |
 | Plugins (`plugins:`) | Settings → Plugins, from the schema |
@@ -396,8 +409,12 @@ English is the only language at first, but nothing in the code holds user-visibl
 
 - `protocol` and `backend`: Rust unit tests, plus round-trip tests against real JSON produced
   by the Java test suite.
-- End-to-end through WebDriver (`tauri-driver`) on Windows and Linux: open a test fixture from
-  the existing suite, run it, check the report screens. axe-core runs on each screen.
+- End-to-end: the backend tests run the real tool on fixtures from the existing suite; axe-core
+  and keyboard checks run on each screen in Chromium (`gui/tests/a11y`); on Linux the AT-SPI
+  check goes through a whole analysis in the real window (`gui/tests/atspi`). WebDriver
+  (`tauri-driver`) was planned but not needed.
+- Text: no words for people in code, and no missing or unused messages (`ui_text`).
+- Network containment: a hostile script in the real window reaches nothing (`gui/tests/egress`).
 - Parity test from the config schema.
 - The existing Java suite is unchanged and still the authority on emulation.
 - The GUI's own tests use only the harmless and simulated fixtures; no real malware.

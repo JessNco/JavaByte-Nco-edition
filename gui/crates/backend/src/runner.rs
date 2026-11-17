@@ -25,23 +25,31 @@ use std::time::{Duration, Instant};
 
 /// Exit codes of the tool, as documented in its README.
 pub mod exit_code {
+    /// The command did its job (for `run`: the report says what the sample did).
     pub const OK: i32 = 0;
+    /// The tool itself failed: a fault in JavaByte.
     pub const TOOL_FAULT: i32 = 1;
+    /// Bad usage or invalid settings; nothing was run.
     pub const BAD_SETTINGS: i32 = 2;
+    /// The run reached its instruction or time limit; the report is still written.
     pub const LIMIT_REACHED: i32 = 3;
 }
 
 /// How to start the tool: which Java, and which JavaByte jar.
 #[derive(Clone, Debug)]
 pub struct Launcher {
+    /// The Java runtime to start.
     pub java: PathBuf,
+    /// The JavaByte tool's jar.
     pub jar: PathBuf,
 }
 
 /// What to analyse and how.
 #[derive(Clone, Debug, Default)]
 pub struct RunRequest {
+    /// The sample to analyse.
     pub sample: PathBuf,
+    /// The folder the report and saved files go to.
     pub output: PathBuf,
     /// A YAML or JSON config file, if any.
     pub config: Option<PathBuf>,
@@ -66,6 +74,7 @@ impl Launcher {
         Ok(Self { java, jar })
     }
 
+    /// `java -jar <jar> <args>`, without a console window on Windows.
     fn command(&self, args: &[&std::ffi::OsStr]) -> Command {
         let mut command = Command::new(&self.java);
         command.arg("-jar").arg(&self.jar).args(args);
@@ -208,18 +217,24 @@ pub struct Run {
 /// What is known about a run so far, kept up to date as records arrive.
 #[derive(Clone, Debug, Default)]
 pub struct Tally {
+    /// The stream's start record, once it has arrived.
     pub start: Option<Start>,
+    /// Events received so far.
     pub events: u64,
     /// Events per category, counted from the event records.
     pub by_category: BTreeMap<String, u64>,
+    /// The latest progress record.
     pub progress: Option<Progress>,
+    /// How each part has ended so far.
     pub entries: Vec<RunResult>,
+    /// The stream's finish record, once it has arrived.
     pub finish: Option<Finish>,
     /// Lines that could not be read, with the reason. Should stay empty.
     pub unreadable: Vec<String>,
 }
 
 impl Tally {
+    /// Updates the counts from one stream record.
     fn absorb(&mut self, record: &StreamRecord) {
         match record {
             StreamRecord::Start(start) => self.start = Some(start.clone()),
@@ -240,7 +255,9 @@ impl Tally {
 pub struct Ended {
     /// None if the process was ended because it did not stop when asked.
     pub exit_code: Option<i32>,
+    /// True if the process did not stop when asked and was ended.
     pub forced: bool,
+    /// Everything the stream said.
     pub tally: Tally,
     /// The tool's error output, for the "copy details" button when something went wrong.
     pub stderr: String,
@@ -276,6 +293,7 @@ impl Run {
         taken.pop()
     }
 
+    /// Takes one line's record (or why it could not be read) into the tally.
     fn accept(&mut self, record: Result<StreamRecord, String>, taken: &mut Vec<StreamRecord>) {
         match record {
             Ok(record) => {
@@ -286,6 +304,7 @@ impl Run {
         }
     }
 
+    /// What is known about the run so far.
     pub fn tally(&self) -> &Tally {
         &self.tally
     }
@@ -321,6 +340,7 @@ impl Run {
         Some(ended)
     }
 
+    /// How the run ended, for people.
     fn ending(&mut self, exit_code: Option<i32>, forced: bool) -> Ended {
         let stderr = self.stderr.lock().map(|s| s.clone()).unwrap_or_default();
         let summary = summarise(exit_code, forced, &self.tally);
@@ -400,6 +420,7 @@ pub fn summarise(exit_code: Option<i32>, forced: bool, tally: &Tally) -> String 
     }
 }
 
+/// The last lines of the tool's error output, without Java's own notices.
 fn last_lines(text: &str, count: usize) -> String {
     let java_notice = "Picked up JAVA_TOOL_OPTIONS"; // not-ui-text: matches Java's own output
     let lines: Vec<_> = text.lines().filter(|l| !l.starts_with(java_notice)).collect();

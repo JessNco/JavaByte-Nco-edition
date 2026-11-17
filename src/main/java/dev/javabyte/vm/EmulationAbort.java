@@ -9,10 +9,15 @@ package dev.javabyte.vm;
  */
 public final class EmulationAbort extends Error {
 
+    /** Why emulation stopped; each becomes the outcome word in the report. */
     public enum Reason {
+        /** The sample called {@code System.exit} or {@code Runtime.halt}. */
         EXIT(false),
+        /** {@code limits.maxInstructions} was reached. */
         INSTRUCTION_LIMIT(false),
+        /** {@code limits.timeoutSeconds} was reached. */
         TIMEOUT(false),
+        /** A refused call with {@code policy.onBlocked: abort}. */
         POLICY(false),
         /** Someone asked the run to stop (the Stop button, Ctrl+C); the report is still written. */
         STOPPED(false),

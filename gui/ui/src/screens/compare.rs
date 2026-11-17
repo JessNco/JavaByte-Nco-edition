@@ -22,10 +22,12 @@ fn suggested(runs: &[RecentRun], open_folder: Option<&str>) -> (String, String) 
     (first.map(|r| r.id.clone()).unwrap_or_default(), second.id.clone())
 }
 
+/// A difference with its sign written out: `+3`, `−3`, `0`.
 fn signed(n: i64) -> String {
     if n > 0 { format!("+{}", fmt_num(n as u64)) } else if n < 0 { format!("−{}", fmt_num(n.unsigned_abs())) } else { "0".into() }
 }
 
+/// The Compare screen.
 #[component]
 pub fn CompareScreen() -> impl IntoView {
     let flow = flow();
@@ -101,6 +103,7 @@ pub fn CompareScreen() -> impl IntoView {
     }
 }
 
+/// The comparison's result, under its own heading.
 fn result_view(c: Comparison) -> impl IntoView {
     let changed: Vec<_> = c.indicators.iter().filter(|i| !i.added.is_empty() || !i.removed.is_empty()).cloned().collect();
     let unchanged: Vec<String> = c.indicators.iter().filter(|i| i.added.is_empty() && i.removed.is_empty()).map(|i| i.title.clone()).collect();

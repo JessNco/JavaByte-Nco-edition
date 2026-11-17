@@ -6,7 +6,7 @@
 
 use javabyte_gui_backend::runner::{Launcher, RunRequest, exit_code};
 use javabyte_gui_protocol::stream::StreamRecord;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 fn setup() -> Option<(Launcher, PathBuf)> {
@@ -31,10 +31,10 @@ fn output(name: &str) -> PathBuf {
 }
 
 /// The fixtures run from the folder of compiled test classes, with the class named.
-fn request(classes: &PathBuf, class: &str, args: &[&str], name: &str) -> RunRequest {
+fn request(classes: &Path, class: &str, args: &[&str], name: &str) -> RunRequest {
     let args = args.iter().map(|a| format!("'{a}'")).collect::<Vec<_>>().join(", ");
     RunRequest {
-        sample: classes.clone(),
+        sample: classes.to_path_buf(),
         output: output(name),
         config: None,
         overrides: vec![format!("entryPoints=[{{class: {class}, args: [{args}]}}]"), "limits.timeoutSeconds=60".into()],

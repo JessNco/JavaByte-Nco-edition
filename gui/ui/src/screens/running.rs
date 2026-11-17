@@ -12,6 +12,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
 
+/// The Running screen: progress, notable events, Stop, and the outcome.
 #[component]
 pub fn RunningScreen() -> impl IntoView {
     let flow = flow();

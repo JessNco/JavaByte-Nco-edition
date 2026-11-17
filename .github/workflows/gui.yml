@@ -1,6 +1,6 @@
 # Builds and checks the desktop app (gui/). Separate from the emulator's CI so that a change to
 # one does not wait for the other.
-name: GUI trial
+name: GUI
 
 on:
   push:
@@ -27,6 +27,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: gui
@@ -71,6 +72,12 @@ jobs:
         run: cargo build --release -p javabyte-gui
       - name: Configuration and guard tests
         run: cargo test -p javabyte-gui
+      # Lints keep the code easy to change; missing documentation in protocol and backend is
+      # one of them. Runs after the screens are built, because the app embeds them.
+      - name: Lints
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy -p javabyte-gui-ui --target wasm32-unknown-unknown -- -D warnings
       # Goes through a whole analysis of a harmless test fixture, pressing buttons through the
       # bus as a screen reader would. The app finds the tool's jar next to the repository.
       - name: Accessibility bus check (WebKitGTK)
@@ -80,7 +87,7 @@ jobs:
           PYTHON=/usr/bin/python3 tests/atspi/run.sh "$PWD/target/release/javabyte-gui" --sample "$RUNNER_TEMP/http-rat.jar" --print
       - uses: actions/upload-artifact@v4
         with:
-          name: javabyte-gui-trial-linux-x86_64
+          name: javabyte-gui-linux-x86_64
           path: gui/target/release/javabyte-gui
       # Hostile script inside the real window, in a private network whose only network is a
       # fake DNS server and logging listeners. The control build has every protection removed
@@ -135,7 +142,7 @@ jobs:
         run: cargo build --release -p javabyte-gui
       - uses: actions/upload-artifact@v4
         with:
-          name: javabyte-gui-trial-windows-x86_64
+          name: javabyte-gui-windows-x86_64
           path: gui/target/release/javabyte-gui.exe
       # The same probe on WebView2. There is no private network here, so only connections and
       # UDP to local listeners can be observed, not name lookups; the Linux job covers those.

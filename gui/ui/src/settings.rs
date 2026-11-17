@@ -151,6 +151,7 @@ pub fn replace_text(text: String) {
     set_text(text);
 }
 
+/// Sets the text, sends it to the backend, and schedules a check.
 fn set_text(text: String) {
     let s = settings();
     if s.text.with_untracked(|t| *t == text) {

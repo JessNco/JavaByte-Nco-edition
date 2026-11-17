@@ -8,6 +8,7 @@ use javabyte_gui_backend::config::ConfigPath;
 use javabyte_gui_protocol::views::EntryChoice;
 use leptos::prelude::*;
 
+/// The Sample overview screen.
 #[component]
 pub fn OverviewScreen() -> impl IntoView {
     let flow = flow();

@@ -9,6 +9,7 @@
 /// Text prepared for display, plus whether anything was cut off.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DisplayText {
+    /// The text, safe to insert as text.
     pub text: String,
     /// True if the original was longer than the limit.
     pub truncated: bool,
@@ -40,6 +41,7 @@ pub fn display_text(raw: &str, max_chars: usize) -> DisplayText {
     DisplayText { text, truncated: original_chars > max_chars, original_chars }
 }
 
+/// Characters shown as a code rather than as themselves.
 fn needs_escape(c: char) -> bool {
     matches!(c,
         // C0 and C1 controls, including escape sequences for terminals. Tab is kept escaped

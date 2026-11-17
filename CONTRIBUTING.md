@@ -29,6 +29,17 @@ expectations.
 Fixtures that imitate malware (everything in `guest/sim/`, and `Dropper`, `Stage2`, `Escape`,
 `Reflective`) are only ever interpreted. Never call their `main` from a test.
 
+The desktop app in `gui/` is Rust and has its own build and tests, described in
+[gui/README.md](gui/README.md). Run them when you change it, and also when you change the
+command line, the config or the report, because the app reads all three:
+
+```bash
+cd gui && (cd ui && trunk build --release) && cargo test && cargo clippy --all-targets -- -D warnings
+```
+
+CI runs them on Linux and Windows, with the accessibility checks and the network-containment
+test, in the `GUI` workflow.
+
 Expectations in `ContractTest` are the public interface. Changing one means a caller somewhere
 may break: record it in the changelog, and raise `schemaVersion` if a report field was removed,
 renamed or redefined.
@@ -49,6 +60,21 @@ renamed or redefined.
   a guest object from emulator code; use `Values.describe`. Bounds-check anything parsed from
   a sample.
 - Formatting follows `.editorconfig` (4 spaces, 140 columns).
+
+In the desktop app, also:
+
+- **Every word people see is in `gui/locales/en/`**, named from code with `t!`. The `ui_text`
+  test fails on text written in code, on a missing message and on an unused one.
+- **Text from a sample or a report is untrusted.** Show it through `display_text`, as text.
+- **A new command for the screens is a security decision.** See the rules in
+  [gui/README.md](gui/README.md#rules-for-this-code); `tests/egress` checks the window still
+  has no network.
+- **Accessibility is part of done.** A new screen or control passes `gui/tests/a11y`, works by
+  keyboard alone, and announces changes through the shared announcer.
+- **Public items in `protocol` and `backend` are documented**: both crates warn on
+  `missing_docs`, and CI's lint step (`cargo clippy -- -D warnings`) fails on any warning.
+- **Shared page state** (the flow, the settings, the announcer) lives in `thread_local` cells
+  rather than Leptos context, because timers and async code cannot reach context.
 
 ## Common changes
 
@@ -74,10 +100,27 @@ Add the field, with its default and a Javadoc comment, to `EmulatorConfig`; vali
 `ConfigLoader.validate` if it has rules; document it in `docs/CONFIG.md`; add it to
 `examples/full.yaml`.
 
+The desktop app's parity test then fails until the option has a form field. Add its label
+(`opt-<path with dashes>`), and words for each value of a choice (`choice-<path>-<value>`), to
+`gui/locales/en/settings.ftl`. If most people will need it, add its path to `COMMON` in
+`gui/crates/protocol/src/form.rs` so it shows without opening "More settings". Then regenerate
+the app's copy of the schema as described under [Changing the report](#changing-the-report).
+
 ### Changing the report
 
 Adding a field needs no version change. Removing or renaming a field, or changing what one
 means, requires increasing `Report.SCHEMA_VERSION` and a note in `CHANGELOG.md` and `AGENTS.md`.
+
+The desktop app reads real output of the tool, kept in `gui/crates/protocol/tests/tool-output/`.
+After changing the report, the event stream, `inspect`, `schema` or `validate`, regenerate it
+and commit the result:
+
+```bash
+mvn test -Dtest=ContractSamplesTest -Djavabyte.updateSamples=true
+```
+
+Then update the matching types in `gui/crates/protocol/src` until `cargo test` passes in
+`gui/`. CI's drift check fails if the committed output no longer matches the tool's.
 
 ## Upgrading
 
@@ -110,6 +153,18 @@ has its own, pinned in `scripts/native-bridge-requirements.txt`; after changing 
 
 For the Java ones: Raise the version property in
 `pom.xml`, run the tests, and note the change in `CHANGELOG.md`.
+
+### The desktop app's tools
+
+- **Rust**: CI uses the latest stable; `rust-version` in `gui/Cargo.toml` is the oldest
+  supported. After a new Rust release, fix any new `cargo clippy --all-targets` warnings.
+- **Crates** (Tauri, Leptos and the rest): `cargo update` in `gui/`, then build the screens and
+  run `cargo test`. A new Tauri minor version needs the egress test (Linux, root):
+  see [gui/README.md](gui/README.md#testing). Keep `tauri` and `tauri-build` on matching
+  minor versions.
+- **Trunk** is pinned in `.github/workflows/gui.yml` and `gui/README.md`; change both.
+- **Playwright and axe-core** are pinned in `gui/tests/a11y/package.json`. A new axe-core may
+  find new problems; fix them rather than turning rules off.
 
 ### Releasing
 

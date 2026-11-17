@@ -65,6 +65,7 @@ pub fn list(run_folder: &Path, report: &javabyte_gui_protocol::report::Report) -
         .collect()
 }
 
+/// SHA-256 of a file, in lowercase hex, read in pieces so large files need little memory.
 pub fn sha256_of(path: &Path) -> std::io::Result<String> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
@@ -142,6 +143,7 @@ fn safe_zip_name(name: &str) -> String {
     if cleaned.is_empty() { "file".into() } else { cleaned }
 }
 
+/// `name`, or `2-name`, `3-name` if already used in the zip.
 fn unique_name(name: &str, used: &mut Vec<String>) -> String {
     let mut candidate = name.to_string();
     let mut n = 2;

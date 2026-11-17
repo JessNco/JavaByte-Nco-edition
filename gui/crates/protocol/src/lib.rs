@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! Types exchanged between the GUI's screens (WebAssembly) and its backend (native Rust), and the
 //! formats the command-line tool writes: the event stream, the report, `inspect`, `schema` and
 //! `validate` output.
@@ -9,16 +10,26 @@
 //!
 //! Only `serde` and `serde_json` are needed, so the crate compiles for both targets.
 
+/// Two runs side by side.
 pub mod compare;
 mod display;
+/// How the settings forms are laid out.
 pub mod form;
+/// All user-visible text, from the resource files.
 pub mod i18n;
+/// `javabyte inspect --json`.
 pub mod inspect;
+/// The report's Limits and gaps tab.
 pub mod limits;
+/// `report.json`.
 pub mod report;
+/// `javabyte schema --json`.
 pub mod schema;
+/// `run --events jsonl`.
 pub mod stream;
+/// `javabyte validate --json`.
 pub mod validate;
+/// What the screens show, built from the tool's output.
 pub mod views;
 
 pub use display::{DisplayText, display_text};
@@ -32,7 +43,9 @@ use serde::{Deserialize, Serialize};
 pub struct EventRow {
     /// Position in the report, starting at 0. Stable across filters.
     pub seq: u64,
+    /// The kind of behaviour, such as `net`.
     pub category: String,
+    /// What happened within the category, such as `http`.
     pub action: String,
     /// `key=value` pairs from the event's data, as the emulator's text log writes them.
     /// Untrusted: it comes from the sample. Always pass it through [`display_text`].
@@ -48,6 +61,7 @@ pub struct PageRequest {
     pub offset: u64,
     /// Maximum number of rows. The backend caps it, so a screen cannot ask for everything.
     pub limit: u32,
+    /// Which events to count and return.
     pub filter: EventFilter,
 }
 
@@ -70,7 +84,9 @@ pub struct Page {
     pub total: u64,
     /// Number of events in the report, ignoring the filter.
     pub unfiltered_total: u64,
+    /// Position of the first row returned, within the filtered list.
     pub offset: u64,
+    /// The rows, in order.
     pub rows: Vec<EventRow>,
 }
 
@@ -81,9 +97,13 @@ pub const MAX_PAGE_ROWS: u32 = 500;
 /// State of an analysis, as the running screen shows it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunStatus {
+    /// Whether a run is starting, going or over.
     pub state: RunState,
+    /// Milliseconds since it started.
     pub elapsed_ms: u64,
+    /// Bytecode instructions run so far.
     pub instructions: u64,
+    /// Events recorded so far.
     pub events: u64,
     /// Event counts per category, in a fixed order so the screen does not reshuffle.
     pub by_category: Vec<(String, u64)>,
@@ -106,11 +126,15 @@ pub struct RunStatus {
     pub report_ready: bool,
 }
 
+/// Where a run is in its life.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RunState {
+    /// No run yet, or one starting.
     #[default]
     Idle,
+    /// Running now.
     Running,
+    /// Over; `RunStatus::ended` says how.
     Finished,
 }

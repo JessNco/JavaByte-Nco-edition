@@ -11,6 +11,7 @@ use std::time::Duration;
 
 const NOTICE_KEY: &str = "javabyte.safety-notice-read";
 
+/// Whether the safety notice was acknowledged before, in this browser profile.
 fn notice_read() -> bool {
     web_sys::window()
         .and_then(|w| w.local_storage().ok().flatten())
@@ -18,6 +19,7 @@ fn notice_read() -> bool {
         .is_some()
 }
 
+/// The Start screen.
 #[component]
 pub fn StartScreen() -> impl IntoView {
     let flow = flow();

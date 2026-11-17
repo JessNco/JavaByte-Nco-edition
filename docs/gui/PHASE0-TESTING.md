@@ -10,7 +10,7 @@ up, including deliberately hostile text of the kind real malware produces.
 
 ## Getting the trial app
 
-- **Windows and Linux builds** are produced by the `GUI trial` workflow in GitHub Actions on
+- **Windows and Linux builds** are produced by the `GUI` workflow (called `GUI trial` at the time) in GitHub Actions on
   every push to the `claude/gui-phase0` branch. Download the artifact for your system from the
   workflow run's page. The builds are unsigned: on Windows, choose "More info" and then "Run
   anyway" at the SmartScreen prompt. The Windows build needs WebView2, which Windows 10 and 11

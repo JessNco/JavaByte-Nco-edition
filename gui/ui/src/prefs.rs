@@ -30,6 +30,7 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    /// The saved preferences, or the defaults.
     pub fn load() -> Self {
         storage()
             .and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
@@ -37,6 +38,7 @@ impl Preferences {
             .unwrap_or_default()
     }
 
+    /// Remembers the preferences in this browser profile; failures are ignored.
     fn save(&self) {
         if let (Some(storage), Ok(json)) = (storage(), serde_json::to_string(self)) {
             let _ = storage.set_item(STORAGE_KEY, &json);
@@ -57,6 +59,7 @@ impl Preferences {
     }
 }
 
+/// The browser's local storage, if the page may use it.
 fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok().flatten()
 }
@@ -71,6 +74,7 @@ pub fn preferences() -> RwSignal<Preferences> {
     PREFERENCES.with(|cell| *cell.get_or_init(|| RwSignal::new(Preferences::load())))
 }
 
+/// The Display settings screen.
 #[component]
 pub fn DisplayPanel() -> impl IntoView {
     let prefs = preferences();

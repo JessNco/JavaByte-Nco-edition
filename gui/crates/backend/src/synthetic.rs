@@ -8,11 +8,13 @@
 use crate::events::EventSource;
 use javabyte_gui_protocol::EventRow;
 
+/// Made-up events computed from their position: any number of rows, no memory.
 pub struct SyntheticEvents {
     count: u64,
 }
 
 impl SyntheticEvents {
+    /// A source of `count` events.
     pub fn new(count: u64) -> Self {
         Self { count }
     }
@@ -62,7 +64,7 @@ impl EventSource for SyntheticEvents {
     fn row(&self, index: u64) -> EventRow {
         let (category, action, template) = kind(index);
         let n = index.to_string();
-        let hostile = if index % 997 == 0 {
+        let hostile = if index.is_multiple_of(997) {
             // A rare, very long value: 20,000 characters, as decoded payloads often are.
             "A".repeat(20_000)
         } else {
@@ -78,6 +80,7 @@ impl EventSource for SyntheticEvents {
     }
 }
 
+/// The made-up kind of event at a position.
 fn kind(index: u64) -> (&'static str, &'static str, &'static str) {
     // A cheap scramble so neighbouring rows differ, while staying deterministic.
     let mixed = index.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32;

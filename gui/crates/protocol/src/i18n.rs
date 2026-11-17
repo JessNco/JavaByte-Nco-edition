@@ -44,6 +44,7 @@ thread_local! {
     static BUNDLE: RefCell<Option<FluentBundle<FluentResource>>> = const { RefCell::new(None) };
 }
 
+/// Loads one language's resources into a bundle.
 fn build(language: &str) -> FluentBundle<FluentResource> {
     let id: LanguageIdentifier = language.parse().expect("a valid language identifier");
     let mut bundle = FluentBundle::new(vec![id]);
@@ -80,7 +81,7 @@ pub fn group_digits(n: i64) -> String {
         out.push('-');
     }
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -118,7 +119,9 @@ pub fn arg<T: IntoArg>(value: T) -> FluentValue<'static> {
     value.into_arg()
 }
 
+/// A value that can be a message argument: text or a number.
 pub trait IntoArg {
+    /// The value as Fluent holds it.
     fn into_arg(self) -> FluentValue<'static>;
 }
 

@@ -37,6 +37,7 @@ fn next_step_view(next: Option<NextStep>) -> impl IntoView {
     })
 }
 
+/// The Limits and gaps tab.
 #[component]
 pub fn LimitsPanel() -> impl IntoView {
     let flow = flow();
@@ -163,6 +164,7 @@ fn hex_lines(offset: u64, bytes: &[u8]) -> String {
         .join("\n")
 }
 
+/// The Files tab. `visible` defers loading the list until the tab is first shown.
 #[component]
 pub fn FilesPanel(visible: Signal<bool>) -> impl IntoView {
     let flow = flow();
@@ -406,6 +408,7 @@ pub fn FilesPanel(visible: Signal<bool>) -> impl IntoView {
     }
 }
 
+/// The Settings used tab.
 #[component]
 pub fn SettingsUsedPanel() -> impl IntoView {
     let flow = flow();

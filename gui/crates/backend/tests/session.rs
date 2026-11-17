@@ -255,9 +255,9 @@ fn saved_files_limits_comparison_and_run_again() {
 
     // Copies: never next to the sample (the test classes folder's parent).
     let out = std::env::temp_dir().join(format!("javabyte-files-copy-{}.zip", std::process::id()));
-    session.save_zip(&[stage.path.clone()], &out).unwrap();
+    session.save_zip(std::slice::from_ref(&stage.path), &out).unwrap();
     assert!(out.is_file());
-    assert!(session.save_zip(&[stage.path.clone()], &classes.join("copy.zip")).is_err());
+    assert!(session.save_zip(std::slice::from_ref(&stage.path), &classes.join("copy.zip")).is_err());
 
     // Compare: the second run against the first.
     let recent = session.recent();

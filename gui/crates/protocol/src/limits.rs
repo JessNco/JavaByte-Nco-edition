@@ -12,28 +12,39 @@ use std::collections::BTreeMap;
 /// `limits.timeoutSeconds`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NextStep {
+    /// What to try, in a sentence.
     pub text: String,
+    /// The setting that helps, if one does.
     pub setting: Option<String>,
 }
 
 /// How one part of the run (an entry point, queued tasks, shutdown code) ended.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ending {
+    /// The part, such as `a.B.main` or `(shutdown hooks)`. Untrusted.
     pub entry: String,
+    /// The tool's outcome word.
     pub outcome: String,
+    /// The outcome in plain words.
     pub meaning: String,
     /// The tool's own detail, such as an exception and where it was thrown. Untrusted.
     pub detail: Option<String>,
+    /// What to try next, when there is something.
     pub next: Option<NextStep>,
 }
 
 /// Gaps of one kind.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GapGroup {
+    /// The tool's word for it, such as `missing-class`.
     pub kind: String,
+    /// Its title in plain words.
     pub title: String,
+    /// What it means for the results.
     pub meaning: String,
+    /// What to try next, when there is something.
     pub next: Option<NextStep>,
+    /// How many there were.
     pub count: u64,
     /// The first few, by event number, so people can find them in the event list. Untrusted.
     pub examples: Vec<(u64, String)>,
@@ -47,21 +58,31 @@ pub struct Refusal {
     /// `blocked` (refused), `phantom-call` (answered with a harmless value), or
     /// `blocked-field-write`.
     pub action: String,
+    /// How many times.
     pub count: u64,
+    /// The number of the first such event.
     pub first_seq: u64,
 }
 
+/// A category whose events were not all kept.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dropped {
+    /// The category, such as `string`.
     pub category: String,
+    /// Events counted but not kept.
     pub count: u64,
 }
 
+/// Everything the Limits and gaps tab shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LimitsView {
+    /// How each part of the run ended.
     pub endings: Vec<Ending>,
+    /// Gaps grouped by kind, most frequent first.
     pub gaps: Vec<GapGroup>,
+    /// Refused Java features, in the order they first happened.
     pub refusals: Vec<Refusal>,
+    /// Categories with events not kept.
     pub dropped: Vec<Dropped>,
     /// What to do about dropped events, if any were dropped.
     pub dropped_next: Option<NextStep>,
@@ -78,6 +99,7 @@ pub const KNOWN_GAPS: &[&str] = &[
 /// Examples kept per gap kind.
 const EXAMPLES: usize = 5;
 
+/// A next step from its message, with the setting that helps.
 fn step(id: &str, setting: Option<&str>) -> Option<NextStep> {
     Some(NextStep { text: crate::i18n::tr(id, None), setting: setting.map(str::to_string) })
 }
@@ -108,6 +130,7 @@ fn next_for_gap(kind: &str) -> Option<NextStep> {
     }
 }
 
+/// Builds the tab's data from a report.
 pub fn limits_view(report: &Report) -> LimitsView {
     let endings = report
         .runs

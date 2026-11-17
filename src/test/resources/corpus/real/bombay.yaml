@@ -1,0 +1,15 @@
+description: 'LIMITATION: Bombay, a Fabric mod. Its first action asks the mod loader for the game directory; without the Fabric library on the classpath that class is a phantom and the sample stops.'
+family: Bombay
+sha256: 33666d1589c5a3482ff2e9777e9cab20fe3bc05a7947172d4b35becf10b64d82
+source: https://bazaar.abuse.ch/sample/33666d1589c5a3482ff2e9777e9cab20fe3bc05a7947172d4b35becf10b64d82/
+techniques: [limitation, missing-class, phantom, method-entry-point]
+stages:
+  - name: mod-entry
+    config:
+      entryPoints: [{type: method, class: com.example.testmenu.TestMenuBootstrap, method: onInitializeClient}]
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [uncaught-exception]
+      events:
+        - {category: gap, action: missing-class, where: {class: '^net/fabricmc/loader/api/FabricLoader$'}, because: the report must name the library the analyst needs to add}
+      absent: [{category: net}, {category: process}]

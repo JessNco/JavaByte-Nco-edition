@@ -106,6 +106,11 @@ public final class EmulatorConfig {
         public List<String> directories = new ArrayList<>();
         /** Start of the virtual clock, ISO-8601. Null means the real current time. */
         public String clockStart;
+        /**
+         * Seed for every random source the sample does not seed itself, so that runs are
+         * repeatable. Null uses real entropy, as a real machine would.
+         */
+        public Long randomSeed = 0x4A617661L;
     }
 
     /** One pre-existing virtual file. Exactly one content source should be set. */

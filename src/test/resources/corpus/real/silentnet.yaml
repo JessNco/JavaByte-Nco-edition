@@ -1,0 +1,29 @@
+description: SilentNet. The first run only relaunches itself with an argument; with that argument it resolves its C2 through DNS-over-HTTPS and blockchain RPC endpoints over TLS.
+family: SilentNet
+sha256: 965ef0037754c4d7ac2d4ba952706bace68012485fe4202494c2f4b09f8dc152
+source: https://bazaar.abuse.ch/sample/965ef0037754c4d7ac2d4ba952706bace68012485fe4202494c2f4b09f8dc152/
+techniques: [relaunch-with-argument, entry-arguments, tls-sockets, dns-over-https, blockchain-c2, etherhiding]
+stages:
+  - name: first-run
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: process, action: exec, where: {command: 'javaw\.exe -cp .* net\.fabric\.uedHelper -restarted$'}}
+      absent: [{category: net, action: connect}]
+  - name: restarted
+    config:
+      entryPoints: [{args: ['-restarted']}]
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: net, action: connect, where: {endpoint: '^1\.1\.1\.1:443$'}}
+        - {category: net, action: connect, where: {endpoint: '^cloudflare-dns\.com:443$'}}
+        - {category: net, action: connect, where: {endpoint: '^polygon\.drpc\.org:443$'}}
+        - {category: net, action: connect, where: {endpoint: '^polygon-bor-rpc\.publicnode\.com:443$'}}
+        - {category: net, action: dns, min: 5}
+      artifacts: ['network/socket-send-0\.bin$']

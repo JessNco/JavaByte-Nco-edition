@@ -12,6 +12,7 @@ import dev.javabyte.config.ConfigLoader.ConfigException;
 import dev.javabyte.config.EmulatorConfig;
 import dev.javabyte.guest.Basics;
 import dev.javabyte.guest.Concurrency;
+import dev.javabyte.guest.sim.Dice;
 import dev.javabyte.guest.sim.HttpRat;
 import dev.javabyte.guest.sim.Limits;
 import dev.javabyte.report.Event;
@@ -293,18 +294,51 @@ class ContractTest {
     /**
      * Two runs of the same sample with the same config must give the same report. Analysts
      * compare runs to see the effect of a config change; noise between identical runs would
-     * make that impossible. The fixtures cover random numbers, time, hash ordering, network
-     * traffic and several threads.
+     * make that impossible. The fixtures cover hash ordering, network traffic, several threads
+     * and, in {@link Dice}, every source of randomness and time.
      */
     @Test
     void identicalRunsGiveIdenticalReports() throws IOException {
-        for (Class<?> fixture : List.of(Basics.class, Concurrency.class, HttpRat.class)) {
+        for (Class<?> fixture : List.of(Basics.class, Concurrency.class, HttpRat.class, Dice.class)) {
             Path jar = Fixtures.jar(Files.createTempDirectory(temp, "det"), Map.of(), fixture);
-            Report first = Fixtures.run(Fixtures.config(jar));
-            Report second = Fixtures.run(Fixtures.config(jar));
+            Report first = Fixtures.run(repeatable(jar, 7L));
+            Thread.onSpinWait();
+            Report second = Fixtures.run(repeatable(jar, 7L));
             assertEquals(lines(first), lines(second), fixture.getSimpleName() + " differed between two identical runs");
             assertEquals(first.runs(), second.runs());
         }
+    }
+
+    private static EmulatorConfig repeatable(Path jar, Long seed) {
+        EmulatorConfig config = Fixtures.config(jar);
+        config.environment.clockStart = "2024-03-01T09:00:00Z";
+        config.environment.randomSeed = seed;
+        return config;
+    }
+
+    /** The seed must really drive the numbers: another seed, or none, gives another run. */
+    @Test
+    void randomSeedSelectsTheRandomNumbers() throws IOException {
+        Path jar = Fixtures.jar(Files.createDirectory(temp.resolve("dice")), Map.of(), Dice.class);
+        List<String> seven = Fixtures.stdout(Fixtures.run(repeatable(jar, 7L)));
+        List<String> eight = Fixtures.stdout(Fixtures.run(repeatable(jar, 8L)));
+        List<String> entropy = Fixtures.stdout(Fixtures.run(repeatable(jar, null)));
+        assertEquals(8, seven.size(), seven.toString());
+        for (int line : new int[] {0, 1, 3, 4, 5}) {
+            assertFalse(seven.get(line).equals(eight.get(line)), "seed had no effect on: " + seven.get(line));
+            assertFalse(seven.get(line).equals(entropy.get(line)), "real entropy matched the seeded value: " + seven.get(line));
+        }
+        // A generator the sample seeds itself keeps its own stream, as on a real JVM.
+        assertEquals("seeded " + new java.util.Random(42).nextInt(1_000_000), seven.get(2));
+        assertEquals(seven.get(2), entropy.get(2));
+        assertEquals(seven.get(6), eight.get(6), "the clock does not depend on the seed");
+        // clockStart plus the 90 simulated seconds, on every clock the JDK offers. The virtual
+        // clock moves a millisecond each time it is read, hence the small tolerances.
+        assertTrue(seven.get(6).matches("time 17092836900\\d\\d slept 900\\d\\d"), seven.get(6));
+        assertTrue(seven.get(7).matches("date \\d{1,2} calendar \\d{1,2} gregorian \\d{1,2} instant \\d{1,2} clock \\d{1,2} zoned \\d{1,2}"
+                + " utc-date 2024-03-01 utc-time 2024-03-01T09:01:30\\.0\\d\\d"), seven.get(7));
+        assertTrue(seven.get(5).matches("uuid [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"), seven.get(5));
+        assertTrue(seven.get(4).matches("thread-local 1\\d\\d -?\\d+"), "bounds must still be honoured: " + seven.get(4));
     }
 
     /** The cap on stored events is visible in the summary, so a truncated report cannot pass for a full one. */

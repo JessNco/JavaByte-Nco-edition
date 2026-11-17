@@ -1,0 +1,45 @@
+description: Adwind/jRAT. Three stages are followed from one sample - the dropper writes a jar, that jar decrypts its config and defines classes in memory, and it drops a third stage.
+family: Adwind
+sha256: 18d22205fc172fcb534505791d7b6ddb08d58fa31063be642e9fafb415ba3891
+source: https://bazaar.abuse.ch/sample/18d22205fc172fcb534505791d7b6ddb08d58fa31063be642e9fafb415ba3891/
+techniques: [dropper, stage-chaining, tasklist-check, rsa-aes-config, deserialization, defineClass, implicit-class-loading, custom-classloader, blocked-gui]
+stages:
+  - name: dropper
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [exit]
+      maxGaps: 0
+      events:
+        - {category: process, action: exec, where: {command: '^tasklist$'}}
+        - {category: file, action: write, where: {path: 'AppData\\Local\\Temp\\app_\d+\.jar$'}}
+        - {category: process, action: exec, where: {command: '^java -jar C:\\Users\\admin\\AppData\\Local\\Temp\\app_\d+\.jar$'}}
+      artifacts: ['dropped/.*app_\d+\.jar$']
+  - name: second-stage
+    sampleFromArtifact: 'dropped/.*app_\d+\.jar$'
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: crypto, action: cipher-init, where: {algorithm: '^RSA$', mode: decrypt}, min: 2}
+        - {category: crypto, action: cipher-output, where: {algorithm: '^AES$', preview: '(?s)<\?xml version.*<properties>'}, because: the jRAT configuration is an XML properties file under RSA-wrapped AES}
+        - {category: crypto, action: cipher-output, where: {algorithm: '^AES$', preview: '^hex:504b0304'}, because: the next stage is an encrypted jar}
+        - {category: class, action: define, where: {name: '^server/main/Start$', via: defineClass, superclass: 'java/lang/Thread'}}
+        - {category: class, action: define, min: 4}
+        - {category: class, action: implicit-load, because: classes the sample's loader would supply on demand must be fetched through it}
+        - {category: file, action: write, where: {path: 'Temp\\_0\.\d+rs\.class$'}}
+        - {category: process, action: exec, where: {command: 'java\.exe -jar .*Temp\\_0\.\d+rs\.class$'}}
+        - {category: policy, action: blocked, where: {member: 'javax/swing/UIManager'}}
+      artifacts: ['defined-classes/server/main/Start\.class$', 'dropped/.*_0\.\d+rs\.class$']
+  - name: third-stage
+    sampleFromArtifact: 'dropped/.*_0\.\d+rs\.class$'
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: class, action: define, where: {name: '^server/main/Start$'}}
+        - {category: crypto, action: cipher-output, where: {preview: '<\?xml version'}}

@@ -1,0 +1,24 @@
+description: IRAHook loader protected with qProtect. Every call is an invokedynamic resolved by the sample's own bootstrap, and it has no main method - the entry point comes from fabric.mod.json.
+family: IRAHook
+sha256: f05a098fa2e1899797e42ebc396932e05ee40adb4454de37f760d87784a4b17c
+source: https://bazaar.abuse.ch/sample/f05a098fa2e1899797e42ebc396932e05ee40adb4454de37f760d87784a4b17c/
+techniques: [custom-invokedynamic, qprotect, method-entry-point, no-main-class, string-decryption, http-c2, blockchain-c2, etherhiding]
+stages:
+  - name: default-run
+    config: {}
+    expect:
+      outcomes: [no-entry-point]
+      events: []
+  - name: mod-entry
+    config:
+      entryPoints: [{type: method, class: ira.mod.easysleep.X, method: onInitialize}]
+      limits: {timeoutSeconds: 240, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: reflect, min: 100, because: each hidden call target is resolved through the sample's bootstrap method}
+        - {category: string, action: returned, min: 50}
+        - {category: net, action: http, where: {url: '^https://eth\.drpc\.org'}}
+        - {category: net, action: http, where: {url: '^https://ethereum-rpc\.publicnode\.com'}}
+      artifacts: ['network/http-request-0\.bin$']

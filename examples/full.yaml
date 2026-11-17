@@ -29,6 +29,7 @@ environment:
   hostName: DESKTOP-4QK7B2M
   samplePath: 'C:\Users\admin\Downloads\invoice.jar'
   clockStart: '2024-03-01T09:00:00Z'
+  randomSeed: 7                # same seed and clock: identical reports
   properties:
     user.language: de
   env:

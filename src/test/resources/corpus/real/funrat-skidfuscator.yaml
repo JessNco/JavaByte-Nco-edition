@@ -1,0 +1,18 @@
+description: 'LIMITATION: a Skidfuscator-protected Fabric mod with an in-memory jar loader. Its string decryption is followed, then it looks up a Minecraft class that is not available and stops.'
+family: FunRAT (tagged, unconfirmed)
+sha256: d8c72771d069a35841e5b8a1eb3b1f34faef03bda187b8b97200735e73d3f409
+source: https://bazaar.abuse.ch/sample/d8c72771d069a35841e5b8a1eb3b1f34faef03bda187b8b97200735e73d3f409/
+techniques: [limitation, skidfuscator, string-decryption, method-entry-point, host-application-required]
+stages:
+  - name: mod-entry
+    config:
+      entryPoints: [{type: method, class: core.Max, method: onInitializeClient}]
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: string, action: returned, where: {value: '^net\.minecraft\.class_310$'}, because: two layers of string encryption must be undone}
+        - {category: reflect, action: forName, where: {name: '^net\.minecraft\.class_310$', found: 'false'}}
+        - {category: console, action: stderr, where: {text: ClassNotFoundException}}
+      absent: [{category: class, action: define, because: the payload loader is never reached without the game}]

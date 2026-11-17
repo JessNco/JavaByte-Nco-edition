@@ -77,6 +77,11 @@ jumps forward.
 | `files` | `[]` | Files that exist before the run |
 | `directories` | `[]` | Directories that exist before the run |
 | `clockStart` | now | Start of the virtual clock, ISO-8601 |
+| `randomSeed` | `1247901281` | Seed for `Math.random`, `new Random()`, `SecureRandom`, `ThreadLocalRandom` and `UUID.randomUUID`. `null` uses real entropy |
+
+With `clockStart` and `randomSeed` both fixed, two runs of the same sample with the same config
+give the same report. By default only the clock differs between runs: it starts at the real
+current time, because samples with date checks should see today's date.
 
 Each `files[]` entry has `path` and one of `text`, `base64`, or `hostFile` (a real file whose
 bytes back the virtual one).

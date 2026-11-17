@@ -59,6 +59,7 @@ public final class ClassRepository {
      */
     public Manifest addArchive(byte[] archive, String origin) throws IOException {
         Manifest manifest = null;
+        int entriesRead = 0;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive))) {
             for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
                 String name = entry.getName();
@@ -83,12 +84,28 @@ public final class ClassRepository {
                 }
                 // Classes are also kept as resources: loaders read their own .class files as data.
                 resources.putIfAbsent(name, data);
+                entriesRead++;
                 if (name.equalsIgnoreCase("META-INF/MANIFEST.MF")) {
-                    manifest = new Manifest(new ByteArrayInputStream(data));
+                    manifest = readManifest(data);
                 }
             }
+        } catch (IOException | IllegalArgumentException damaged) {
+            // Truncated downloads and deliberately broken archives are common. Whatever was
+            // readable before the damage is still worth analysing, so keep it and say where
+            // reading stopped. (ZipInputStream reports bad entry names as IllegalArgumentException.)
+            unparseable.add("(archive from " + origin + ") damaged after " + entriesRead + " entries: " + damaged);
         }
         return manifest;
+    }
+
+    /** A manifest that cannot be parsed is treated as absent; the entry stays readable as a resource. */
+    private Manifest readManifest(byte[] data) {
+        try {
+            return new Manifest(new ByteArrayInputStream(data));
+        } catch (IOException malformed) {
+            unparseable.add("META-INF/MANIFEST.MF: " + malformed);
+            return null;
+        }
     }
 
     private static boolean hasClassMagic(byte[] data) {

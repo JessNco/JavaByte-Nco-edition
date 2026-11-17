@@ -1,0 +1,35 @@
+description: Ratty. Registry and startup-folder persistence, a TCP C2, and a keylogger whose logic is in a bundled native library (JNativeHook).
+family: Ratty
+sha256: 2436fa28a278522c298b3a398ddc553c96c4be29ae7b433a999ad49ac71d656c
+source: https://bazaar.abuse.ch/sample/2436fa28a278522c298b3a398ddc553c96c4be29ae7b433a999ad49ac71d656c/
+techniques: [registry-run-key, startup-folder, hidden-attribute, socket-c2, native-library, keylogger, blocked-gui, getPackage, resource-bundle, native-bridge]
+stages:
+  - name: without-bridge
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 1
+      events:
+        - {category: process, action: exec, where: {command: '^REG ADD HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v'}}
+        - {category: process, action: exec, where: {command: '^attrib \+H '}, min: 2}
+        - {category: net, action: dns, where: {host: '^chongmei33\.publicvm\.com$'}}
+        - {category: net, action: connect, where: {endpoint: '^chongmei33\.publicvm\.com:45674$'}}
+        - {category: file, action: write, where: {path: 'Temp\\JNativeHook-.*\.dll$'}}
+        - {category: native, action: load-library, where: {library: '^JNativeHook$', presentOnVirtualDisk: 'false'}, because: the library is first tried by name and is not installed}
+        - {category: native, action: load-library, where: {library: 'JNativeHook-[0-9A-F]{40}\.dll$', presentOnVirtualDisk: 'true', sha256: '^47c2871dff8948de'}}
+        - {category: policy, action: blocked, where: {member: 'javax/swing/'}}
+      absent:
+        - {category: native, action: api, because: 'LIMITATION: without the bridge, native code is described but not executed'}
+  - name: with-bridge
+    nativeBridge: true
+    config:
+      limits: {timeoutSeconds: 180, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      events:
+        - {category: native, action: bridge-loaded}
+        - {category: native, action: jni-find-class, where: {name: 'org/jnativehook/GlobalScreen', found: 'true'}}
+        - {category: native, action: api, where: {api: 'USER32\.SetWindowsHookExA', args: WH_KEYBOARD_LL}, because: this call is the keylogger}
+        - {category: native, action: api, where: {api: 'USER32\.SetWindowsHookExA', args: WH_MOUSE_LL}}
+        - {category: net, action: connect, where: {endpoint: '^chongmei33\.publicvm\.com:45674$'}}

@@ -54,7 +54,36 @@ public final class ConfigLoader {
         try {
             return validate(YAML.treeToValue(tree, EmulatorConfig.class));
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new ConfigException("Invalid config: " + e.getOriginalMessage());
+            throw new ConfigException("Invalid config" + at(e) + ": " + e.getOriginalMessage());
+        }
+    }
+
+    /**
+     * The config key a parse failure refers to, such as {@code " at limits.timeoutSeconds"}.
+     * Jackson's own message gives the wrong value but not where it was, which leaves the user
+     * searching a long file.
+     */
+    private static String at(Throwable failure) {
+        if (!(failure instanceof com.fasterxml.jackson.databind.JsonMappingException mapping) || mapping.getPath().isEmpty()) {
+            return "";
+        }
+        StringBuilder key = new StringBuilder();
+        for (com.fasterxml.jackson.databind.JsonMappingException.Reference step : mapping.getPath()) {
+            if (step.getFieldName() != null) {
+                key.append(key.length() == 0 ? "" : ".").append(step.getFieldName());
+            } else {
+                key.append('[').append(step.getIndex()).append(']');
+            }
+        }
+        return " at " + key;
+    }
+
+    /** Builds a validated config from an already parsed tree, such as a section of a larger file. */
+    public static EmulatorConfig fromMap(java.util.Map<String, Object> tree) {
+        try {
+            return validate(YAML.convertValue(tree == null ? java.util.Map.of() : tree, EmulatorConfig.class));
+        } catch (IllegalArgumentException e) {
+            throw new ConfigException("Invalid config" + at(e.getCause()) + ": " + e.getMessage());
         }
     }
 

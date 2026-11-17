@@ -1,0 +1,17 @@
+description: The same protocol inside TLS. No handshake happens, so the traffic is captured in clear.
+techniques: [tls-socket, dns-simulation, socket-rules]
+fixture: dev.javabyte.guest.sim.SocketRat
+stages:
+  - name: session
+    config:
+      entryPoints: [{type: main, args: [tls]}]
+      network:
+        dns: {secure.rat.test: 198.51.100.200}
+        sockets: [{endpoint: 'secure\.rat\.test:443', base64: AAAABElORk8AAAAOU0hFTEwgaG9zdG5hbWUAAAAEUVVJVA==}]
+    expect:
+      outcomes: [exit]
+      events:
+        - {category: net, action: dns, where: {host: 'secure\.rat\.test', result: '198\.51\.100\.200'}}
+        - {category: net, action: connect, where: {endpoint: '^secure\.rat\.test:443$'}}
+        - {category: net, action: send, where: {preview: HELLO admin}, because: data written to a TLS socket must be readable}
+      absent: [{category: policy, action: blocked, where: {member: javax/net/ssl}}]

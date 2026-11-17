@@ -1,4 +1,5 @@
-# Builds and tests on every supported Java version. The tests need no network and no samples.
+# Builds and tests on every supported Java version. The tests need no network and no samples:
+# the real-malware scenarios are skipped here on purpose (docs/TESTING.md).
 name: CI
 
 on:
@@ -26,6 +27,13 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn --batch-mode --no-transfer-progress verify
+      # One copy of the coverage report is enough; it does not differ meaningfully by Java version.
+      - name: Keep the coverage report
+        if: matrix.java == '21'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/site/jacoco/
 
   # The optional native bridge needs Python packages, so it is tested in its own job. The main
   # job above stays free of anything but Java.

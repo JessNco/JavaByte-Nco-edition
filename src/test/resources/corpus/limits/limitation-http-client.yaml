@@ -1,0 +1,15 @@
+description: 'LIMITATION: java.net.http.HttpClient is not simulated. The calls are blocked and reported, and no request is recorded.'
+techniques: [limitation, http-client, phantom]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [http-client]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^status phantom:java/net/http/HttpResponse$']
+      events:
+        - {category: policy, action: blocked, where: {member: 'java/net/http/HttpClient\.newHttpClient'}}
+        - {category: policy, action: phantom-call, where: {method: 'HttpClient\.send'}}
+      absent:
+        - {category: net, action: http, because: when this starts to appear the limitation has been lifted and the docs need updating}

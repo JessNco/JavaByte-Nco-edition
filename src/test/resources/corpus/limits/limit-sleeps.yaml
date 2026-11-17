@@ -1,0 +1,11 @@
+description: A loop that only sleeps is ended by the sleep budget without taking real time.
+techniques: [limit, sleep-budget, virtual-time]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [beacon]}]
+      limits: {maxSleeps: 5}
+    expect:
+      outcomes: [sleep-budget]
+      notPrinted: ['^finished']

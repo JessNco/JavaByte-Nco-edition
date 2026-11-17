@@ -1,0 +1,22 @@
+description: 'A Java agent (Premain-Class, no main) aimed at the RuneLite game client. Its DES and Blowfish string encryption is undone. LIMITATION: it talks to its server with java.net.http.HttpClient, which is not simulated, so the URL is known only from the decrypted strings.'
+family: RuneLite agent (untagged)
+sha256: e45b0e5875d94045a1982cf15f6343857e24c962face4c48362d13ecce7f20cc
+source: https://bazaar.abuse.ch/sample/e45b0e5875d94045a1982cf15f6343857e24c962face4c48362d13ecce7f20cc/
+techniques: [java-agent, premain-entry-point, skidfuscator, des, blowfish, string-decryption, limitation, http-client]
+stages:
+  - name: premain
+    config:
+      entryPoints: [{type: method, class: com.customupdater.app.Main, method: premain, args: ['', null]}]
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [completed]
+      maxGaps: 0
+      events:
+        - {category: crypto, action: cipher-init, where: {algorithm: '^DES', mode: decrypt}, min: 3}
+        - {category: crypto, action: cipher-init, where: {algorithm: '^Blowfish', mode: decrypt}, min: 3}
+        - {category: string, action: returned, where: {value: '^https://runelite\.is/plugins\.php$'}}
+        - {category: string, action: returned, where: {value: '^X-Agent-Token$'}}
+        - {category: file, action: check, where: {path: 'AppData\\Local\\RuneLite\\RuneLite\.jar$'}}
+        - {category: policy, action: blocked, where: {member: 'java/net/http/HttpClient'}}
+      absent:
+        - {category: net, action: http, because: when this appears HttpClient is simulated and this scenario and the docs need updating}

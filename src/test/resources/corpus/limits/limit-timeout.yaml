@@ -1,0 +1,13 @@
+description: The same endless loop with a generous instruction limit is ended by the wall clock instead.
+techniques: [limit, timeout]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [spin]}]
+      limits: {timeoutSeconds: 1}
+    expect:
+      outcomes: [timeout]
+      notPrinted: ['^finished']
+      events:
+        - {category: process, action: exec, where: {command: seen-before-the-limit}}

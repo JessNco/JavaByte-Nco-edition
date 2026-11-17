@@ -1,0 +1,12 @@
+description: A suspicious user name makes the sample refuse to run; the config controls what it sees.
+techniques: [sandbox-detection, environment-config]
+fixture: dev.javabyte.guest.sim.AntiAnalysis
+stages:
+  - name: run
+    config:
+      environment: {userName: sandbox}
+    expect:
+      outcomes: [exit]
+      stdout: ['analysis environment: user$']
+      events: [{category: system, action: exit, where: {status: '^1$'}}]
+      absent: [{category: process, action: exec, where: {command: payload}}]

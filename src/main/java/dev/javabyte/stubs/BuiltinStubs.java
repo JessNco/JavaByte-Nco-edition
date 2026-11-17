@@ -20,5 +20,7 @@ public final class BuiltinStubs {
         ClassLoaderStubs.install(vm);
         InvokeStubs.install(vm);
         CryptoObservers.install(vm);
+        RandomStubs.install(vm);
+        TimeStubs.install(vm);
     }
 }

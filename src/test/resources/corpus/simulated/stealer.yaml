@@ -1,0 +1,24 @@
+description: Collects browser, wallet and chat-client files from the virtual disk, encrypts them and uploads the archive.
+techniques: [credential-file-theft, missing-file-reporting, directory-listing, zip-in-memory, aes-gcm, https-upload, webhook]
+fixture: dev.javabyte.guest.sim.Stealer
+stages:
+  - name: run
+    config:
+      environment:
+        files:
+          - {path: 'C:\Users\admin\AppData\Local\Google\Chrome\User Data\Default\Login Data', text: 'SQLite format 3 simulated logins'}
+          - {path: 'C:\Users\admin\AppData\Roaming\Bitcoin\wallet.dat', base64: AAECAwQFBgcICQ==}
+          - {path: 'C:\Users\admin\AppData\Roaming\discord\Local Storage\leveldb\000005.ldb', text: 'x ABCDEFGHIJKLMNOPQRSTUVWX.abcdef.ABCDEFGHIJKLMNOPQRSTUVWXYZa y'}
+    expect:
+      outcomes: [completed]
+      stdout: ['uploaded 2 files, status 200']
+      events:
+        - {category: file, action: read, where: {path: 'Chrome\\User Data\\Default\\Login Data$'}}
+        - {category: file, action: read, where: {path: 'Bitcoin\\wallet\.dat$', size: '^10$'}}
+        - {category: file, action: read, where: {path: 'leveldb\\000005\.ldb$'}}
+        - {category: file, action: check, where: {path: 'Firefox\\Profiles\\default\\logins\.json', exists: 'false'}, because: files the sample looks for and does not find tell the analyst which fixtures to add}
+        - {category: file, action: list, where: {path: 'discord\\Local Storage\\leveldb$', entries: '^1$'}}
+        - {category: crypto, action: cipher-init, where: {algorithm: 'AES/GCM/NoPadding', mode: encrypt, key: '^[0-9a-f]{64}$', iv: '^0{24}$'}}
+        - {category: net, action: http, where: {method: POST, url: 'https://exfil\.stealer\.test/upload\?files=2', requestBodyFile: 'network/'}}
+        - {category: net, action: http, where: {url: 'discord\.com/api/webhooks', requestBodyPreview: 'new victim admin'}}
+      maxGaps: 0

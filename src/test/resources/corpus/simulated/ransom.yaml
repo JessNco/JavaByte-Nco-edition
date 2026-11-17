@@ -1,0 +1,24 @@
+description: Encrypts every file under Documents, deletes the originals, removes backups and leaves a note.
+techniques: [recursive-directory-walk, file-encryption, file-deletion, backup-removal, ransom-note, aes-cbc]
+fixture: dev.javabyte.guest.sim.Ransom
+stages:
+  - name: run
+    config:
+      environment:
+        files:
+          - {path: 'C:\Users\admin\Documents\report.docx', text: quarterly report}
+          - {path: 'C:\Users\admin\Documents\notes.txt', text: remember the milk}
+          - {path: 'C:\Users\admin\Documents\photos\holiday.jpg', base64: /9j/4AAQSkZJRg==}
+    expect:
+      outcomes: [completed]
+      stdout: ['encrypted 3']
+      events:
+        - {category: file, action: write, where: {path: '\.locked$'}, min: 3, max: 3}
+        - {category: file, action: write, where: {path: 'photos\\holiday\.jpg\.locked$'}, because: subdirectories must be walked}
+        - {category: file, action: delete, where: {existed: 'true'}, min: 3, max: 3}
+        - {category: crypto, action: cipher-init, where: {algorithm: 'AES/CBC/PKCS5Padding', mode: encrypt, key: '^[0-9a-f]{32}$'}, because: the random key is what would decrypt the files}
+        - {category: process, action: exec, where: {command: 'vssadmin delete shadows'}}
+        - {category: process, action: exec, where: {command: bcdedit}}
+        - {category: file, action: write, where: {path: 'Desktop\\README_RESTORE\.txt$', preview: 'Your 3 files'}}
+      artifacts: ['dropped/.*report\.docx\.locked$', 'dropped/.*README_RESTORE\.txt$']
+      maxGaps: 0

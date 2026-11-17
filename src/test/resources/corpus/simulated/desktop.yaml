@@ -1,0 +1,13 @@
+description: 'Limitation: there is no desktop. Screen capture, clipboard, dialogs and browser launch are blocked and reported, and the sample carries on.'
+techniques: [limitation-no-gui, policy-blocked, phantom-objects]
+fixture: dev.javabyte.guest.sim.Desktop
+stages:
+  - name: run
+    expect:
+      outcomes: [completed]
+      stdout: ['desktop features attempted: 4']
+      events:
+        - {category: policy, action: blocked, where: {member: 'java/awt/Robot'}}
+        - {category: policy, action: blocked, where: {member: 'java/awt/Toolkit'}}
+        - {category: policy, action: blocked, where: {member: 'javax/swing/JOptionPane'}}
+        - {category: policy, action: blocked, where: {member: 'java/awt/Desktop'}}

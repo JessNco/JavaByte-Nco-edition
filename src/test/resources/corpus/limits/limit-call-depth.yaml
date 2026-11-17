@@ -1,0 +1,18 @@
+description: Unbounded recursion becomes a StackOverflowError the sample can catch, as on a real JVM.
+techniques: [limit, call-depth, anti-emulation]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [recurse]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^overflow caught, depth over 100: true$', '^finished recurse$']
+      maxGaps: 0
+  - name: shallow
+    config:
+      entryPoints: [{args: [recurse]}]
+      limits: {maxCallDepth: 150}
+    expect:
+      outcomes: [completed]
+      stdout: ['^overflow caught, depth over 100: true$']

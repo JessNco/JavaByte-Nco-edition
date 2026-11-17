@@ -45,8 +45,8 @@ final class InvokeStubs {
 
         // invoke and invokeExact are signature-polymorphic: the arguments arrive exactly as the
         // call site pushed them.
-        stubs.on("java/lang/invoke/MethodHandle", "invoke", ctx -> vm.indy.invokeMethodHandle((MethodHandle) ctx.receiver, ctx.args));
-        stubs.on("java/lang/invoke/MethodHandle", "invokeExact", ctx -> vm.indy.invokeMethodHandle((MethodHandle) ctx.receiver, ctx.args));
+        stubs.on("java/lang/invoke/MethodHandle", "invoke", ctx -> vm.indy.invokeMethodHandle((MethodHandle) ctx.receiver, ctx.args, ctx.desc));
+        stubs.on("java/lang/invoke/MethodHandle", "invokeExact", ctx -> vm.indy.invokeMethodHandle((MethodHandle) ctx.receiver, ctx.args, ctx.desc));
         stubs.on("java/lang/invoke/MethodHandle", "invokeWithArguments", ctx -> {
             Object[] boxed = ctx.arg(0) instanceof List<?> list ? list.toArray() : (Object[]) ctx.arg(0);
             try {

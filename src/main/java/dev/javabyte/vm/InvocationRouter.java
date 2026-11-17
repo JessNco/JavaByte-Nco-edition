@@ -136,7 +136,7 @@ public final class InvocationRouter {
      * Calls a method on a proxy for interpreted interfaces by handing it to the sample's
      * invocation handler, with boxed arguments and a reflective description of the method.
      */
-    private Object invokeProxy(GuestProxy proxy, String name, String desc, Object[] args) {
+    public Object invokeProxy(GuestProxy proxy, String name, String desc, Object[] args) {
         Object method = null;
         for (Object mirror : proxy.interfaces()) {
             if (mirror instanceof GuestClass iface) {
@@ -152,6 +152,11 @@ public final class InvocationRouter {
         }
         if (method == null) {
             // toString, hashCode and equals are routed to the handler too, as the JDK does.
+            // The rest of Object (getClass, wait, notify) is final and never reaches a handler.
+            boolean routed = name.equals("toString") || name.equals("hashCode") || name.equals("equals");
+            if (!routed) {
+                return hostCall("java/lang/Object", name, desc, proxy, args, false);
+            }
             method = findPublicMethod(Object.class, name, desc);
         }
         Type[] types = Type.getArgumentTypes(desc);

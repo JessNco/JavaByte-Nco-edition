@@ -1,0 +1,11 @@
+description: 'LIMITATION: time is virtual. An hour of sleep passes instantly on both clocks, so sleep-based evasion fails but real timing cannot be measured.'
+techniques: [limitation, virtual-time, sleep-evasion]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [virtual-time]}]
+      limits: {timeoutSeconds: 20}
+    expect:
+      outcomes: [completed]
+      stdout: ['^wall clock advanced an hour: true$', '^nano clock advanced an hour: true$']

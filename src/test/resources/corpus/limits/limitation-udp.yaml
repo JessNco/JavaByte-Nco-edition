@@ -1,0 +1,13 @@
+description: 'LIMITATION: UDP is not simulated. The socket is blocked; the name lookup before it is still seen.'
+techniques: [limitation, udp]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [udp]}]
+    expect:
+      outcomes: [completed]
+      events:
+        - {category: policy, action: blocked, where: {member: 'java/net/DatagramSocket'}}
+        - {category: net, action: dns, where: {host: '^udp\.limit\.test$'}}
+      absent: [{category: net, action: send}]

@@ -1,0 +1,12 @@
+description: 'LIMITATION: without the native bridge a native method is not executed; it is reported and returns zero.'
+techniques: [limitation, native]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [native-unbound]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^native returned 0$']
+      events:
+        - {category: native, action: call, where: {method: nativeCheck, firstArguments: '7', result: not emulated}}

@@ -1,0 +1,15 @@
+description: File fixtures, canned process output and the configured MAC address each trigger a different check.
+techniques: [sandbox-detection, file-fixtures, process-rules, network-identity-config]
+fixture: dev.javabyte.guest.sim.AntiAnalysis
+stages:
+  - name: run
+    config:
+      environment:
+        files: [{path: 'C:\Windows\System32\drivers\VBoxMouse.sys', text: driver}]
+      processes:
+        - {command: tasklist, stdout: "\"System\",\"4\"\n\"Wireshark.exe\",\"4120\"\n"}
+      network: {macAddress: '08:00:27:12:34:56'}
+    expect:
+      outcomes: [exit]
+      stdout: ['analysis environment: file,process,mac$']
+      absent: [{category: process, action: exec, where: {command: payload}}]

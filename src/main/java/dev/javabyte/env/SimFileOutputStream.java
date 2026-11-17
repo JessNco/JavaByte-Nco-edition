@@ -29,6 +29,7 @@ public final class SimFileOutputStream extends FileOutputStream {
 
     @Override
     public void write(int b) {
+        fs.checkBuffered(buffer.size() + 1L);
         buffer.write(b);
         dirty = true;
     }
@@ -40,6 +41,7 @@ public final class SimFileOutputStream extends FileOutputStream {
 
     @Override
     public void write(byte[] b, int off, int len) {
+        fs.checkBuffered((long) buffer.size() + len);
         buffer.write(b, off, len);
         dirty = true;
     }
@@ -71,6 +73,11 @@ public final class SimFileOutputStream extends FileOutputStream {
             @Override
             public byte[] bytes() {
                 return buffer.toByteArray();
+            }
+
+            @Override
+            public void checkSize(long size) {
+                fs.checkBuffered(size);
             }
 
             @Override

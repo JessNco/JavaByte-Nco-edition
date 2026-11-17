@@ -1,0 +1,11 @@
+description: With no commands from the server the sample polls for ever; the sleep budget ends it.
+techniques: [beacon-loop, sleep-budget, default-http-answer]
+fixture: dev.javabyte.guest.sim.HttpRat
+stages:
+  - name: session
+    config:
+      limits: {maxSleeps: 3}
+    expect:
+      outcomes: [sleep-budget]
+      events:
+        - {category: net, action: http, where: {url: '/task\?', matchedRule: '^none'}, min: 3, max: 4}

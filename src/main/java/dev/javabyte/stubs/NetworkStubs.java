@@ -79,6 +79,10 @@ final class NetworkStubs {
         });
 
         stubs.onClass("java/net/NetworkInterface", ctx -> {
+            if (ctx.receiver != null) {
+                // An instance call on the simulated interface this stub handed out earlier.
+                return ctx.proceed();
+            }
             SimNetworkInterface nic = new SimNetworkInterface(network.macAddress(),
                     network.localHost(vm.config.environment.hostName));
             switch (ctx.name) {

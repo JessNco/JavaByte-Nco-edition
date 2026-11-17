@@ -1,0 +1,13 @@
+description: 'LIMITATION: threads are interleaved, never parallel. Four unsynchronised writers finish and the run is repeatable; data races that need simultaneous execution cannot be observed.'
+techniques: [limitation, threads, determinism]
+fixture: dev.javabyte.guest.sim.Limitations
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [racing-threads]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^counter \d+$']
+      events:
+        - {category: thread, action: start, min: 4, max: 4}
+      absent: [{category: thread, action: stopped}]

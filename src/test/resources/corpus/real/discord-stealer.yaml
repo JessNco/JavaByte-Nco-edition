@@ -1,0 +1,29 @@
+description: An obfuscated Discord token stealer. On a clean machine it probes about thirty browser and Discord profile paths; given a planted profile it reads it. It bundles no JSON library, so that class is a phantom.
+family: Discord token stealer (untagged)
+sha256: a3da824a606798716fea7ef5a3bb697225d0dd219295cf59812a3fd558217d3b
+source: https://bazaar.abuse.ch/sample/a3da824a606798716fea7ef5a3bb697225d0dd219295cf59812a3fd558217d3b/
+techniques: [stealer, file-probing, environment-files, string-decryption, missing-class, phantom]
+stages:
+  - name: clean-machine
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [exit]
+      maxGaps: 1
+      events:
+        - {category: file, action: check, where: {path: 'Roaming\\discord\\Local Storage\\leveldb$', exists: 'false'}}
+        - {category: file, action: check, where: {path: 'Local Storage\\leveldb$'}, min: 15}
+        - {category: file, action: check, where: {path: 'Mozilla\\Firefox\\Profiles$'}}
+        - {category: gap, action: missing-class, where: {class: 'com/fasterxml/jackson/databind/ObjectMapper'}}
+      absent: [{category: net}]
+  - name: planted-profile
+    config:
+      environment:
+        files:
+          - path: 'C:\Users\admin\AppData\Roaming\discord\Local Storage\leveldb\000005.ldb'
+            text: 'junk"token":"FAKEFAKEFAKEFAKEFAKEFAKE.FAKEID.FAKEFAKEFAKEFAKEFAKEFAKEFAKE"junk'
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      events:
+        - {category: file, action: list, where: {path: 'discord\\Local Storage\\leveldb$', entries: '^1$'}}
+        - {category: file, action: read, where: {path: '000005\.ldb$'}, because: files supplied through the config must be visible to the sample}

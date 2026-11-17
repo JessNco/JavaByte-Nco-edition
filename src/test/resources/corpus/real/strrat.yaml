@@ -1,0 +1,35 @@
+description: STRRAT. The first run installs persistence and relaunches itself from AppData; the relaunched copy decrypts its config and calls home.
+family: STRRAT
+sha256: 7a4f3b8e31e43bf030fa3f42e38e1d8cb613d326831bc9c27cfae3475cba6ff6
+source: https://bazaar.abuse.ch/sample/7a4f3b8e31e43bf030fa3f42e38e1d8cb613d326831bc9c27cfae3475cba6ff6/
+techniques: [string-decryption, aes-config, scheduled-task, startup-folder, self-copy, relaunch, file-lock, socket-c2, wmic-fingerprint, sample-path]
+stages:
+  - name: first-run
+    config:
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [exit]
+      maxGaps: 0
+      events:
+        - {category: crypto, action: cipher-output, where: {preview: 'elastsolek1replace\.duckdns\.org\|4787\|.*zekeriyasolek44\.duckdns\.org'}, because: the decrypted config holds both C2 hosts and the licence id}
+        - {category: process, action: exec, where: {command: 'schtasks /create /sc minute /mo 30 /tn Skype'}}
+        - {category: file, action: write, where: {path: '(?i)Start Menu\\Programs\\Startup\\[0-9a-f]{64}\.jar$'}, min: 2, because: both the user's and the all-users startup folder are used}
+        - {category: file, action: write, where: {path: 'AppData\\Roaming\\[0-9a-f]{64}\.jar$'}}
+        - {category: process, action: exec, where: {command: 'java\.exe" -jar "C:\\Users\\admin\\AppData\\Roaming\\'}, because: the relaunch command tells the analyst how to configure the next stage}
+      absent:
+        - {category: net, action: connect, because: the first run only installs; network activity belongs to the relaunched copy}
+  - name: relaunched
+    config:
+      environment:
+        samplePath: 'C:\Users\admin\AppData\Roaming\7a4f3b8e31e43bf030fa3f42e38e1d8cb613d326831bc9c27cfae3475cba6ff6.jar'
+      limits: {timeoutSeconds: 120, maxSleeps: 6}
+    expect:
+      outcomes: [sleep-budget]
+      maxGaps: 0
+      events:
+        - {category: net, action: dns, where: {host: '^elastsolek1replace\.duckdns\.org$'}}
+        - {category: net, action: connect, where: {endpoint: '^elastsolek1replace\.duckdns\.org:4787$'}}
+        - {category: process, action: exec, where: {command: 'wmic .*win32_logicaldisk get volumeserialnumber'}}
+        - {category: process, action: exec, where: {command: 'wmic .*win32_operatingsystem get caption'}}
+        - {category: file, action: write, where: {path: '4787lock\.file$'}}
+      artifacts: ['network/socket-send-0\.bin$']

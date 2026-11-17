@@ -1,0 +1,17 @@
+description: Work started from a timer, a scheduled executor, an asynchronous future and a shutdown hook all runs and is reported.
+techniques: [timer, scheduled-executor, completable-future, shutdown-hook, periodic-runs]
+fixture: dev.javabyte.guest.sim.Background
+stages:
+  - name: run
+    config:
+      threads: {periodicRuns: 2}
+    expect:
+      outcomes: [completed]
+      stdout: ['main finished after FUTURE-DONE']
+      events:
+        - {category: process, action: exec, where: {command: from-future\.exe}, min: 1, max: 1}
+        - {category: process, action: exec, where: {command: from-timer\.exe}, min: 2, max: 2, because: a repeating timer body runs threads.periodicRuns times}
+        - {category: process, action: exec, where: {command: from-scheduler\.exe}, min: 1, max: 1, because: 'a one-hour delay must not need an hour'}
+        - {category: thread, action: shutdown-hook-registered}
+        - {category: process, action: exec, where: {command: cleanup\.exe}, min: 1, max: 1, because: shutdown hooks run at the end of the run}
+      maxGaps: 0

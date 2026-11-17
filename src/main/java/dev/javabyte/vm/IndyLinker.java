@@ -347,15 +347,35 @@ public final class IndyLinker {
 
     /** Invokes any method handle held by guest code, converting values at the boundary. */
     public Object invokeMethodHandle(MethodHandle handle, Object[] args) {
+        return invokeMethodHandle(handle, args, null);
+    }
+
+    /**
+     * Invokes a real method handle with guest values.
+     *
+     * @param siteDescriptor descriptor of the {@code invoke}/{@code invokeExact} call site, or
+     *     null if unknown. {@code invoke} is signature-polymorphic: the JVM adapts from the types
+     *     written at the call site to the handle's own. The guest keeps byte, short, char and
+     *     boolean as ints, so without the call-site types a {@code byte} argument for a
+     *     {@code Byte} parameter would arrive as an {@code Integer} and be refused.
+     */
+    public Object invokeMethodHandle(MethodHandle handle, Object[] args, String siteDescriptor) {
         MethodType type = handle.type();
+        Type[] site = siteDescriptor == null ? new Type[0] : Type.getArgumentTypes(siteDescriptor);
         Object[] hostArgs = new Object[args.length];
         for (int i = 0; i < args.length; i++) {
-            // A handle may be invoked with fewer declared parameters than arguments (varargs
-            // collectors), so only convert positions the type describes.
-            hostArgs[i] = i < type.parameterCount() ? Values.toHost(args[i], type.parameterType(i)) : args[i];
+            Class<?> sitePrimitive = i < site.length ? vm.types.primitiveClass(site[i]) : void.class;
+            if (sitePrimitive != void.class) { // void.class marks a reference type
+                hostArgs[i] = Values.toHost(args[i], sitePrimitive);
+            } else {
+                // A handle may be invoked with fewer declared parameters than arguments (varargs
+                // collectors), so only convert positions the type describes.
+                hostArgs[i] = i < type.parameterCount() ? Values.toHost(args[i], type.parameterType(i)) : args[i];
+            }
         }
+        Class<?> siteReturn = siteDescriptor == null ? void.class : vm.types.primitiveClass(Type.getReturnType(siteDescriptor));
         try {
-            return Values.fromHost(handle.invokeWithArguments(hostArgs), type.returnType());
+            return Values.fromHost(handle.invokeWithArguments(hostArgs), siteReturn != void.class ? siteReturn : type.returnType());
         } catch (GuestThrow | EmulationAbort passThrough) {
             throw passThrough;
         } catch (Throwable thrown) {

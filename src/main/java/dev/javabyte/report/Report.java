@@ -109,6 +109,7 @@ public final class Report {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("instructions", vm.instructionCount());
         summary.put("eventCounts", vm.events.counts());
+        summary.put("eventsDropped", vm.events.dropped());
         summary.put("processes", values("process", "exec", "command"));
         summary.put("httpRequests", values("net", "http", "url"));
         summary.put("connections", values("net", "connect", "endpoint"));

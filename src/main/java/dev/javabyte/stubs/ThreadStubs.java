@@ -121,12 +121,22 @@ final class ThreadStubs {
     }
 
     private static Object completableFuture(CallContext ctx) throws Exception {
-        if (ctx.name.equals("runAsync")) {
-            ((Runnable) ctx.arg(0)).run();
-            return CompletableFuture.completedFuture(null);
-        }
-        if (ctx.name.equals("supplyAsync")) {
-            return CompletableFuture.completedFuture(((Supplier<?>) ctx.arg(0)).get());
+        if (ctx.name.equals("runAsync") || ctx.name.equals("supplyAsync")) {
+            try {
+                if (ctx.name.equals("runAsync")) {
+                    ((Runnable) ctx.arg(0)).run();
+                    return CompletableFuture.completedFuture(null);
+                }
+                return CompletableFuture.completedFuture(((Supplier<?>) ctx.arg(0)).get());
+            } catch (RuntimeException thrown) {
+                // On a real JVM the task's exception does not reach the caller: it completes
+                // the future, wrapped the way the asynchronous machinery wraps it. A guest
+                // exception arrives either still wrapped or, after crossing a JDK functional
+                // interface, as the bare exception.
+                Throwable cause = thrown instanceof dev.javabyte.vm.GuestThrow guest && guest.value instanceof Throwable inner
+                        ? inner : thrown;
+                return CompletableFuture.failedFuture(new java.util.concurrent.CompletionException(cause));
+            }
         }
         if (ctx.name.equals("delayedExecutor") || ctx.name.equals("defaultExecutor")) {
             return new SimExecutor();

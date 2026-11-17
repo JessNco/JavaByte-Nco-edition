@@ -1,0 +1,16 @@
+description: A config hook overrides the detection method, so the payload runs even on a machine that would be detected.
+techniques: [hooks, sandbox-detection]
+fixture: dev.javabyte.guest.sim.AntiAnalysis
+stages:
+  - name: run
+    config:
+      environment: {userName: sandbox}
+      hooks:
+        - {method: 'dev/javabyte/guest/sim/AntiAnalysis.detect*', action: return, value: []}
+    expect:
+      outcomes: [completed]
+      stdout: ['environment looks real']
+      events:
+        - {category: hook, action: return, where: {method: AntiAnalysis.detect}}
+        - {category: process, action: exec, where: {command: 'payload\.exe'}}
+      absent: [{category: process, action: exec, where: {command: tasklist}, because: the hooked method must not run at all}]

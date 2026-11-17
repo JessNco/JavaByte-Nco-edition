@@ -102,6 +102,84 @@ final class Fixtures {
         return captured.toString(StandardCharsets.ISO_8859_1).lines().toList();
     }
 
+    /**
+     * Builds an archive from literal entries, in the given order. Unlike {@link #jar} nothing is
+     * added or checked, so malformed and misleading archives can be produced.
+     *
+     * @param mainClass written to a manifest when not null; null leaves the archive without one
+     */
+    static Path rawJar(Path file, String mainClass, Map<String, byte[]> entries) throws IOException {
+        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(Files.newOutputStream(file))) {
+            if (mainClass != null) {
+                out.putNextEntry(new java.util.zip.ZipEntry("META-INF/MANIFEST.MF"));
+                out.write(("Manifest-Version: 1.0\r\nMain-Class: " + mainClass + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+            }
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                out.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));
+                out.write(entry.getValue());
+                out.closeEntry();
+            }
+        }
+        return file;
+    }
+
+    /** The archive entry name of a compiled class. */
+    static String entryName(Class<?> cls) {
+        return cls.getName().replace('.', '/') + ".class";
+    }
+
+    /**
+     * Defines a harmless generated class on the real JVM, runs its main method and returns what
+     * it printed. Only for classes the tests wrote themselves.
+     */
+    static List<String> realOutput(String name, byte[] classBytes) {
+        ClassLoader loader = new ClassLoader(Fixtures.class.getClassLoader()) {
+            @Override
+            protected Class<?> findClass(String wanted) throws ClassNotFoundException {
+                if (!wanted.equals(name)) {
+                    throw new ClassNotFoundException(wanted);
+                }
+                return defineClass(name, classBytes, 0, classBytes.length);
+            }
+        };
+        return realOutput(() -> {
+            try {
+                loader.loadClass(name).getMethod("main", String[].class).invoke(null, (Object) new String[0]);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    /**
+     * Runs a harmless fixture's main method on the real JVM in a class loader of its own.
+     *
+     * <p>Fixtures keep static state, so a second run in the same loader would print different
+     * values from the first and the comparison with the emulator (which always starts fresh)
+     * would depend on test order.
+     */
+    static List<String> realOutput(Class<?> fixture) {
+        java.net.URL classes = fixture.getProtectionDomain().getCodeSource().getLocation();
+        return realOutput(() -> {
+            try (java.net.URLClassLoader isolated = new java.net.URLClassLoader(new java.net.URL[] {classes},
+                    ClassLoader.getPlatformClassLoader())) {
+                isolated.loadClass(fixture.getName()).getMethod("main", String[].class).invoke(null, (Object) new String[0]);
+            } catch (ReflectiveOperationException | IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    /** The first event of a kind, or a failure that shows what the run did instead. */
+    static Event only(Report report, String category, String action) {
+        List<Event> found = events(report, category, action);
+        if (found.isEmpty()) {
+            throw new AssertionError("no " + category + '.' + action + " event\n" + outcomes(report));
+        }
+        return found.get(0);
+    }
+
     static String outcomes(Report report) {
         StringBuilder text = new StringBuilder();
         report.runs().forEach(run -> text.append(run.entry()).append(" -> ").append(run.outcome())

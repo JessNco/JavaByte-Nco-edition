@@ -24,7 +24,7 @@ class DifferentialTest {
 
     @Test
     void languageFeaturesMatchRealJvm() throws Exception {
-        List<String> expected = Fixtures.realOutput(() -> Basics.main(new String[0]));
+        List<String> expected = Fixtures.realOutput(Basics.class);
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), Basics.class)));
         assertTrue(report.hasOutcome("completed"), Fixtures.outcomes(report));
         assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
@@ -33,13 +33,7 @@ class DifferentialTest {
 
     @Test
     void jdkBoundaryFeaturesMatchRealJvm() throws Exception {
-        java.util.List<String> expected = Fixtures.realOutput(() -> {
-            try {
-                dev.javabyte.guest.Advanced.main(new String[0]);
-            } catch (Throwable e) {
-                throw new IllegalStateException(e);
-            }
-        });
+        java.util.List<String> expected = Fixtures.realOutput(dev.javabyte.guest.Advanced.class);
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.Advanced.class)));
         assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
         assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
@@ -47,13 +41,7 @@ class DifferentialTest {
 
     @Test
     void multiThreadedProgramMatchesRealJvm() throws Exception {
-        java.util.List<String> expected = Fixtures.realOutput(() -> {
-            try {
-                dev.javabyte.guest.Concurrency.main(new String[0]);
-            } catch (Exception e) {
-                throw new IllegalStateException(e);
-            }
-        });
+        java.util.List<String> expected = Fixtures.realOutput(dev.javabyte.guest.Concurrency.class);
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.Concurrency.class)));
         assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
         assertEquals(0, Fixtures.events(report, "thread", "stopped").size(), "no thread should have hung: " + Fixtures.outcomes(report));
@@ -62,9 +50,19 @@ class DifferentialTest {
 
     @Test
     void stackTraceKeyedDecryptionMatchesRealJvm() throws Exception {
-        List<String> expected = Fixtures.realOutput(() -> StackKeyed.main(new String[0]));
+        List<String> expected = Fixtures.realOutput(StackKeyed.class);
         Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), StackKeyed.class)));
         assertEquals(expected, Fixtures.stdout(report), Fixtures.outcomes(report));
         assertEquals("alpha payload", expected.get(0), "fixture self-check");
+    }
+
+    /** Reflection, method handles, dynamic proxies and executors: the tools obfuscators hide calls behind. */
+    @Test
+    void reflectionHandlesProxiesAndExecutorsMatchRealJvm() throws Exception {
+        List<String> expected = Fixtures.realOutput(dev.javabyte.guest.Introspection.class);
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.Introspection.class)));
+        assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
+        assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
+        assertTrue(expected.size() >= 14, "fixture self-check: " + expected);
     }
 }

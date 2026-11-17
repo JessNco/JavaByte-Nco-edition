@@ -111,6 +111,9 @@ limits:
   maxSleeps: 40              # ends beacon loops
 ```
 
+Runs are repeatable: random numbers are seeded (`environment.randomSeed`), and with
+`environment.clockStart` set as well, the same sample and config give the same report.
+
 Any value can also be set from the command line: `-s limits.timeoutSeconds=30`.
 
 ## How it stays safe
@@ -138,10 +141,12 @@ the reasoning and for what was borrowed from other projects.
 
 ## Tested against real samples
 
-The emulator was run against public MalwareBazaar samples from six families (STRRAT,
-Adwind/jRAT, Ratty, SilentNet, a qProtect-obfuscated IRAHook loader and a Fabric-mod sample). It recovered C2 addresses, persistence
-commands, decrypted configuration and run-time-defined classes. Results and reproduction steps
-are in [docs/SELFTEST.md](docs/SELFTEST.md).
+The emulator is tested against nine public MalwareBazaar samples: STRRAT, Adwind/jRAT, Ratty,
+SilentNet, a qProtect-obfuscated IRAHook loader, a Discord token stealer, a Java agent aimed at
+a game client, and two Fabric mods that are kept as examples of where it stops. It recovers C2
+addresses, persistence commands, decrypted configuration and run-time-defined classes. Results
+are in [docs/SELFTEST.md](docs/SELFTEST.md); the expectations are executable, see
+[docs/TESTING.md](docs/TESTING.md#real-malware).
 
 ## Known limitations
 
@@ -159,6 +164,11 @@ are in [docs/SELFTEST.md](docs/SELFTEST.md).
 - **No GUI.** AWT and Swing are blocked; calls are reported.
 - **Deserialization is filtered** to value types and cryptographic keys.
 - **Nested archives** (a jar inside a jar) are not mounted automatically.
+- **Some network APIs are not simulated.** `java.net.http.HttpClient`, UDP and accepting
+  connections on a listening socket are blocked and reported. `HttpURLConnection` and client
+  sockets, with or without TLS, are simulated.
+- **Invalid bytecode is detected late.** There is no verifier pass; code a JVM would refuse
+  to load fails when it runs, as a `VerifyError` with a `gap.invalid-bytecode` event.
 - **It is tested, not proven.** A test attempts about eighty escapes and checks the real
   machine afterwards, but that is evidence, not a proof. Use `scripts/run-isolated.sh` or a
   container for live malware.
@@ -174,15 +184,21 @@ adding its id under `plugins:` in the config. A plugin can add stubs, hooks and 
 ## Development
 
 ```bash
-mvn test
+mvn verify
 ```
 
-The tests include:
+The test suite is described in [docs/TESTING.md](docs/TESTING.md). In short:
 
-- a differential suite that runs the same programs, single- and multi-threaded, on the real JVM
-  and in the emulator and requires identical output;
-- an escape suite that tries about eighty ways out of the emulator and checks the real machine;
-- structural checks, for example that the simulated `File` overrides every `java.io.File` method.
+- **Differential tests** run the same programs on the real JVM and in the emulator and require
+  identical output, including bytecode that the Java compiler never produces.
+- **Simulated malware** scenarios check that each technique (persistence, C2, theft,
+  encryption, sandbox checks, staged loading) is reported correctly.
+- **Limit and limitation** scenarios pin down what happens at every limit and for every item
+  under "Known limitations", so a limitation is always visible in the report.
+- **Fuzzing** feeds the emulator damaged and invalid class files and requires a clean answer.
+- **An escape suite** tries about eighty ways out and then checks the real machine.
+- **Real malware** scenarios for nine MalwareBazaar samples run when the samples are supplied;
+  they are never stored in this repository.
 
 ## Documentation
 
@@ -193,5 +209,6 @@ The tests include:
 | [docs/DESIGN.md](docs/DESIGN.md) | How it works and why |
 | [docs/NATIVE.md](docs/NATIVE.md) | Native libraries and the optional CPU-emulator bridge |
 | [docs/SELFTEST.md](docs/SELFTEST.md) | Results against real malware |
+| [docs/TESTING.md](docs/TESTING.md) | The test suite: what it proves, how to run and extend it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |
 | [CHANGELOG.md](CHANGELOG.md) | What changed between versions |

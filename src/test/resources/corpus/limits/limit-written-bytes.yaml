@@ -1,0 +1,11 @@
+description: Writing to one open file for ever is stopped by the disk limit; it used to exhaust the emulator's memory.
+techniques: [limit, written-bytes, disk-fill]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [bigwrite]}]
+      limits: {maxWrittenBytes: 1000000}
+    expect:
+      outcomes: [policy]
+      notPrinted: ['^finished']

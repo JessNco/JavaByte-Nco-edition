@@ -1,0 +1,14 @@
+description: An endless loop is ended by the instruction limit, and what happened before it is kept.
+techniques: [limit, instruction-limit]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [spin]}]
+      limits: {maxInstructions: 200000}
+    expect:
+      outcomes: [instruction-limit]
+      stdout: ['^started spin$']
+      notPrinted: ['^finished']
+      events:
+        - {category: process, action: exec, where: {command: seen-before-the-limit}, because: evidence gathered before a limit must survive it}

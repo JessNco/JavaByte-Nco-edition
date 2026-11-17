@@ -15,6 +15,7 @@ use tauri::{AppHandle, Builder, Wry};
 const PROBE: &str = include_str!("egress_probe.js");
 static STARTED: AtomicBool = AtomicBool::new(false);
 
+/// Adds the probe to the app: it runs once the app's own page has loaded.
 pub fn install(builder: Builder<Wry>) -> Builder<Wry> {
     eprintln!("javabyte-gui: EGRESS PROBE BUILD - for tests only");
     builder.on_page_load(|webview, payload| {

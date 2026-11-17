@@ -68,9 +68,11 @@ pub const ITEM_COLUMNS: &[(&str, &[&str])] = &[
 pub enum Widget {
     /// Shown, not edited here: the sample is chosen on the Start screen.
     ReadOnly,
+    /// A line of text.
     Text,
     /// A whole number.
     Number,
+    /// A tick box.
     Check,
     /// A choice among few values: radio buttons.
     Radio(Vec<String>),
@@ -93,6 +95,7 @@ pub enum Widget {
 /// Choices with this many values or fewer are radio buttons.
 const RADIO_LIMIT: usize = 4;
 
+/// The field an option gets, from its type and allowed values.
 pub fn widget(option: &ConfigOption) -> Widget {
     if option.path == "sample" {
         return Widget::ReadOnly;

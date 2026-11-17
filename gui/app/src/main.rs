@@ -30,6 +30,7 @@ struct AppState {
     dropped: Mutex<Option<PathBuf>>,
 }
 
+/// The session, locked for this command.
 fn session<'a>(state: &'a tauri::State<'_, AppState>) -> std::sync::MutexGuard<'a, Session> {
     // A panic while holding the lock would poison it; the session's state is still usable.
     state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -39,6 +40,7 @@ fn session<'a>(state: &'a tauri::State<'_, AppState>) -> std::sync::MutexGuard<'
 // system's file picker or from a file the person dropped; the screens never supply a path of
 // their own, and nothing here opens, runs or reads the sample: only the Java tool does.
 
+/// Whether Java and the tool were found, and if not, why.
 #[tauri::command]
 fn engine_status(state: tauri::State<'_, AppState>) -> EngineStatus {
     session(&state).engine()
@@ -76,6 +78,8 @@ fn take_dropped(state: tauri::State<'_, AppState>) -> Result<Option<SampleChoice
     dropped.map(|path| Session::choose(&path)).transpose()
 }
 
+/// Describes the chosen sample and starts its settings afresh. The path must be one the
+/// picker, a drop or the command line produced; the session checks it again.
 #[tauri::command]
 async fn inspect_sample(sample: SampleChoice, state: tauri::State<'_, AppState>) -> Result<Overview, String> {
     // Only paths the picker or a drop produced reach here, and the session re-checks them.
@@ -83,11 +87,13 @@ async fn inspect_sample(sample: SampleChoice, state: tauri::State<'_, AppState>)
     session(&state).inspect(sample)
 }
 
+/// The same analysis as a command line, for the shell people usually have here.
 #[tauri::command]
 fn command_line(state: tauri::State<'_, AppState>) -> String {
     session(&state).command_line()
 }
 
+/// Starts the analysis of the chosen sample with its settings. One at a time.
 #[tauri::command]
 fn start_run(state: tauri::State<'_, AppState>) -> Result<(), String> {
     session(&state).start()
@@ -119,16 +125,19 @@ async fn open_report_folder(app: tauri::AppHandle, state: tauri::State<'_, AppSt
     }
 }
 
+/// The open report's saved files, with size, SHA-256 and origin.
 #[tauri::command]
 async fn artifacts(state: tauri::State<'_, AppState>) -> Result<Vec<Artifact>, String> {
     session(&state).artifacts()
 }
 
+/// One 64 KB page of a saved file. Only the report's own files, inside its folder.
 #[tauri::command]
 fn artifact_page(path: String, offset: u64, state: tauri::State<'_, AppState>) -> Result<FilePage, String> {
     session(&state).artifact_page(&path, offset)
 }
 
+/// A saved class as readable instructions, from `javabyte disasm`.
 #[tauri::command]
 async fn artifact_disasm(path: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
     session(&state).artifact_disasm(&path)
@@ -161,6 +170,7 @@ async fn save_as_is(path: String, app: tauri::AppHandle, state: tauri::State<'_,
     }
 }
 
+/// Compares two runs from the recent list, by id.
 #[tauri::command]
 async fn compare_runs(a: String, b: String, state: tauri::State<'_, AppState>) -> Result<Comparison, String> {
     session(&state).compare(&a, &b)
@@ -174,21 +184,25 @@ async fn run_again(state: tauri::State<'_, AppState>) -> Result<Overview, String
 
 // --- Settings ---
 
+/// The settings for the next analysis, as YAML.
 #[tauri::command]
 fn settings_text(state: tauri::State<'_, AppState>) -> Option<String> {
     session(&state).settings_text()
 }
 
+/// Replaces the settings, as the settings screen sends them after each change.
 #[tauri::command]
 fn set_settings_text(text: String, state: tauri::State<'_, AppState>) {
     session(&state).set_settings_text(text)
 }
 
+/// Every option the tool has, for building the forms.
 #[tauri::command]
 async fn config_schema(state: tauri::State<'_, AppState>) -> Result<Schema, String> {
     session(&state).schema()
 }
 
+/// Every problem the tool finds in some settings.
 #[tauri::command]
 async fn check_settings(text: String, state: tauri::State<'_, AppState>) -> Result<Validation, String> {
     // The check runs the tool for about a second; the session is held only to read what it
@@ -197,26 +211,31 @@ async fn check_settings(text: String, state: tauri::State<'_, AppState>) -> Resu
     checker.check(&text)
 }
 
+/// Saved presets, by name.
 #[tauri::command]
 fn presets(state: tauri::State<'_, AppState>) -> Vec<Preset> {
     session(&state).presets()
 }
 
+/// Where saved presets are kept, for people to copy.
 #[tauri::command]
 fn presets_folder(state: tauri::State<'_, AppState>) -> String {
     session(&state).presets_folder().display().to_string()
 }
 
+/// Saves settings as a preset (without the sample). The name is cleaned to a file name.
 #[tauri::command]
 fn save_preset(name: String, text: String, state: tauri::State<'_, AppState>) -> Result<Preset, String> {
     session(&state).save_preset(&name, &text)
 }
 
+/// A saved preset's settings, for the chosen sample.
 #[tauri::command]
 fn load_preset(name: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
     session(&state).load_preset(&name)
 }
 
+/// Deletes a saved preset.
 #[tauri::command]
 fn delete_preset(name: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     session(&state).delete_preset(&name)
@@ -266,41 +285,49 @@ async fn choose_host_file(app: tauri::AppHandle) -> Option<String> {
         .map(|p| p.display().to_string())
 }
 
+/// The running analysis as the Running screen shows it. Called a few times a second.
 #[tauri::command]
 fn run_status(state: tauri::State<'_, AppState>) -> RunStatus {
     session(&state).status()
 }
 
+/// Asks the running analysis to stop; it keeps what it found.
 #[tauri::command]
 fn stop_run(state: tauri::State<'_, AppState>) -> Result<(), String> {
     session(&state).stop()
 }
 
+/// The report of the last finished or opened run.
 #[tauri::command]
 fn current_report(state: tauri::State<'_, AppState>) -> Result<ReportView, String> {
     session(&state).report()
 }
 
+/// Recent analyses, newest first.
 #[tauri::command]
 fn recent_runs(state: tauri::State<'_, AppState>) -> Vec<RecentRun> {
     session(&state).recent()
 }
 
+/// Opens a report from the recent list, by id.
 #[tauri::command]
 fn open_recent(id: String, state: tauri::State<'_, AppState>) -> Result<ReportView, String> {
     session(&state).open_recent(&id)
 }
 
+/// The actions in one category of the open report's events, for the filter.
 #[tauri::command]
 fn event_actions(category: String, state: tauri::State<'_, AppState>) -> Vec<String> {
     session(&state).event_actions(&category)
 }
 
+/// Where an event number is in the filtered event list, if it is there.
 #[tauri::command]
 fn event_position(seq: u64, filter: EventFilter, state: tauri::State<'_, AppState>) -> Option<u64> {
     session(&state).event_position(seq, &filter)
 }
 
+/// A page of the open report's events.
 #[tauri::command]
 fn events_page(request: PageRequest, state: tauri::State<'_, AppState>) -> Page {
     session(&state).events_page(&request)
@@ -310,8 +337,8 @@ fn events_page(request: PageRequest, state: tauri::State<'_, AppState>) -> Page 
 /// `javabyte.jar` next to the app, then the `target/` folder of a source checkout.
 fn find_engine() -> Result<Launcher, String> {
     let mut candidates: Vec<PathBuf> = std::env::var_os("JAVABYTE_JAR").map(PathBuf::from).into_iter().collect();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent() {
             candidates.push(dir.join("javabyte.jar"));
             for ancestor in dir.ancestors() {
                 if let Ok(entries) = std::fs::read_dir(ancestor.join("target")) {
@@ -324,7 +351,6 @@ fn find_engine() -> Result<Launcher, String> {
                 }
             }
         }
-    }
     let jar = candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| t!("error-engine-missing"))?;
     let launcher = Launcher::find(jar)?;
     // Java must answer before anything is promised to the person.
@@ -358,13 +384,11 @@ fn main() {
         })
         .on_window_event(|window, event| {
             // A dropped file is only noted; the start screen asks for it and inspects it.
-            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                if let (Some(first), Some(state)) = (paths.first(), window.try_state::<AppState>()) {
-                    if let Ok(mut slot) = state.dropped.lock() {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event
+                && let (Some(first), Some(state)) = (paths.first(), window.try_state::<AppState>())
+                    && let Ok(mut slot) = state.dropped.lock() {
                         *slot = Some(first.clone());
                     }
-                }
-            }
         });
     #[cfg(not(feature = "egress-control"))]
     let builder = builder.plugin(guard::plugin());

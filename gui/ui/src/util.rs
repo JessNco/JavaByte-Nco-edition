@@ -9,7 +9,7 @@ pub fn fmt_num(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -26,6 +26,7 @@ pub fn focus_id(id: String) {
     });
 }
 
+/// `None` for empty text, so an empty filter field means "no filter".
 pub fn non_empty(text: String) -> Option<String> {
     let trimmed = text.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -39,10 +40,13 @@ pub fn non_empty(text: String) -> Option<String> {
 pub struct Announcer(RwSignal<String>);
 
 impl Announcer {
+    /// An announcer with nothing said yet.
     pub fn new() -> Self {
         Self(RwSignal::new(String::new()))
     }
 
+    /// Says a message politely. The region is emptied first, so saying the same thing twice is
+    /// /// still announced.
     pub fn say(&self, message: impl Into<String>) {
         let message = message.into();
         let text = self.0;
@@ -50,6 +54,7 @@ impl Announcer {
         set_timeout(move || text.set(message), std::time::Duration::from_millis(80));
     }
 
+    /// What is being said now.
     pub fn text(&self) -> String {
         self.0.get()
     }
@@ -126,11 +131,10 @@ pub fn Disclosure(label: String, #[prop(optional)] class: &'static str, children
 pub fn open_disclosures_around(element: &web_sys::Element) {
     let mut node = element.parent_element();
     while let Some(parent) = node {
-        if parent.class_list().contains("disclosure-body") && parent.has_attribute("hidden") {
-            if let Some(toggle) = parent.previous_element_sibling().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
+        if parent.class_list().contains("disclosure-body") && parent.has_attribute("hidden")
+            && let Some(toggle) = parent.previous_element_sibling().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
                 toggle.click();
             }
-        }
         node = parent.parent_element();
     }
 }

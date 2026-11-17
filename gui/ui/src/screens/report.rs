@@ -11,6 +11,7 @@ const TABS: [&str; 6] = ["summary", "indicators", "events", "limits", "files", "
 /// Characters of one indicator shown before "show all" is needed; the full text is in the file.
 const ITEM_CHARS: usize = 300;
 
+/// The Report screen and its tabs. `visible` lets tabs that load data wait until shown.
 #[component]
 pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
     let flow = flow();

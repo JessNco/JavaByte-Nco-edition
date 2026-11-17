@@ -14,6 +14,7 @@ public final class Mirrors {
 
     private Mirrors() {}
 
+    /** A method of an interpreted class, where guest code expects a {@code java.lang.reflect.Method}. */
     public record MethodMirror(GuestMethod method) {
         @Override
         public String toString() {
@@ -21,6 +22,7 @@ public final class Mirrors {
         }
     }
 
+    /** A constructor of an interpreted class, in place of a {@code java.lang.reflect.Constructor}. */
     public record ConstructorMirror(GuestMethod method) {
         @Override
         public String toString() {
@@ -28,6 +30,7 @@ public final class Mirrors {
         }
     }
 
+    /** A field of an interpreted class, in place of a {@code java.lang.reflect.Field}. */
     public record FieldMirror(GuestClass declaring, FieldNode field) {
         @Override
         public String toString() {

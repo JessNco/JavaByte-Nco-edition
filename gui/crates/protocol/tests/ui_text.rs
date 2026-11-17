@@ -206,11 +206,10 @@ fn every_message_named_in_the_code_exists() {
         let source = std::fs::read_to_string(&file).unwrap();
         for literal in literals(&source) {
             let before = literal.before.trim_end();
-            if calls(before, "t!(") || calls(before, "tr(") {
-                if !i18n::has(&literal.text) {
+            if (calls(before, "t!(") || calls(before, "tr("))
+                && !i18n::has(&literal.text) {
                     missing.push(format!("{}:{}: {}", file.display(), literal.line, literal.text));
                 }
-            }
         }
     }
     assert!(missing.is_empty(), "messages not in gui/locales/en:\n{}", missing.join("\n"));

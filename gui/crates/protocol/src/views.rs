@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 /// A sample the person chose, by picker or by dropping it on the window.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SampleChoice {
+    /// The full path, as the system gave it.
     pub path: String,
     /// The file or folder name, for headings.
     pub name: String,
@@ -24,9 +25,15 @@ pub enum EntryChoice {
     /// The main method named in the manifest.
     Main,
     /// The main method of a chosen class.
-    MainOf { class: String },
+    MainOf {
+        /// The class, with dots.
+        class: String,
+    },
     /// A Java agent's `premain` method, called as the JVM would with no options.
-    Agent { class: String },
+    Agent {
+        /// The agent class, with dots.
+        class: String,
+    },
     /// Every class's start-up code, to collect hidden text.
     ClinitSweep,
 }
@@ -48,8 +55,11 @@ impl EntryChoice {
 /// One way to start the sample, offered on the overview screen.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntryOption {
+    /// What the choice is called on screen. Untrusted: it names classes from the sample.
     pub label: String,
+    /// One sentence on what choosing it does.
     pub help: String,
+    /// The choice itself.
     pub entry: EntryChoice,
 }
 
@@ -59,15 +69,20 @@ pub struct Finding {
     /// `attention` for things that change what to do next; `info` otherwise. Shown in words,
     /// never by colour alone.
     pub level: String,
+    /// The finding in a few words.
     pub title: String,
+    /// What it means, in a sentence or two.
     pub detail: String,
 }
 
 /// Everything the overview screen shows.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Overview {
+    /// The sample described.
     pub sample: SampleChoice,
+    /// What `inspect` found.
     pub inspection: Inspection,
+    /// What matters about it, most important first.
     pub findings: Vec<Finding>,
     /// Ways to start, the recommended one first.
     pub entries: Vec<EntryOption>,
@@ -167,6 +182,7 @@ pub fn overview(sample: SampleChoice, inspection: Inspection) -> Overview {
 pub struct IndicatorSection {
     /// Stable id, for headings and links.
     pub id: String,
+    /// The list's heading, such as "Web addresses it contacted".
     pub title: String,
     /// What this list means, in a sentence.
     pub explanation: String,
@@ -177,23 +193,34 @@ pub struct IndicatorSection {
 /// How one entry point ended, for people.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunLine {
+    /// The entry point, such as `a.B.main`. Untrusted.
     pub entry: String,
+    /// The tool's outcome word, such as `completed`.
     pub outcome: String,
+    /// The outcome in plain words.
     pub meaning: String,
+    /// The tool's detail, such as an exception. Untrusted.
     pub detail: Option<String>,
 }
 
 /// Everything the report screen shows apart from the event list.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ReportView {
+    /// The sample's file name, for headings. Untrusted.
     pub sample_name: String,
+    /// The sample's path as the tool was given it. Untrusted.
     pub sample_path: String,
+    /// SHA-256 of the sample, in lowercase hex.
     pub sha256: String,
     /// The plain-language paragraph that opens the report.
     pub summary: String,
+    /// How each part of the run ended.
     pub runs: Vec<RunLine>,
+    /// Indicator lists that have something in them.
     pub sections: Vec<IndicatorSection>,
+    /// Events recorded, in all categories.
     pub event_count: u64,
+    /// Places the analysis could not imitate faithfully.
     pub gaps: u64,
     /// Categories whose events were not all kept, and how many were dropped.
     pub dropped: Vec<(String, u64)>,
@@ -225,7 +252,9 @@ pub struct Artifact {
     pub name: String,
     /// `dropped` (a file it wrote), `class` (code it created), `network` (data it sent), `other`.
     pub kind: String,
+    /// Size in bytes.
     pub size: u64,
+    /// SHA-256 of the file, in lowercase hex.
     pub sha256: String,
     /// Where it came from: the path on the pretend disk, the web address, or the class name.
     /// Untrusted.
@@ -235,8 +264,11 @@ pub struct Artifact {
 /// One page of a saved file, for the viewer.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilePage {
+    /// Where this page starts, in bytes from the start of the file.
     pub offset: u64,
+    /// The file's whole size.
     pub total: u64,
+    /// This page's bytes: at most `PAGE_BYTES`.
     pub bytes: Vec<u8>,
 }
 
@@ -297,6 +329,7 @@ pub struct Imported {
 /// A saved preset: settings without a sample, kept as a YAML file.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Preset {
+    /// The preset's name, which is also its file name without `.yaml`.
     pub name: String,
 }
 
@@ -315,24 +348,23 @@ pub struct FollowUps {
 /// Most follow-up values offered of each kind.
 const FOLLOW_UP_LIMIT: usize = 50;
 
+/// What the run's events show the sample wanted, for the presets.
 pub fn follow_ups(report: &Report) -> FollowUps {
     let mut out = FollowUps::default();
     let text = |e: &crate::stream::Event, key: &str| e.data.get(key).and_then(|v| v.as_str()).map(str::to_string);
     for event in &report.events {
         match (event.category.as_str(), event.action.as_str()) {
             ("file", "read-missing") => {
-                if let Some(path) = text(event, "path") {
-                    if !out.missing_files.contains(&path) && out.missing_files.len() < FOLLOW_UP_LIMIT {
+                if let Some(path) = text(event, "path")
+                    && !out.missing_files.contains(&path) && out.missing_files.len() < FOLLOW_UP_LIMIT {
                         out.missing_files.push(path);
                     }
-                }
             }
             ("net", "http") if text(event, "matchedRule").is_some_and(|r| r.starts_with("none")) => {
-                if let Some(url) = text(event, "url") {
-                    if !out.unanswered_urls.contains(&url) && out.unanswered_urls.len() < FOLLOW_UP_LIMIT {
+                if let Some(url) = text(event, "url")
+                    && !out.unanswered_urls.contains(&url) && out.unanswered_urls.len() < FOLLOW_UP_LIMIT {
                         out.unanswered_urls.push(url);
                     }
-                }
             }
             ("process", "exec") => {
                 let argv: Vec<String> = event
@@ -341,11 +373,10 @@ pub fn follow_ups(report: &Report) -> FollowUps {
                     .and_then(|v| v.as_array())
                     .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                     .unwrap_or_default();
-                if let Some(args) = java_program_args(&argv) {
-                    if !out.relaunch_args.contains(&args) && out.relaunch_args.len() < FOLLOW_UP_LIMIT {
+                if let Some(args) = java_program_args(&argv)
+                    && !out.relaunch_args.contains(&args) && out.relaunch_args.len() < FOLLOW_UP_LIMIT {
                         out.relaunch_args.push(args);
                     }
-                }
             }
             _ => {}
         }
@@ -381,6 +412,7 @@ fn java_program_args(argv: &[String]) -> Option<Vec<String>> {
 /// Most values kept per indicator list; the full list is in the report file.
 const SECTION_LIMIT: usize = 200;
 
+/// The report screen's data from a report, the sample's name and the run's folder.
 pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> ReportView {
     let text = |values: &[serde_json::Value]| -> Vec<String> {
         values.iter().take(SECTION_LIMIT).map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string)).collect()
@@ -438,6 +470,7 @@ pub fn report_view(report: &Report, sample_name: &str, output_dir: &str) -> Repo
     }
 }
 
+/// An indicator list with its title and explanation from the resources.
 fn section(id: &str, items: Vec<String>) -> IndicatorSection {
     IndicatorSection {
         id: id.into(),
@@ -505,19 +538,24 @@ fn join_list(items: &[String]) -> String {
 /// A run in the recent list on the start screen.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecentRun {
+    /// Stable id: the run folder's name for runs the app made, its path for opened reports.
     pub id: String,
+    /// The sample's file name. Untrusted.
     pub sample_name: String,
     /// When it ran, as `YYYY-MM-DD HH:MM` in UTC.
     pub when: String,
     /// The first entry point's outcome, in plain words.
     pub outcome: String,
+    /// Events recorded.
     pub events: u64,
+    /// The run's folder, holding `report.json`.
     pub output_dir: String,
 }
 
 /// Whether the analysis engine (Java and the JavaByte tool) can be started.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EngineStatus {
+    /// True when Java and the tool were found and Java starts.
     pub ready: bool,
     /// Plain words: what is wrong and how to fix it. None when ready.
     pub problem: Option<String>,

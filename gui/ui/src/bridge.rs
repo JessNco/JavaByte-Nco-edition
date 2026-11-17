@@ -23,9 +23,9 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
 /// Rows in the browser build's event list: the size of a very busy real run.
-pub const TRIAL_EVENTS: u64 = 300_000;
+pub const STAND_IN_EVENTS: u64 = 300_000;
 /// Length of the browser build's pretend analysis.
-pub const TRIAL_RUN_MS: u64 = 20_000;
+pub const STAND_IN_RUN_MS: u64 = 20_000;
 
 const SAMPLE_INSPECTION: &str = include_str!("../../crates/protocol/tests/tool-output/inspect-native.json");
 const SAMPLE_REPORT: &str = include_str!("../../crates/protocol/tests/tool-output/report-basics.json");
@@ -48,12 +48,13 @@ thread_local! {
     static IN_PAGE: RefCell<Option<InPage>> = const { RefCell::new(None) };
 }
 
+/// Runs `work` on the browser stand-in, creating it on first use.
 fn in_page<T>(work: impl FnOnce(&mut InPage) -> T) -> T {
     IN_PAGE.with(|cell| {
         let mut slot = cell.borrow_mut();
         let backend = slot.get_or_insert_with(|| InPage {
-            events: EventStore::new(Box::new(SyntheticEvents::new(TRIAL_EVENTS))),
-            run: Simulation::new(TRIAL_RUN_MS),
+            events: EventStore::new(Box::new(SyntheticEvents::new(STAND_IN_EVENTS))),
+            run: Simulation::new(STAND_IN_RUN_MS),
             sample: None,
             finished_once: false,
             settings: EXAMPLE_SETTINGS.to_string(),
@@ -63,16 +64,19 @@ fn in_page<T>(work: impl FnOnce(&mut InPage) -> T) -> T {
     })
 }
 
+/// Tauri's `core` object, present only inside the desktop app.
 fn tauri_core() -> Option<JsValue> {
     let window: JsValue = web_sys::window()?.into();
     let tauri = js_sys::Reflect::get(&window, &"__TAURI__".into()).ok().filter(|v| !v.is_undefined())?;
     js_sys::Reflect::get(&tauri, &"core".into()).ok().filter(|v| !v.is_undefined())
 }
 
+/// Whether the screens run inside the desktop app (rather than a test browser).
 pub fn in_desktop_app() -> bool {
     tauri_core().is_some()
 }
 
+/// Calls a desktop command and reads its reply. Errors come back as text for people.
 async fn invoke<T: DeserializeOwned>(command: &str, args: impl Serialize) -> Result<T, String> {
     let core = tauri_core().ok_or_else(|| t!("error-backend-missing"))?;
     let function: js_sys::Function = js_sys::Reflect::get(&core, &"invoke".into())
@@ -109,6 +113,7 @@ struct PageArgs<'a> {
     request: &'a PageRequest,
 }
 
+/// The stand-in's sample: a jar, or a folder of classes.
 fn example_sample(folder: bool) -> SampleChoice {
     if folder {
         SampleChoice { path: "C:\\Samples\\classes".into(), name: "classes".into() }
@@ -117,6 +122,7 @@ fn example_sample(folder: bool) -> SampleChoice {
     }
 }
 
+/// The stand-in's report, built from the committed real report.
 fn example_report(sample_name: &str) -> ReportView {
     let report: Report = serde_json::from_str(SAMPLE_REPORT).expect("the committed sample report reads");
     let mut view = views::report_view(&report, sample_name, CURRENT_RUN);
@@ -124,6 +130,7 @@ fn example_report(sample_name: &str) -> ReportView {
     view
 }
 
+/// Whether Java and the tool were found.
 pub async fn engine_status() -> EngineStatus {
     if in_desktop_app() {
         invoke("engine_status", NoArgs {}).await.unwrap_or_else(|e| EngineStatus { ready: false, problem: Some(e) })
@@ -141,10 +148,12 @@ pub async fn choose_sample(folder: bool) -> Result<Option<SampleChoice>, String>
     }
 }
 
+/// A file dropped on the window (or named on the command line), if one is waiting.
 pub async fn take_dropped() -> Result<Option<SampleChoice>, String> {
     if in_desktop_app() { invoke("take_dropped", NoArgs {}).await } else { Ok(None) }
 }
 
+/// Describes the chosen sample and starts its settings afresh.
 pub async fn inspect_sample(sample: &SampleChoice) -> Result<Overview, String> {
     if in_desktop_app() {
         invoke("inspect_sample", SampleArgs { sample }).await
@@ -159,6 +168,7 @@ pub async fn inspect_sample(sample: &SampleChoice) -> Result<Overview, String> {
     }
 }
 
+/// Starts the analysis of the chosen sample with its settings.
 pub async fn start_run() -> Result<(), String> {
     if in_desktop_app() {
         invoke("start_run", NoArgs {}).await
@@ -191,6 +201,7 @@ pub async fn settings_text() -> Result<Option<String>, String> {
     if in_desktop_app() { invoke("settings_text", NoArgs {}).await } else { Ok(Some(in_page(|b| b.settings.clone()))) }
 }
 
+/// Sends the settings to the backend after a change.
 pub async fn set_settings_text(text: &str) -> Result<(), String> {
     if in_desktop_app() {
         invoke("set_settings_text", TextArgs { text }).await
@@ -200,10 +211,12 @@ pub async fn set_settings_text(text: &str) -> Result<(), String> {
     }
 }
 
+/// Every option the tool has.
 pub async fn config_schema() -> Result<Schema, String> {
     if in_desktop_app() { invoke("config_schema", NoArgs {}).await } else { serde_json::from_str(SAMPLE_SCHEMA).map_err(|e| e.to_string()) }
 }
 
+/// Every problem in some settings, as the tool sees them.
 pub async fn check_settings(text: &str) -> Result<Validation, String> {
     if in_desktop_app() {
         invoke("check_settings", TextArgs { text }).await
@@ -213,6 +226,7 @@ pub async fn check_settings(text: &str) -> Result<Validation, String> {
     }
 }
 
+/// Saved presets, by name.
 pub async fn presets() -> Vec<Preset> {
     if in_desktop_app() {
         invoke("presets", NoArgs {}).await.unwrap_or_default()
@@ -221,6 +235,7 @@ pub async fn presets() -> Vec<Preset> {
     }
 }
 
+/// Where saved presets are kept.
 pub async fn presets_folder() -> String {
     if in_desktop_app() {
         invoke("presets_folder", NoArgs {}).await.unwrap_or_default()
@@ -229,6 +244,7 @@ pub async fn presets_folder() -> String {
     }
 }
 
+/// Saves settings as a preset, without their sample.
 pub async fn save_preset(name: &str, text: &str) -> Result<Preset, String> {
     if in_desktop_app() {
         invoke("save_preset", PresetArgs { name, text }).await
@@ -246,6 +262,7 @@ pub async fn save_preset(name: &str, text: &str) -> Result<Preset, String> {
     }
 }
 
+/// A saved preset's settings, for the chosen sample.
 pub async fn load_preset(name: &str) -> Result<String, String> {
     if in_desktop_app() {
         invoke("load_preset", NameArgs { name }).await
@@ -256,6 +273,7 @@ pub async fn load_preset(name: &str) -> Result<String, String> {
     }
 }
 
+/// Deletes a saved preset.
 pub async fn delete_preset(name: &str) -> Result<(), String> {
     if in_desktop_app() {
         invoke("delete_preset", NameArgs { name }).await
@@ -303,6 +321,7 @@ fn stand_in_check(schema: &Schema, text: &str) -> Validation {
         return Validation { valid: false, problems: vec![Problem { key: String::new(), message }] };
     };
     let mut problems = Vec::new();
+    /// Checks one level of the settings against the schema, then the levels below it.
     fn walk(schema: &Schema, prefix: &str, schema_prefix: &str, value: &serde_json::Value, problems: &mut Vec<Problem>) {
         let Some(map) = value.as_object() else { return };
         for (key, child) in map {
@@ -317,11 +336,10 @@ fn stand_in_check(schema: &Schema, text: &str) -> Validation {
                     problems.push(Problem { key: path.clone(), message: format!("{path} must be a whole number, found '{}'", child.as_str().unwrap_or_default()) }); // not-ui-text: the tool's own words
                 }
                 "string" if !option.allowed.is_empty() => {
-                    if let Some(text) = child.as_str() {
-                        if !option.allowed.iter().any(|a| a == text) {
+                    if let Some(text) = child.as_str()
+                        && !option.allowed.iter().any(|a| a == text) {
                             problems.push(Problem { key: path.clone(), message: format!("{path} must be one of {}", option.allowed.join(", ")) }); // not-ui-text: the tool's own words
                         }
-                    }
                 }
                 "object" => walk(schema, &path, &schema_path, child, problems),
                 "list" if option.element.as_deref() == Some("object") => {
@@ -344,6 +362,7 @@ fn stand_in_check(schema: &Schema, text: &str) -> Validation {
     Validation { valid: problems.is_empty(), problems }
 }
 
+/// Asks the running analysis to stop; it keeps what it found.
 pub async fn stop_run() -> Result<(), String> {
     if in_desktop_app() {
         invoke("stop_run", NoArgs {}).await
@@ -353,6 +372,7 @@ pub async fn stop_run() -> Result<(), String> {
     }
 }
 
+/// The running analysis, for the Running screen.
 pub async fn run_status() -> Result<RunStatus, String> {
     if in_desktop_app() {
         invoke("run_status", NoArgs {}).await
@@ -370,6 +390,7 @@ pub async fn run_status() -> Result<RunStatus, String> {
     }
 }
 
+/// The report of the last finished or opened run.
 pub async fn current_report() -> Result<ReportView, String> {
     if in_desktop_app() {
         invoke("current_report", NoArgs {}).await
@@ -386,6 +407,7 @@ const CURRENT_RUN: &str = "C:\\Users\\you\\Documents\\JavaByte\\2026-11-17 10-00
 const PREVIOUS_RUN: &str = "C:\\Users\\you\\Documents\\JavaByte\\2026-11-16 18-00-00 example.jar";
 const OTHER_RUN: &str = "C:\\Users\\you\\Documents\\JavaByte\\2026-11-16 09-30-00 earlier.jar";
 
+/// The stand-in's recent list. The current run is in it once it has finished.
 fn stand_in_recent(finished: bool) -> Vec<RecentRun> {
     let run = |folder: &str, name: &str, when: &str| RecentRun {
         id: folder.rsplit('\\').next().unwrap_or(folder).to_string(),
@@ -404,6 +426,7 @@ fn stand_in_recent(finished: bool) -> Vec<RecentRun> {
     list
 }
 
+/// Recent analyses, newest first.
 pub async fn recent_runs() -> Vec<RecentRun> {
     if in_desktop_app() {
         invoke("recent_runs", NoArgs {}).await.unwrap_or_default()
@@ -412,10 +435,12 @@ pub async fn recent_runs() -> Vec<RecentRun> {
     }
 }
 
+/// Opens a report from the recent list.
 pub async fn open_recent(id: &str) -> Result<ReportView, String> {
     if in_desktop_app() { invoke("open_recent", IdArgs { id }).await } else { Ok(example_report("earlier.jar")) }
 }
 
+/// A page of the open report's events.
 pub async fn events_page(request: PageRequest) -> Result<Page, String> {
     if in_desktop_app() {
         invoke("events_page", PageArgs { request: &request }).await
@@ -491,10 +516,12 @@ fn stand_in_files() -> Vec<(views::Artifact, Vec<u8>)> {
     ]
 }
 
+/// The open report's saved files.
 pub async fn artifacts() -> Result<Vec<views::Artifact>, String> {
     if in_desktop_app() { invoke("artifacts", NoArgs {}).await } else { Ok(stand_in_files().into_iter().map(|(a, _)| a).collect()) }
 }
 
+/// One 64 KB page of a saved file.
 pub async fn artifact_page(path: &str, offset: u64) -> Result<views::FilePage, String> {
     if in_desktop_app() {
         invoke("artifact_page", PageOfFile { path, offset }).await
@@ -506,6 +533,7 @@ pub async fn artifact_page(path: &str, offset: u64) -> Result<views::FilePage, S
     }
 }
 
+/// A saved class as readable instructions.
 pub async fn artifact_disasm(path: &str) -> Result<String, String> {
     if in_desktop_app() {
         invoke("artifact_disasm", PathArgs { path }).await
@@ -514,14 +542,17 @@ pub async fn artifact_disasm(path: &str) -> Result<String, String> {
     }
 }
 
+/// Saves the chosen files in a password zip. `false` if the person cancelled.
 pub async fn save_zip(paths: &[String]) -> Result<bool, String> {
     if in_desktop_app() { invoke("save_zip", PathsArgs { paths }).await } else { Ok(true) }
 }
 
+/// Saves one file as it is, after the warning. `false` if the person cancelled.
 pub async fn save_as_is(path: &str) -> Result<bool, String> {
     if in_desktop_app() { invoke("save_as_is", PathArgs { path }).await } else { Ok(true) }
 }
 
+/// Compares two runs from the recent list.
 pub async fn compare_runs(a: &str, b: &str) -> Result<javabyte_gui_protocol::compare::Comparison, String> {
     if in_desktop_app() {
         invoke("compare_runs", CompareArgs { a, b }).await
@@ -546,6 +577,7 @@ pub async fn run_again() -> Result<Overview, String> {
     }
 }
 
+/// The actions in one category of the open report's events.
 pub async fn event_actions(category: &str) -> Vec<String> {
     if in_desktop_app() {
         invoke("event_actions", CategoryArgs { category }).await.unwrap_or_default()
@@ -554,6 +586,7 @@ pub async fn event_actions(category: &str) -> Vec<String> {
     }
 }
 
+/// Where an event number is in the filtered list, if it is there.
 pub async fn event_position(seq: u64, filter: &javabyte_gui_protocol::EventFilter) -> Option<u64> {
     if in_desktop_app() {
         invoke("event_position", PositionArgs { seq, filter }).await.ok().flatten()

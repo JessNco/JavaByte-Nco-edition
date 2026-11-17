@@ -13,10 +13,18 @@ use serde_json::{Map, Number, Value};
 use std::str::FromStr;
 use yaml_edit::{Document, Mapping, Sequence, YamlFile};
 
+mod command_line;
+mod render;
+
+pub use command_line::{Shell, command_line, overrides, shell_quote};
+pub use render::{render_document, render_scalar, render_scalar_str};
+
 /// One step of a path into the config: a key of a mapping, or a position in a list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Step {
+    /// A key of a mapping. It may contain dots: `java.version` is one key.
     Key(String),
+    /// A position in a list, from 0.
     Index(usize),
 }
 
@@ -43,11 +51,13 @@ impl ConfigPath {
         ConfigPath(steps)
     }
 
+    /// This path with one more key.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.0.push(Step::Key(key.into()));
         self
     }
 
+    /// This path with one more list position.
     pub fn index(mut self, index: usize) -> Self {
         self.0.push(Step::Index(index));
         self
@@ -93,8 +103,11 @@ impl std::fmt::Display for ConfigPath {
 /// Where the YAML cannot be read: 1-based line and column, and the parser's message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SyntaxProblem {
+    /// 1-based line.
     pub line: usize,
+    /// 1-based column, in characters.
     pub column: usize,
+    /// The YAML reader's message, in English.
     pub message: String,
 }
 
@@ -115,10 +128,12 @@ pub struct ConfigDoc {
 }
 
 impl ConfigDoc {
+    /// A document holding `text`, which need not be valid YAML yet.
     pub fn new(text: impl Into<String>) -> Self {
         ConfigDoc { text: text.into() }
     }
 
+    /// The YAML as it is now.
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -141,6 +156,7 @@ impl ConfigDoc {
             .collect()
     }
 
+    /// The parsed document, or the syntax problems that stop editing.
     fn document(&self) -> Result<Document, EditError> {
         let problems = self.syntax_problems();
         if !problems.is_empty() {
@@ -187,7 +203,7 @@ impl ConfigDoc {
             self.text = render_document(value);
             return Ok(());
         };
-        let root = root_mapping(&document, &mut self.text)?;
+        let root = root_mapping(&document)?;
         let root = match root {
             Some(root) => root,
             None => {
@@ -235,7 +251,7 @@ impl ConfigDoc {
     /// removed too, so no `threads:` with nothing under it is left behind.
     pub fn remove(&mut self, path: &ConfigPath) -> Result<(), EditError> {
         let document = self.document()?;
-        let Some(root) = root_mapping(&document, &mut self.text)? else { return Ok(()) };
+        let Some(root) = root_mapping(&document)? else { return Ok(()) };
         let mut chain: Vec<Container> = vec![Container::Map(root)];
         for (depth, step) in path.0.iter().enumerate().take(path.0.len().saturating_sub(1)) {
             let child = match (chain.last().unwrap(), step) {
@@ -355,6 +371,7 @@ impl ConfigDoc {
         Ok(())
     }
 
+    /// The list at `path`, or why there is none.
     fn list_at(&self, document: &Document, path: &ConfigPath) -> Result<Sequence, EditError> {
         let shape = || EditError::Shape(javabyte_gui_protocol::t!("config-not-a-list", path = path.to_string()));
         let root = document.as_mapping().ok_or_else(shape)?;
@@ -375,91 +392,6 @@ impl ConfigDoc {
     }
 }
 
-/// The shell a command line is written for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Shell {
-    /// sh, bash, zsh: Linux and macOS terminals.
-    Posix,
-    /// PowerShell: the usual Windows terminal.
-    PowerShell,
-}
-
-impl Shell {
-    /// The usual shell where the app runs.
-    pub fn native() -> Self {
-        if cfg!(windows) { Shell::PowerShell } else { Shell::Posix }
-    }
-}
-
-/// Quotes one argument for a shell, leaving it bare only when nothing in it is special there.
-pub fn shell_quote(arg: &str, shell: Shell) -> String {
-    let bare = !arg.is_empty() && arg.chars().all(|c| c.is_ascii_alphanumeric() || "-_./:=,+@%".contains(c));
-    match shell {
-        _ if bare => arg.to_string(),
-        Shell::Posix => format!("'{}'", arg.replace('\'', r"'\''")),
-        // In PowerShell single quotes are literal, and a quote inside is doubled. The typographic
-        // quotes PowerShell also treats as quotes are doubled the same way.
-        Shell::PowerShell => {
-            let mut out = String::from("'");
-            for c in arg.chars() {
-                if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201a}' | '\u{201b}') {
-                    out.push(c);
-                }
-                out.push(c);
-            }
-            out.push('\'');
-            out
-        }
-    }
-}
-
-/// The `-s KEY=VALUE` arguments that give the same settings as `config` on the command line.
-/// `sample` is left out (it is the command's own argument). A group is split into its settings
-/// when its keys can be written in a path; otherwise (keys with dots, lists) it is passed whole,
-/// as JSON, which the tool reads as YAML.
-pub fn overrides(config: &Value) -> Vec<String> {
-    fn simple(key: &str) -> bool {
-        !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-    }
-    fn walk(path: &str, value: &Value, out: &mut Vec<String>) {
-        match value {
-            Value::Object(map) if !map.is_empty() && map.keys().all(|k| simple(k)) => {
-                for (key, child) in map {
-                    walk(&format!("{path}.{key}"), child, out);
-                }
-            }
-            Value::Object(_) | Value::Array(_) => out.push(format!("{path}={value}")),
-            _ => out.push(format!("{path}={}", render_scalar(value))),
-        }
-    }
-    let mut out = Vec::new();
-    if let Value::Object(map) = config {
-        for (key, value) in map {
-            if key == "sample" {
-                continue;
-            }
-            if simple(key) {
-                walk(key, value, &mut out);
-            } else {
-                // A top-level key a path cannot name is not a known option; pass it anyway so
-                // the tool reports it, as it would for the file.
-                out.push(format!("{key}={value}"));
-            }
-        }
-    }
-    out
-}
-
-/// `javabyte run SAMPLE -s …` for the settings in `config`.
-pub fn command_line(sample: &str, config: &Value, shell: Shell) -> String {
-    let mut parts = vec!["javabyte".to_string(), "run".into(), shell_quote(sample, shell)];
-    for setting in overrides(config) {
-        parts.push("-s".into());
-        parts.push(shell_quote(&setting, shell));
-    }
-    parts.join(" ")
-}
-
 /// The offset where the line holding `offset` starts.
 fn line_start(text: &str, offset: usize) -> usize {
     text[..offset].rfind('\n').map_or(0, |i| i + 1)
@@ -477,6 +409,7 @@ enum Container {
     List(Sequence),
 }
 
+/// A node as a group of settings or a list; a single value is a shape error at `depth`.
 fn container(node: &yaml_edit::YamlNode, path: &ConfigPath, depth: usize) -> Result<Container, EditError> {
     if let Some(m) = node.as_mapping() {
         Ok(Container::Map(m.clone()))
@@ -502,7 +435,7 @@ fn remove_step(container: &Container, step: &Step) {
 
 /// The document's top-level mapping; `None` for an empty document. A document whose top level
 /// is a list or a single value is not a config.
-fn root_mapping(document: &Document, _text: &mut String) -> Result<Option<Mapping>, EditError> {
+fn root_mapping(document: &Document) -> Result<Option<Mapping>, EditError> {
     if let Some(m) = document.as_mapping() {
         // `{}` (an empty document) is replaced as a whole, so its flow style does not spread.
         if m.is_empty() { Ok(None) } else { Ok(Some(m)) }
@@ -549,108 +482,7 @@ fn parsed_node(value: &Value) -> Result<yaml_edit::YamlNode, EditError> {
     }
 }
 
-/// A whole value as a YAML document, in block style.
-pub fn render_document(value: &Value) -> String {
-    let mut lines = Vec::new();
-    render_lines(value, 0, &mut lines);
-    let mut out = lines.join("\n");
-    out.push('\n');
-    out
-}
-
-fn is_nonempty_collection(value: &Value) -> bool {
-    matches!(value, Value::Object(m) if !m.is_empty()) || matches!(value, Value::Array(a) if !a.is_empty())
-}
-
-/// Appends the lines of `value`, each indented by `indent` spaces.
-fn render_lines(value: &Value, indent: usize, lines: &mut Vec<String>) {
-    let pad = " ".repeat(indent);
-    match value {
-        Value::Object(map) if !map.is_empty() => {
-            for (key, child) in map {
-                let key = render_scalar_str(key);
-                if is_nonempty_collection(child) {
-                    lines.push(format!("{pad}{key}:"));
-                    render_lines(child, indent + 2, lines);
-                } else {
-                    lines.push(format!("{pad}{key}: {}", render_scalar(child)));
-                }
-            }
-        }
-        Value::Array(items) if !items.is_empty() => {
-            for item in items {
-                if is_nonempty_collection(item) {
-                    // The item's first line goes on the dash's line; the rest line up under it.
-                    let start = lines.len();
-                    render_lines(item, indent + 2, lines);
-                    lines[start] = format!("{pad}- {}", &lines[start][indent + 2..]);
-                } else {
-                    lines.push(format!("{pad}- {}", render_scalar(item)));
-                }
-            }
-        }
-        _ => lines.push(format!("{pad}{}", render_scalar(value))),
-    }
-}
-
-/// A single value, quoted when it needs to be. Empty collections are `{}` and `[]`.
-pub fn render_scalar(value: &Value) -> String {
-    match value {
-        Value::Null => "null".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Number(n) => n.to_string(),
-        Value::String(s) => render_scalar_str(s),
-        Value::Array(_) => "[]".into(),
-        Value::Object(_) => "{}".into(),
-    }
-}
-
-/// Words a YAML reader of either version takes for something other than text.
-const RESERVED: &[&str] = &["null", "true", "false", "yes", "no", "on", "off", "y", "n", "~"];
-
-/// A string as YAML: plain when it is plainly a word or a dotted or slashed name, otherwise
-/// single-quoted, or double-quoted with escapes if it holds characters single quotes cannot.
-pub fn render_scalar_str(s: &str) -> String {
-    let plain = !s.is_empty()
-        && s.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '/')
-        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '/'))
-        && !RESERVED.contains(&s.to_ascii_lowercase().as_str())
-        // `1e3`-like forms start with a digit and are already excluded; `.inf` starts with a dot.
-        && !s.ends_with(['.', '-']);
-    if plain {
-        return s.to_string();
-    }
-    if s.chars().all(|c| !c.is_control() && !is_invisible_break(c)) {
-        return format!("'{}'", s.replace('\'', "''"));
-    }
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            c if c.is_control() || is_invisible_break(c) => {
-                let code = c as u32;
-                if code <= 0xff {
-                    out.push_str(&format!("\\x{code:02x}"));
-                } else {
-                    out.push_str(&format!("\\u{code:04x}"));
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-/// Line and paragraph separators and the byte order mark, which YAML treats specially.
-fn is_invisible_break(c: char) -> bool {
-    matches!(c, '\u{2028}' | '\u{2029}' | '\u{feff}' | '\u{85}')
-}
-
+/// A mapping as JSON.
 fn mapping_json(m: &Mapping) -> Value {
     let mut out = Map::new();
     for (key, value) in m.iter() {
@@ -660,10 +492,12 @@ fn mapping_json(m: &Mapping) -> Value {
     Value::Object(out)
 }
 
+/// A list as JSON.
 fn sequence_json(s: &Sequence) -> Value {
     Value::Array(s.values().map(|v| node_json(&v)).collect())
 }
 
+/// Any node as JSON.
 fn node_json(node: &yaml_edit::YamlNode) -> Value {
     if let Some(m) = node.as_mapping() {
         mapping_json(m)
@@ -690,18 +524,15 @@ fn scalar_json(s: &yaml_edit::Scalar) -> Value {
         _ => {}
     }
     let digits = trimmed.strip_prefix(['-', '+']).unwrap_or(trimmed);
-    if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
-        if let Ok(n) = trimmed.parse::<i64>() {
+    if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+        && let Ok(n) = trimmed.parse::<i64>() {
             return Value::Number(n.into());
         }
-    }
     if trimmed.chars().any(|c| c.is_ascii_digit())
         && trimmed.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '-' | '+'))
-    {
-        if let Some(n) = trimmed.parse::<f64>().ok().and_then(Number::from_f64) {
+        && let Some(n) = trimmed.parse::<f64>().ok().and_then(Number::from_f64) {
             return Value::Number(n);
         }
-    }
     Value::String(text)
 }
 
@@ -780,17 +611,6 @@ mod tests {
     }
 
     #[test]
-    fn strings_that_look_like_other_things_are_quoted() {
-        for s in ["yes", "No", "on", "OFF", "y", "null", "~", "true", "010", "1e3", "0x1F", ".inf", "-1", "", " x", "x ", "a: b", "#c", "- d", "[e]", "{f}", "g,h", "it's", "\"q\"", "C:\\Users", "*a", "&a", "!t", "%p", "@x", "`x", "é", "line\nbreak", "tab\tx", "bell\u{7}", "\u{2028}"] {
-            let rendered = render_scalar_str(s);
-            let back: serde_yaml::Value = serde_yaml::from_str(&format!("v: {rendered}")).unwrap();
-            assert_eq!(back["v"], serde_yaml::Value::String(s.into()), "{s:?} rendered as {rendered}");
-        }
-        assert_eq!(render_scalar_str("dev.javabyte.Main"), "dev.javabyte.Main");
-        assert_eq!(render_scalar_str("com/example/Checks"), "com/example/Checks");
-    }
-
-    #[test]
     fn syntax_errors_name_the_line() {
         let doc = ConfigDoc::new("limits:\n  maxSleeps: [1, 2\nnetwork:\n");
         let problems = doc.syntax_problems();
@@ -798,34 +618,6 @@ mod tests {
         assert!(problems[0].line >= 2, "{problems:?}");
         let mut doc = doc;
         assert!(matches!(doc.set(&ConfigPath::parse("limits.maxSleeps"), &json!(3)), Err(EditError::Syntax(_))));
-    }
-
-    #[test]
-    fn command_lines_quote_for_each_shell() {
-        assert_eq!(shell_quote("plain-name.jar", Shell::Posix), "plain-name.jar");
-        assert_eq!(shell_quote("C:\\x y.jar", Shell::Posix), "'C:\\x y.jar'");
-        assert_eq!(shell_quote("C:\\x", Shell::Posix), "'C:\\x'", "a backslash is special in sh");
-        assert_eq!(shell_quote("it's", Shell::Posix), r"'it'\''s'");
-        assert_eq!(shell_quote("it's", Shell::PowerShell), "'it''s'");
-        assert_eq!(shell_quote("it\u{2019}s", Shell::PowerShell), "'it\u{2019}\u{2019}s'");
-        let config = json!({
-            "sample": "/x.jar",
-            "limits": {"maxSleeps": 10},
-            "environment": {"properties": {"java.version": "17"}, "userName": "o'brien"},
-            "network": {"http": [{"url": "a", "body": "b: c"}]},
-            "plugins": {"native-bridge": {}},
-        });
-        assert_eq!(
-            overrides(&config),
-            vec![
-                "limits.maxSleeps=10",
-                "environment.properties={\"java.version\":\"17\"}",
-                "environment.userName='o''brien'",
-                "network.http=[{\"url\":\"a\",\"body\":\"b: c\"}]",
-                "plugins.native-bridge={}",
-            ]
-        );
-        assert!(command_line("/x.jar", &config, Shell::Posix).starts_with("javabyte run /x.jar -s limits.maxSleeps=10 -s "));
     }
 
     #[test]

@@ -28,11 +28,14 @@ struct RawEvent {
 /// clear message rather than shown wrongly.
 pub const SUPPORTED_SCHEMA: u32 = 1;
 
+/// The events of a report, ready to page through.
 pub struct ReportEventsSource {
     rows: Vec<EventRow>,
 }
 
 impl ReportEventsSource {
+    /// Reads a report and keeps its events. A report whose `schemaVersion` is not
+    /// [`SUPPORTED_SCHEMA`] is refused with a message, rather than shown wrongly.
     pub fn read(reader: impl Read) -> Result<Self, String> {
         let report: ReportEvents =
             serde_json::from_reader(std::io::BufReader::new(reader)).map_err(|e| javabyte_gui_protocol::t!("error-not-a-report", detail = e.to_string()))?;

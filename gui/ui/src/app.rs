@@ -12,6 +12,7 @@ use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::views::{Overview, ReportView, SampleChoice};
 use leptos::prelude::*;
 
+/// The screens, in the order the analysis goes through them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     Start,
@@ -52,10 +53,15 @@ impl Screen {
 /// What the screens share: where we are, and the analysis so far.
 #[derive(Clone, Copy)]
 pub struct Flow {
+    /// The screen on show.
     pub screen: RwSignal<Screen>,
+    /// The chosen sample.
     pub sample: RwSignal<Option<SampleChoice>>,
+    /// What `inspect` found about it.
     pub overview: RwSignal<Option<Overview>>,
+    /// Whether an analysis has been started, so the Running screen is available.
     pub run_started: RwSignal<bool>,
+    /// The open report, if any.
     pub report: RwSignal<Option<ReportView>>,
 }
 
@@ -64,7 +70,7 @@ thread_local! {
 }
 
 /// The shared state. Page-wide rather than Leptos context, because asynchronous replies and
-/// timers use it and cannot see context (looking it up there panics, as phase 0 found for the
+/// timers use it and cannot see context (looking it up there panics, as was found for the
 /// announcer). Created by `App` first, so it lives as long as the page.
 pub fn flow() -> Flow {
     FLOW.with(|cell| {
@@ -86,6 +92,7 @@ pub fn show(screen: Screen) {
     focus_id(screen.heading_id().into());
 }
 
+/// The whole window: skip link, heading, navigation, every screen and the live region.
 #[component]
 pub fn App() -> impl IntoView {
     // First use creates both under this component, which lives as long as the page; created
@@ -185,6 +192,7 @@ pub fn ErrorBox(id: &'static str, message: Signal<Option<String>>) -> impl IntoV
     }
 }
 
+/// Shows a backend failure in an error box and moves focus to its heading.
 pub fn report_error(target: RwSignal<Option<String>>, id: &'static str, message: String) {
     target.set(Some(message));
     focus_id(format!("{id}-title"));

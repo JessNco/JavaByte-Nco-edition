@@ -1,8 +1,8 @@
-//! A pretend analysis for the trial's "running" screen.
+//! A pretend analysis, for testing the Running screen in a browser, where there is no tool.
 //!
 //! It advances by elapsed time rather than on its own thread, so the same code runs natively
-//! and in a browser. Phase 1 replaces it with the real emulator's event stream; the screen
-//! code does not change, because it only ever sees [`RunStatus`].
+//! and in WebAssembly. The desktop app reports real runs through [`crate::session`]; the screen
+//! cannot tell the two apart, because it only ever sees [`RunStatus`].
 
 use crate::events::EventSource;
 use crate::synthetic::SyntheticEvents;
@@ -14,6 +14,7 @@ const INSTRUCTIONS_PER_EVENT: u64 = 25_000;
 const CATEGORIES: &[&str] = &["process", "net", "file", "class", "crypto", "string", "reflect", "thread", "console", "policy", "gap"];
 const NOTABLE: &[&str] = &["process", "net", "class"];
 
+/// A pretend run that produces events and progress as time passes.
 pub struct Simulation {
     events: SyntheticEvents,
     duration_ms: u64,
@@ -27,6 +28,7 @@ impl Simulation {
         Self { events: SyntheticEvents::new(u64::MAX), duration_ms, started_at_ms: None, stopped: None }
     }
 
+    /// Starts (or starts again) at `now_ms`.
     pub fn start(&mut self, now_ms: f64) {
         self.started_at_ms = Some(now_ms);
         self.stopped = None;
@@ -34,14 +36,14 @@ impl Simulation {
 
     /// Ends the run as the Stop button would, keeping what was gathered.
     pub fn stop(&mut self, now_ms: f64) {
-        if self.stopped.is_none() {
-            if let Some(start) = self.started_at_ms {
+        if self.stopped.is_none()
+            && let Some(start) = self.started_at_ms {
                 let elapsed = ((now_ms - start).max(0.0) as u64).min(self.duration_ms);
                 self.stopped = Some((elapsed, "stopped"));
             }
-        }
     }
 
+    /// The run as the Running screen shows it, at `now_ms`.
     pub fn status(&mut self, now_ms: f64) -> RunStatus {
         let Some(start) = self.started_at_ms else {
             return RunStatus::default();
@@ -68,7 +70,7 @@ impl Simulation {
         let by_category = CATEGORIES
             .iter()
             .zip(counts)
-            .map(|(name, count)| (name.to_string(), if sample == 0 { 0 } else { count * produced / sample }))
+            .map(|(name, count)| (name.to_string(), (count * produced).checked_div(sample).unwrap_or(0)))
             .collect();
         RunStatus {
             state: if outcome.is_some() { RunState::Finished } else { RunState::Running },
@@ -77,7 +79,7 @@ impl Simulation {
             events: produced,
             by_category,
             notable: self.notable(produced),
-            ended: outcome.as_deref().map(|o| javabyte_gui_protocol::report::describe_outcome(o)),
+            ended: outcome.as_deref().map(javabyte_gui_protocol::report::describe_outcome),
             report_ready: outcome.is_some(),
             outcome,
             sample_name: "example.jar".into(),
@@ -85,6 +87,7 @@ impl Simulation {
         }
     }
 
+    /// The most recent notable events among the first `produced`.
     fn notable(&self, produced: u64) -> Vec<EventRow> {
         let mut found = Vec::new();
         let mut index = produced;

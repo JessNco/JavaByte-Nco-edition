@@ -93,11 +93,10 @@ fn model_remove(root: &mut Value, steps: &[Step]) {
                 }
             }
             [Step::Index(i)] => {
-                if let Some(a) = node.as_array_mut() {
-                    if *i < a.len() {
+                if let Some(a) = node.as_array_mut()
+                    && *i < a.len() {
                         a.remove(*i);
                     }
-                }
             }
             [Step::Key(k), rest @ ..] => {
                 if let Some(child) = node.as_object_mut().and_then(|m| m.get_mut(k)) {

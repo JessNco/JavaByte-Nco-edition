@@ -338,4 +338,19 @@ final class GeneratedClasses {
         print(m, "Ljava/lang/String;");
         return end(writer, m);
     }
+
+    /**
+     * Code a JVM verifier rejects: it pops from an empty stack. Version 49 keeps ASM from
+     * needing stack map frames. Emulator only; a real JVM refuses to load this class.
+     */
+    static byte[] stackUnderflow(String name) {
+        ClassWriter writer = begin(name, V1_5);
+        MethodVisitor m = beginMain(writer);
+        m.visitFieldInsn(GETSTATIC, "java/lang/System", "out", "L" + PRINT_STREAM + ";");
+        m.visitLdcInsn("before the bad instruction");
+        m.visitMethodInsn(INVOKEVIRTUAL, PRINT_STREAM, "println", "(Ljava/lang/String;)V", false);
+        m.visitInsn(POP);
+        m.visitInsn(IADD);
+        return end(writer, m);
+    }
 }

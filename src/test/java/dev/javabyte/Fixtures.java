@@ -152,6 +152,25 @@ final class Fixtures {
         });
     }
 
+    /**
+     * Runs a harmless fixture's main method on the real JVM in a class loader of its own.
+     *
+     * <p>Fixtures keep static state, so a second run in the same loader would print different
+     * values from the first and the comparison with the emulator (which always starts fresh)
+     * would depend on test order.
+     */
+    static List<String> realOutput(Class<?> fixture) {
+        java.net.URL classes = fixture.getProtectionDomain().getCodeSource().getLocation();
+        return realOutput(() -> {
+            try (java.net.URLClassLoader isolated = new java.net.URLClassLoader(new java.net.URL[] {classes},
+                    ClassLoader.getPlatformClassLoader())) {
+                isolated.loadClass(fixture.getName()).getMethod("main", String[].class).invoke(null, (Object) new String[0]);
+            } catch (ReflectiveOperationException | IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
     /** The first event of a kind, or a failure that shows what the run did instead. */
     static Event only(Report report, String category, String action) {
         List<Event> found = events(report, category, action);

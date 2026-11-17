@@ -68,4 +68,18 @@ class BytecodeTest {
         List<String> output = compare("HiddenCalls", GeneratedClasses::hiddenCalls, IndyTargets.class);
         assertEquals(List.of("42", "43", "HEY!HEY!", "19", "second", "42", "2"), output);
     }
+
+    /**
+     * The emulator has no verifier, so invalid code is discovered when it runs. It must end as
+     * the sample's own failure, flagged as a gap, and not as a defect of the emulator.
+     */
+    @Test
+    void unverifiableCodeBecomesAVerifyErrorAndAGap() throws Exception {
+        Map<String, byte[]> entries = Map.of("Underflow.class", GeneratedClasses.stackUnderflow("Underflow"));
+        Report report = Fixtures.run(Fixtures.config(Fixtures.rawJar(temp.resolve("underflow.jar"), "Underflow", entries)));
+        assertEquals(List.of("before the bad instruction"), Fixtures.stdout(report));
+        assertTrue(report.hasOutcome("uncaught-exception"), Fixtures.outcomes(report));
+        assertTrue(report.runs().get(0).detail().startsWith("java.lang.VerifyError"), report.runs().get(0).detail());
+        assertEquals("Underflow.main([Ljava/lang/String;)V", Fixtures.only(report, "gap", "invalid-bytecode").data().get("method"));
+    }
 }

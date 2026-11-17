@@ -468,8 +468,88 @@ public final class Interpreter {
                 stack[0] = thrown.value;
                 sp = 1;
                 pc = handler;
+            } catch (RuntimeException failure) {
+                GuestThrow thrown = invalidBytecode(frame, pc, failure);
+                int handler = findHandler(method, frame.pc, thrown.value);
+                if (handler < 0) {
+                    throw thrown;
+                }
+                stack[0] = thrown.value;
+                sp = 1;
+                pc = handler;
             }
         }
+    }
+
+    /**
+     * Decides whether a host exception inside the interpreter loop was caused by bytecode that
+     * a JVM would have refused to load, and if so turns it into the {@code VerifyError} the
+     * sample would have received.
+     *
+     * <p>There is deliberately no verifier pass: samples run code that standard verifiers
+     * reject yet HotSpot accepts (old class versions, {@code -noverify} launchers), and a
+     * second, stricter judge would stop analysis of exactly the samples worth analysing.
+     * Instead the interpreter runs unchecked and its own type and bounds failures are read as
+     * the verdict. Those surface as a small set of exception types raised by the emulator's own
+     * code or by the reflection it uses to reach the JDK (wrong argument types); anything else
+     * is still an emulator defect and is rethrown unchanged.
+     *
+     * <p>The risk is that a real interpreter bug is reported as invalid bytecode. Two things
+     * keep that visible: the {@code gap.invalid-bytecode} event carries the host exception, and
+     * the differential tests require valid programs to finish with no gap events at all.
+     */
+    /** Packages whose frames may sit between a type or bounds failure and the interpreter loop. */
+    private static final String[] CORE_FRAME_PREFIXES = {
+        "dev.javabyte.", "java.lang.reflect.", "jdk.internal.reflect.", "java.lang.invoke.",
+        // ASM parses descriptors lazily, so a corrupted constant pool is only noticed here.
+        "org.objectweb.asm.",
+    };
+
+    /**
+     * True if every frame from the point of failure down to the interpreter loop belongs to
+     * the emulator or to the reflection machinery, so that no JDK library logic was involved.
+     */
+    private static boolean raisedByEmulatorCore(StackTraceElement[] trace) {
+        // An empty trace is HotSpot's pre-allocated exception for implicit checks in compiled
+        // code (OmitStackTraceInFastThrow): by then the interpreter loop is the hot code.
+        for (int i = 0; i < trace.length; i++) {
+            String frameClass = trace[i].getClassName();
+            if (frameClass.equals(Interpreter.class.getName())) {
+                return true;
+            }
+            boolean core = false;
+            for (String prefix : CORE_FRAME_PREFIXES) {
+                core |= frameClass.startsWith(prefix);
+            }
+            // System.arraycopy, Class.cast, String.charAt, Objects.checkIndex and similar checks
+            // that the emulator's own code runs into. JDK calls made on the sample's behalf do
+            // not arrive here: the host bridge has already turned their failures into guest
+            // exceptions.
+            boolean leafCheck = frameClass.startsWith("java.lang.") || frameClass.startsWith("java.util.Objects")
+                    || frameClass.startsWith("jdk.internal.util.");
+            if (!core && !leafCheck) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private GuestThrow invalidBytecode(Frame frame, int pc, RuntimeException failure) {
+        boolean typeOrBounds = failure instanceof ClassCastException || failure instanceof NullPointerException
+                || failure instanceof IndexOutOfBoundsException || failure instanceof NegativeArraySizeException
+                || failure instanceof ArrayStoreException || failure instanceof IllegalStateException
+                || failure instanceof IllegalArgumentException;
+        boolean fromCore = raisedByEmulatorCore(failure.getStackTrace());
+        if (!typeOrBounds || !fromCore || failure instanceof dev.javabyte.config.ConfigLoader.ConfigException) {
+            throw failure;
+        }
+        GuestMethod method = frame.method;
+        int opcode = pc >= 0 && pc < method.code.length ? method.code[pc].getOpcode() : -1;
+        String where = method.id + " instruction " + pc
+                + (opcode >= 0 ? " (" + org.objectweb.asm.util.Printer.OPCODES[opcode] + ")" : " (outside the method)");
+        vm.events.addOnce("invalid:" + method.id, "gap", "invalid-bytecode", "method", method.id, "instruction", pc,
+                "opcode", opcode >= 0 ? org.objectweb.asm.util.Printer.OPCODES[opcode] : null, "hostFailure", failure.toString());
+        return vm.raise(new VerifyError("Bad bytecode in " + where));
     }
 
     /**

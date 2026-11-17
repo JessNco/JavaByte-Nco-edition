@@ -126,7 +126,7 @@ class LoaderTest {
         addWithNested(entries, Basics.class);
         Path jar = Fixtures.rawJar(temp.resolve("decoys.jar"), Basics.class.getName(), entries);
 
-        List<String> expected = Fixtures.realOutput(() -> Basics.main(new String[0]));
+        List<String> expected = Fixtures.realOutput(Basics.class);
         Report report = Fixtures.run(Fixtures.config(jar));
         assertEquals(expected, Fixtures.stdout(report), Fixtures.outcomes(report));
         // Classes are parsed when first needed, so a broken class nobody uses costs nothing.

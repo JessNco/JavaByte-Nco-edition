@@ -61,6 +61,12 @@ target/release/javabyte-gui --report path/to/report.json
 
 ## Testing
 
+The desktop app embeds the built screens, so build them before testing it:
+
+```bash
+(cd ui && trunk build --release)
+```
+
 ```bash
 cargo test
 ```

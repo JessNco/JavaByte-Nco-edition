@@ -36,8 +36,10 @@ jobs:
             at-spi2-core python3-pyatspi xvfb dbus-x11
       - name: Install Trunk
         run: cargo install --locked trunk@0.22.1
+      # The desktop app embeds the built screens, so its tests run after they are built
+      # (step "Configuration and guard tests" below).
       - name: Unit tests
-        run: cargo test
+        run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
       - name: Build the screens
         working-directory: gui/ui
         run: trunk build --release

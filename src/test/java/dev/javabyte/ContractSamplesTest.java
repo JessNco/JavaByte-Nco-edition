@@ -165,9 +165,13 @@ class ContractSamplesTest {
             if (object.has("elapsedMs")) {
                 object.put("elapsedMs", 0);
             }
-            // The fixture jar records when it was built, so its hash changes from run to run.
+            // The fixture jar records when it was built, so its hash changes from run to run, and
+            // its size depends on the JDK that compiled the fixtures (Java 17 and 21 differ).
             if (object.has("sha256") && object.has("mainClass")) {
                 object.put("sha256", "0".repeat(64));
+                if (object.has("size")) {
+                    object.put("size", 0);
+                }
             }
             object.elements().forEachRemaining(ContractSamplesTest::scrub);
         } else if (node instanceof ArrayNode array) {

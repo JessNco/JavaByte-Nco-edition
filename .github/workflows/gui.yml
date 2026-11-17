@@ -101,9 +101,8 @@ jobs:
         with:
           name: javabyte-gui-trial-windows-x86_64
           path: gui/target/release/javabyte-gui.exe
-      # Experimental: whether a hosted runner can show a WebView2 window is not yet known.
-      # There is no private network here, so only connections to local listeners can be
-      # observed, not name lookups. The Linux job is the full test.
+      # The same probe on WebView2. There is no private network here, so only connections and
+      # UDP to local listeners can be observed, not name lookups; the Linux job covers those.
       - name: Build the egress probe and its control
         shell: pwsh
         run: |
@@ -112,8 +111,7 @@ jobs:
           $env:TAURI_CONFIG = '{"app":{"security":{"csp":null},"windows":[{"label":"main","title":"JavaByte"}]}}'
           cargo build --release -p javabyte-gui --features egress-control
           Copy-Item target/release/javabyte-gui.exe "$env:RUNNER_TEMP/control.exe"
-      - name: Egress test and control (experimental)
-        continue-on-error: true
+      - name: Egress test and control
         shell: pwsh
         run: |
           function Probe($exe, $mode) {

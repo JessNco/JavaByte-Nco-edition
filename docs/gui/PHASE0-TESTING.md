@@ -88,8 +88,22 @@ Chromium, on which WebView2 is built, sends loopback addresses past any proxy un
 to; and the navigation guard did not refuse that navigation, although it refused three others.
 Loopback cannot reach the internet, but it can reach any program on the same machine. The
 window now passes `--proxy-bypass-list=<-loopback>` to WebView2, so loopback also goes to the
-black hole, and the probe now also attacks `localhost` by name. The test build logs every
-navigation decision, to find out why the guard missed that one.
+black hole, and the probe now also attacks `localhost` by name.
+
+**Results on Windows (WebView2, GitHub-hosted Windows runner), 17 November 2026, after the
+fix**
+
+| Build | Reached the listeners | Caught by the black-hole proxy | Navigations refused |
+| --- | --- | --- | --- |
+| Control: all protections removed | `fetch` and images to `127.0.0.1` and `localhost` with the data; 5 WebRTC STUN packets (UDP) | – | 0 |
+| **As shipped** | **nothing** | 19 | 4 (including `127.0.0.1` and `localhost`) |
+
+WebRTC was available to page script in the control and absent in the shipped build, so its
+removal works on WebView2 as well. In this run the guard refused the `127.0.0.1` navigation
+that got out in the first run; why it missed it then is not known. It no longer matters for
+containment, because a request the guard misses now goes to the black hole. Host-name routes
+cannot be checked on Windows (no private DNS), and port 80 is not watched (Windows reserves
+it); the Linux run covers both.
 
 **Not covered:** the operating system's own traffic from the web engine (for example WebView2
 updates), which no page script controls; and a compromised backend, which is outside the

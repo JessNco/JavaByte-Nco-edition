@@ -37,6 +37,7 @@ pub fn is_app_origin(url: &tauri::Url) -> bool {
 /// Runs before any page script in the window. Each API is replaced by a value that cannot be
 /// changed back; without frames (the policy forbids them) and workers, there is no fresh copy
 /// to borrow from.
+#[cfg_attr(feature = "egress-control", allow(dead_code))]
 const DISABLE_WEBRTC: &str = r#"
 (() => {
   for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel',
@@ -49,6 +50,8 @@ const DISABLE_WEBRTC: &str = r#"
 })();
 "#;
 
+// The control build for tests/egress deliberately leaves the guard out.
+#[cfg_attr(feature = "egress-control", allow(dead_code))]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("egress-guard")
         .js_init_script(DISABLE_WEBRTC.to_string())

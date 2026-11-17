@@ -44,6 +44,14 @@ function check(condition, message) {
   if (!condition) failures.push(message);
 }
 
+async function section(name, body) {
+  try {
+    await body();
+  } catch (error) {
+    failures.push(`section "${name}" stopped: ${error.message.split('\n')[0]}`);
+  }
+}
+
 async function open(options = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, ...options });
   const page = await context.newPage();
@@ -68,6 +76,12 @@ async function axe(page, label) {
   return result.violations.length;
 }
 
+/** Focus moves after the next frame is drawn, so wait for it rather than checking at once. */
+async function focusIs(page, id, timeout = 2000) {
+  await page.waitForFunction((wanted) => document.activeElement?.id === wanted, id, { timeout }).catch(() => {});
+  return (await page.evaluate(() => document.activeElement?.id)) === id;
+}
+
 async function showTab(page, name) {
   await page.getByRole('tab', { name }).click();
   await page.waitForTimeout(150);
@@ -76,6 +90,7 @@ async function showTab(page, name) {
 const TABS = ['Run settings', 'Events', 'Running', 'Display'];
 
 // 1. axe on every screen, in each theme and at 200% text.
+await section('1. axe on every screen, in each theme and at 200% text.', async () => {
 for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100], ['light', 200]]) {
   const { page, context, errors } = await open({ colorScheme: theme === 'dark' ? 'dark' : 'light' });
   await page.evaluate(([t, s]) => localStorage.setItem('javabyte.preferences', JSON.stringify({ theme: t, text_size: s })), [theme, textSize]);
@@ -89,8 +104,10 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   check(errors.length === 0, `page errors (${theme}): ${errors.join('; ')}`);
   await context.close();
 }
+});
 
 // 2. Keyboard: skip link, tabs, form errors.
+await section('2. Keyboard: skip link, tabs, form errors.', async () => {
 {
   const { page, context } = await open();
   await page.keyboard.press('Tab');
@@ -98,20 +115,21 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   await page.keyboard.press('Tab');
   check((await page.evaluate(() => document.activeElement.getAttribute('role'))) === 'tab', 'second Tab should reach the tab list');
   await page.keyboard.press('ArrowRight');
-  check((await page.evaluate(() => document.activeElement.textContent)) === 'Events', 'ArrowRight should move to the Events tab');
+  check(await focusIs(page, 'tab-events'), 'ArrowRight should move to the Events tab');
   check(await page.locator('#panel-events').isVisible(), 'Events panel should show when its tab is focused');
   await page.keyboard.press('End');
-  check((await page.evaluate(() => document.activeElement.textContent)) === 'Display', 'End should move to the last tab');
+  check(await focusIs(page, 'tab-display'), 'End should move to the last tab');
   await page.keyboard.press('Home');
+  check(await focusIs(page, 'tab-settings'), 'Home should move to the first tab');
   await page.keyboard.press('Tab');
   // Inside the settings panel: submit the empty form and expect the error summary to take focus.
   await page.getByRole('button', { name: 'Check settings' }).click();
   await page.waitForTimeout(100);
-  check((await page.evaluate(() => document.activeElement.id)) === 'error-summary-title', 'error summary should take focus after a failed check');
+  check(await focusIs(page, 'error-summary-title'), 'error summary should take focus after a failed check');
   check((await page.locator('#sample').getAttribute('aria-invalid')) === 'true', 'invalid field should have aria-invalid');
   check((await page.locator('#sample').getAttribute('aria-describedby')).includes('sample-error'), 'invalid field should be described by its error');
   await page.getByRole('link', { name: /Enter the path/ }).click();
-  check((await page.evaluate(() => document.activeElement.id)) === 'sample', 'error link should move focus to its field');
+  check(await focusIs(page, 'sample'), 'error link should move focus to its field');
   await page.locator('#sample').fill("C:\\Users\\me\\it's.jar");
   await page.getByRole('button', { name: 'Check settings' }).click();
   await page.waitForTimeout(200);
@@ -120,8 +138,10 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   await axe(page, 'form with errors fixed');
   await context.close();
 }
+});
 
 // 3. The grid: one tab stop, arrow keys, jumps to the end, focus kept across re-renders.
+await section('3. The grid: one tab stop, arrow keys, jumps to the end, focus kept across re-renders.', async () => {
 {
   const { page, context } = await open();
   await showTab(page, 'Events');
@@ -132,8 +152,9 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   check((await page.locator('[role="row"]').count()) < 120, 'only rows near the view should exist in the page');
   await page.locator('#cell-0-0').focus();
   await page.keyboard.press('ArrowDown');
+  check(await focusIs(page, 'cell-1-0'), 'Down arrow should move to the next row');
   await page.keyboard.press('ArrowRight');
-  check((await page.evaluate(() => document.activeElement.id)) === 'cell-1-1', 'arrow keys should move between cells');
+  check(await focusIs(page, 'cell-1-1'), 'Right arrow should move to the next column');
   const started = Date.now();
   await page.keyboard.press('Control+End');
   await page.waitForFunction(() => document.activeElement?.id === 'cell-299999-4', null, { timeout: 5000 }).catch(() => {});
@@ -169,8 +190,10 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   await axe(page, 'table view');
   await context.close();
 }
+});
 
 // 4. Hostile text in the details panel is shown, escaped, not executed.
+await section('4. Hostile text in the details panel is shown, escaped, not executed.', async () => {
 {
   const { page, context } = await open();
   await showTab(page, 'Events');
@@ -188,8 +211,10 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   check((await page.locator('.details').textContent()).includes('invoice\\u{202e}fdp.exe'), 'bidirectional override should be shown as a code');
   await context.close();
 }
+});
 
 // 5. Live progress: announcements are few.
+await section('5. Live progress: announcements are few.', async () => {
 {
   const { page, context } = await open();
   await page.evaluate(() => localStorage.setItem('javabyte.preferences', JSON.stringify({ announce_every: 5 })));
@@ -215,8 +240,10 @@ for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100
   await axe(page, 'running finished');
   await context.close();
 }
+});
 
 // 6. Reflow: at 320 px wide (400% zoom of 1280 px) the page must not scroll sideways.
+await section('6. Reflow: at 320 px wide (400% zoom of 1280 px) the page must not scroll sideways.', async () => {
 for (const tab of TABS) {
   const { page, context } = await open({ viewport: { width: 320, height: 640 } });
   await showTab(page, tab);
@@ -224,8 +251,10 @@ for (const tab of TABS) {
   check(overflow <= 1, `${tab} at 320 px scrolls sideways by ${overflow} px`);
   await context.close();
 }
+});
 
 // 7. Forced colours (Windows high contrast) and reduced motion: no errors, focus still visible.
+await section('7. Forced colours (Windows high contrast) and reduced motion: no errors, focus still visible.', async () => {
 {
   const { page, context } = await open({ forcedColors: 'active', reducedMotion: 'reduce' });
   await page.keyboard.press('Tab');
@@ -234,8 +263,10 @@ for (const tab of TABS) {
   check(outline !== 'none', 'focus outline should remain in forced-colours mode');
   await context.close();
 }
+});
 
 // 8. Chromium's accessibility tree for the grid, as assistive technology receives it.
+await section('8. Chromium\'s accessibility tree for the grid, as assistive technology receives it.', async () => {
 {
   const { page, context } = await open();
   await showTab(page, 'Events');
@@ -246,6 +277,7 @@ for (const tab of TABS) {
   check(/gridcell "\d/.test(snapshot), 'grid cells should expose their text');
   await context.close();
 }
+});
 
 await browser.close();
 server.close();

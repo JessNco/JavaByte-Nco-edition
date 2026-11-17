@@ -60,8 +60,14 @@ fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok().flatten()
 }
 
+thread_local! {
+    static PREFERENCES: std::cell::OnceCell<RwSignal<Preferences>> = const { std::cell::OnceCell::new() };
+}
+
+/// The current preferences, loaded on first use. Page-wide for the same reason as the
+/// announcer: timers and asynchronous code read them.
 pub fn preferences() -> RwSignal<Preferences> {
-    expect_context::<RwSignal<Preferences>>()
+    PREFERENCES.with(|cell| *cell.get_or_init(|| RwSignal::new(Preferences::load())))
 }
 
 #[component]

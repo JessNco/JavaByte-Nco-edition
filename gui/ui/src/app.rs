@@ -1,6 +1,6 @@
 //! The window's frame: skip link, heading, section tabs and the shared live region.
 
-use crate::util::{Announcer, focus_id};
+use crate::util::{announcer, focus_id};
 use crate::{events, form, prefs, run};
 use leptos::prelude::*;
 
@@ -10,11 +10,10 @@ const SECTIONS: [(&str, &str); 4] =
 
 #[component]
 pub fn App() -> impl IntoView {
-    let announcer = Announcer::new();
-    provide_context(announcer);
-    let preferences = prefs::Preferences::load();
-    preferences.apply();
-    provide_context(RwSignal::new(preferences));
+    // First use creates both under this component, which lives as long as the page; created
+    // under a shorter-lived component, they would be disposed with it.
+    let announcer = announcer();
+    prefs::preferences().get_untracked().apply();
 
     let active = RwSignal::new(0usize);
 

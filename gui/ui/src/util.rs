@@ -54,6 +54,13 @@ impl Announcer {
     }
 }
 
+thread_local! {
+    static ANNOUNCER: std::cell::OnceCell<Announcer> = const { std::cell::OnceCell::new() };
+}
+
+/// The app's announcer. Stored for the whole page rather than in Leptos context, because it is
+/// used from timers and asynchronous replies, which run outside any component and so cannot
+/// see context (looking it up there panics and stops the screens).
 pub fn announcer() -> Announcer {
-    expect_context::<Announcer>()
+    ANNOUNCER.with(|cell| *cell.get_or_init(Announcer::new))
 }

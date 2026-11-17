@@ -314,7 +314,8 @@ fn copy_to_clipboard(text: &str) -> bool {
     // Reached through reflection: the Clipboard API is not in every web-sys build, and the
     // promise's result is not needed to tell the user something useful.
     let Some(window) = web_sys::window() else { return false };
-    let navigator: wasm_bindgen::JsValue = window.navigator().into();
+    let window: wasm_bindgen::JsValue = window.into();
+    let Ok(navigator) = js_sys::Reflect::get(&window, &"navigator".into()) else { return false };
     let Ok(clipboard) = js_sys::Reflect::get(&navigator, &"clipboard".into()) else { return false };
     if clipboard.is_undefined() {
         return false;

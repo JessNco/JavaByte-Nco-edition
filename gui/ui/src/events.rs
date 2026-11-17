@@ -461,7 +461,7 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
                 "Previous page"
             </button>
             <span>{move || format!("Page {} of {}", fmt_num(page.get() + 1), fmt_num(pages()))}</span>
-            <button type="button" disabled=move || page.get() + 1 >= pages() on:click=move |_| show_page(page.get_untracked() + 1)>
+            <button type="button" disabled=move || { page.get() + 1 >= pages() } on:click=move |_| show_page(page.get_untracked() + 1)>
                 "Next page"
             </button>
             <form

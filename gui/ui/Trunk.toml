@@ -1,0 +1,5 @@
+[build]
+target = "index.html"
+dist = "dist"
+# The desktop app loads the screens from its own files, not a server path.
+public_url = "./"

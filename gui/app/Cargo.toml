@@ -1,0 +1,23 @@
+[package]
+name = "javabyte-gui"
+description = "JavaByte desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Serve the screens from the files built into the binary. `cargo tauri dev` turns this off to
+# use a development server instead; a plain `cargo build` keeps it on, so the result is the
+# real, self-contained app.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+javabyte-gui-protocol.workspace = true
+javabyte-gui-backend.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.12", features = [] }

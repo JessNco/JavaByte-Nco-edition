@@ -1,0 +1,262 @@
+/*
+ * JavaByte GUI styles.
+ *
+ * Rules this sheet keeps to (see docs/GUI-PLAN.md, Accessibility):
+ * - Sizes in rem, so the system text size and the Display setting scale everything.
+ * - Text contrast at least 4.5:1 and controls 3:1 in every theme; the values are noted.
+ * - A focus ring that is always visible and never covered.
+ * - Nothing conveyed by colour alone; nothing moves when reduced motion is asked for.
+ * - The page reflows down to 320 CSS pixels wide; only the event grid scrolls sideways.
+ */
+
+:root {
+  /* Light theme. Contrast against --bg: text 16.1:1, muted 8.9:1, accent 8.6:1, error 7.0:1. */
+  --bg: #ffffff;
+  --surface: #f3f4f6;
+  --text: #1b1b1b;
+  --muted: #4a4a4a;
+  --accent: #0b4f9c;
+  --accent-text: #ffffff;
+  --border: #6b6b6b;          /* 5.3:1, so input borders pass the 3:1 rule for controls */
+  --error: #b00020;
+  --focus: #0a3d91;
+  --focus-halo: #ffbf47;
+  --selected: #dbe7f7;
+  color-scheme: light;
+}
+
+/* Dark theme. Contrast against --bg: text 16.6:1, muted 10.6:1, accent 8.4:1, error 7.6:1. */
+:root[data-theme="dark"] {
+  --bg: #121417;
+  --surface: #1e2227;
+  --text: #f1f1f1;
+  --muted: #c4c4c4;
+  --accent: #8ab4ff;
+  --accent-text: #0b1220;
+  --border: #9a9a9a;
+  --error: #ff8a8a;
+  --focus: #ffd166;
+  --focus-halo: #121417;
+  --selected: #24364f;
+  color-scheme: dark;
+}
+
+/* High contrast: pure black and white with yellow for focus and links (19.6:1 and 19.6:1). */
+:root[data-theme="contrast"] {
+  --bg: #000000;
+  --surface: #000000;
+  --text: #ffffff;
+  --muted: #ffffff;
+  --accent: #ffff00;
+  --accent-text: #000000;
+  --border: #ffffff;
+  --error: #ff9b9b;
+  --focus: #ffff00;
+  --focus-halo: #000000;
+  --selected: #333333;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #121417; --surface: #1e2227; --text: #f1f1f1; --muted: #c4c4c4; --accent: #8ab4ff;
+    --accent-text: #0b1220; --border: #9a9a9a; --error: #ff8a8a; --focus: #ffd166;
+    --focus-halo: #121417; --selected: #24364f; color-scheme: dark;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root[data-theme="system"] {
+    --bg: #000000; --surface: #000000; --text: #ffffff; --muted: #ffffff; --accent: #ffff00;
+    --accent-text: #000000; --border: #ffffff; --error: #ff9b9b; --focus: #ffff00;
+    --focus-halo: #000000; --selected: #333333; color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  /* The Display setting sets font-size on this element as a percentage. */
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", "Noto Sans", "DejaVu Sans", sans-serif;
+  font-size: 1rem;
+}
+
+main, .banner { max-width: 72rem; margin: 0 auto; padding: 0 1rem; }
+main { padding-bottom: 4rem; }
+main:focus { outline: none; }
+
+h1 { font-size: 1.75rem; margin: 1rem 0 0; }
+h2 { font-size: 1.5rem; margin: 1.5rem 0 0.5rem; }
+h3 { font-size: 1.2rem; margin: 1.5rem 0 0.5rem; }
+p { max-width: 70ch; }
+.subtitle, .hint { color: var(--muted); }
+.hint { margin: 0.25rem 0; }
+a { color: var(--accent); }
+
+/* ---------------------------------------------------------------- focus */
+
+/* Two layers so the ring is visible on any background, including the selected-row colour. */
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--focus-halo);
+}
+/* Scrolled content must not hide the focused element under the sticky grid header. */
+.grid-body { scroll-padding-top: 0.25rem; scroll-padding-bottom: 0.25rem; }
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -10rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: 0.75rem 1rem;
+  z-index: 10;
+}
+.skip-link:focus { top: 0.5rem; }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+button, input, select { font: inherit; color: inherit; }
+
+button {
+  min-height: 2.75rem;          /* well above the 24px minimum target size */
+  min-width: 2.75rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; color: var(--muted); }
+button.link-button {
+  min-height: 2rem; padding: 0.25rem; border: none; background: none;
+  color: var(--accent); text-decoration: underline;
+}
+
+input[type="text"], input[type="search"], select {
+  min-height: 2.75rem;
+  padding: 0.5rem;
+  border: 2px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--bg);
+  width: 100%;
+  max-width: 36rem;
+}
+.input-short { max-width: 10rem; }
+input[type="radio"], input[type="checkbox"] { width: 1.5rem; height: 1.5rem; margin: 0; flex: none; accent-color: var(--accent); }
+
+.field { margin: 1rem 0; }
+.field > label { display: block; font-weight: 600; }
+.choice { display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; }
+fieldset { border: 2px solid var(--border); border-radius: 0.375rem; margin: 1rem 0; padding: 0.5rem 1rem 1rem; max-width: 40rem; }
+legend { font-weight: 600; padding: 0 0.25rem; }
+fieldset.inline { display: flex; flex-wrap: wrap; gap: 0 2rem; }
+fieldset.inline legend { width: 100%; }
+.buttons { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin: 1rem 0; }
+
+/* Errors: a thick bar and the word "Error" as well as colour. */
+.has-error { border-left: 5px solid var(--error); padding-left: 1rem; }
+.error-message { color: var(--error); font-weight: 600; margin: 0.25rem 0; }
+.error-summary { border: 4px solid var(--error); padding: 1rem; margin: 1rem 0; max-width: 40rem; }
+.error-summary h3 { margin-top: 0; }
+.error-summary h3:focus { outline: 3px solid var(--focus); }
+
+.command { background: var(--surface); border: 1px solid var(--border); padding: 1rem; overflow-x: auto; max-width: 100%; white-space: pre-wrap; word-break: break-all; }
+.inline-status { min-height: 1.5rem; }
+
+/* ---------------------------------------------------------------- tabs */
+
+.tablist { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 2px solid var(--border); margin-top: 1rem; }
+.tablist [role="tab"] { border-radius: 0.375rem 0.375rem 0 0; border-bottom: none; }
+/* The selected tab is marked by weight, an underline bar and colour, not colour alone. */
+.tablist [role="tab"][aria-selected="true"] { font-weight: 700; background: var(--bg); box-shadow: inset 0 -4px 0 var(--accent); }
+
+/* ---------------------------------------------------------------- events */
+
+.filters { display: flex; flex-wrap: wrap; gap: 0 1.5rem; align-items: flex-end; }
+.filters .field { flex: 1 1 14rem; }
+
+.grid {
+  border: 2px solid var(--border);
+  overflow-x: auto;       /* the one place that scrolls sideways at large text sizes */
+  max-width: 100%;
+}
+.grid-head, .grid-body { min-width: 64rem; }
+.grid-body { height: min(55vh, 32rem); overflow-y: auto; position: relative; }
+.grid-row {
+  display: grid;
+  grid-template-columns: 7rem 7rem 9rem minmax(24rem, 1fr) 14rem;
+  border-bottom: 1px solid var(--border);
+}
+.grid-head .grid-row { background: var(--surface); font-weight: 700; }
+.col { padding: 0.375rem 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-0 { font-variant-numeric: tabular-nums; text-align: right; }
+[role="gridcell"]:focus-visible { outline-offset: -3px; box-shadow: inset 0 0 0 5px var(--focus-halo); }
+[role="gridcell"][tabindex="0"] { background: var(--selected); }
+.shortened { color: var(--muted); }
+
+.untrusted { font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; overflow-wrap: anywhere; unicode-bidi: isolate; }
+.details { border: 2px solid var(--border); padding: 0 1rem 1rem; margin-top: 1.5rem; }
+.details dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+.details dt { font-weight: 600; }
+.details dd { margin: 0; min-width: 0; }
+
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 1rem 0; }
+.go-to { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.table-wrap { overflow-x: auto; max-width: 100%; }
+.simple-table { border-collapse: collapse; min-width: 40rem; }
+.simple-table.compact { min-width: 0; }
+.simple-table caption { text-align: left; font-weight: 700; padding: 0.5rem 0; }
+.simple-table th, .simple-table td { border: 1px solid var(--border); padding: 0.375rem 0.5rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.simple-table td:nth-child(4) { max-width: 30rem; }
+.number { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- running */
+
+.stats { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+.stats dt { font-weight: 600; }
+.stats dd { margin: 0; font-variant-numeric: tabular-nums; }
+.notable { padding-left: 1.25rem; }
+.notable li { margin: 0.25rem 0; }
+.tag { display: inline-block; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0 0.375rem; font-size: 0.875rem; }
+
+/* ---------------------------------------------------------------- system settings */
+
+/* Windows high-contrast mode and similar: let the system's colours through. */
+@media (forced-colors: active) {
+  :focus-visible { outline: 3px solid Highlight; box-shadow: none; }
+  [role="gridcell"][tabindex="0"] { outline: 1px solid CanvasText; }
+  .tablist [role="tab"][aria-selected="true"] { border-bottom: 4px solid Highlight; }
+  button:disabled { color: GrayText; border-color: GrayText; }
+  .has-error, .error-summary { border-color: CanvasText; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation: none !important; transition: none !important; scroll-behavior: auto !important;
+}
+
+@media (max-width: 40rem) {
+  h1 { font-size: 1.5rem; }
+  .details dl, .stats { grid-template-columns: 1fr; }
+}

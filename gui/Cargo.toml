@@ -1,0 +1,33 @@
+# The JavaByte desktop interface. See docs/GUI-PLAN.md for the design.
+#
+# Phase 0 is an accessibility trial: one window with a form, tabs, a large data grid and live
+# announcements, used to check screen-reader support on Windows (WebView2) and Linux
+# (WebKitGTK) before the real screens are built.
+[workspace]
+resolver = "3"
+members = ["crates/protocol", "crates/backend", "app", "ui"]
+# The screens compile to WebAssembly with Trunk, not with a plain `cargo build`.
+default-members = ["crates/protocol", "crates/backend", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+javabyte-gui-protocol = { path = "crates/protocol" }
+javabyte-gui-backend = { path = "crates/backend" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+# Small WebAssembly and a fast native binary; the GUI has no hot loops worth unwinding for.
+lto = true
+codegen-units = 1
+opt-level = "s"
+panic = "abort"
+
+[profile.dev.package."*"]
+# Dependencies optimised even in debug builds, so the trial grid's speed is representative.
+opt-level = 2

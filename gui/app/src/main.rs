@@ -79,7 +79,9 @@ fn main() {
         run: Mutex::new(Simulation::new(TRIAL_RUN_MS)),
         started: Instant::now(),
     };
-    let builder = tauri::Builder::default().plugin(guard::plugin()).manage(state);
+    let builder = tauri::Builder::default().manage(state);
+    #[cfg(not(feature = "egress-control"))]
+    let builder = builder.plugin(guard::plugin());
     #[cfg(not(feature = "egress-probe"))]
     let builder = builder.invoke_handler(tauri::generate_handler![events_page, run_start, run_stop, run_status]);
     #[cfg(feature = "egress-probe")]

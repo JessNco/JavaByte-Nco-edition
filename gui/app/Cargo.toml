@@ -14,6 +14,9 @@ custom-protocol = ["tauri/custom-protocol"]
 # Test only: runs hostile JavaScript inside the window to try every way of sending data out,
 # for tests/egress. Never enable it in a build meant for people.
 egress-probe = []
+# Test only: the control build for tests/egress, with the navigation guard and WebRTC removal
+# switched off, to prove the harness notices leaks. Never enable it in a build meant for people.
+egress-control = ["egress-probe"]
 
 [build-dependencies]
 tauri-build = { version = "2.7", features = [] }

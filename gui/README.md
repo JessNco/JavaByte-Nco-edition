@@ -20,6 +20,7 @@ whether the design goes ahead, is in
 | `app` | The desktop window and the commands the screens may call | Rust (Tauri 2) |
 | `tests/a11y` | Automated accessibility checks in Chromium | Node.js, Playwright, axe-core |
 | `tests/atspi` | What the Linux accessibility bus receives from the real window | Python, AT-SPI |
+| `tests/egress` | Hostile script inside the real window, in a private network with logging listeners | Python, Bash |
 
 ## Building
 
@@ -82,10 +83,35 @@ PYTHON=/usr/bin/python3 tests/atspi/run.sh target/release/javabyte-gui --print
 
 `PYTHON` must be the Python that the system's `python3-pyatspi` package was built for.
 
+The network-containment test attacks the real window from inside (Linux, needs root for a
+private network namespace). Build the probe and the control (every protection removed), then
+run both:
+
+```bash
+cargo build --release -p javabyte-gui --features egress-probe && cp target/release/javabyte-gui /tmp/probe
+```
+
+```bash
+TAURI_CONFIG='{"app":{"security":{"csp":null},"windows":[{"label":"main","title":"JavaByte"}]}}' cargo build --release -p javabyte-gui --features egress-control && cp target/release/javabyte-gui /tmp/control
+```
+
+```bash
+sudo tests/egress/run.sh /tmp/probe
+```
+
+```bash
+sudo tests/egress/run.sh /tmp/control expect-leaks
+```
+
+Rebuild without features afterwards: the probe builds must never be given to anyone.
+
 ## Rules for this code
 
 - **Text from a sample is untrusted.** Pass it through `display_text` and insert it as text.
   Never use `inner_html` or anything that parses markup.
+- **The window has no network.** Three layers (policy, navigation guard, black-hole proxy)
+  are described in `app/src/guard.rs`. Do not loosen any of them; `cargo test` and
+  `tests/egress` will fail if you do.
 - **The screens can call only the commands in `app/src/main.rs`.** Adding one is a security
   decision: it must take typed data, and must not open files, start processes or reach the
   network on the screens' behalf.

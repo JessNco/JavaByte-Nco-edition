@@ -9,6 +9,8 @@ to the log file given as the first argument.
   succeeds is followed by a connection, which is logged too.
 - TCP 80, 443, PORT, PORT+1: logs each connection and the first line it sends.
 - UDP 3478: logs anything (STUN, as WebRTC would send).
+- TCP 9: the app's black-hole proxy. Requests that arrive here were caught by the proxy and
+  went nowhere else; they are logged as "blackhole" and are not leaks.
 """
 import asyncio
 import json
@@ -17,7 +19,9 @@ import sys
 import time
 
 LOG = open(sys.argv[1], "a", buffering=1)
-PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8099
+PORT = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 8099
+# --no-dns: for machines where the system's name lookups cannot be pointed here (Windows CI).
+WITH_DNS = "--no-dns" not in sys.argv
 
 
 def log(kind, **fields):
@@ -78,12 +82,25 @@ async def tcp(reader, writer, port):
         writer.close()
 
 
+async def blackhole(reader, writer):
+    first = b""
+    try:
+        first = await asyncio.wait_for(reader.readline(), 2)
+    except Exception:
+        pass
+    # Close without answering, as the closed port would in real use.
+    log("blackhole", port=9, first_line=first[:200].decode("latin-1").strip())
+    writer.close()
+
+
 async def main():
     loop = asyncio.get_running_loop()
-    await loop.create_datagram_endpoint(Dns, local_addr=("127.0.0.1", 53))
+    if WITH_DNS:
+        await loop.create_datagram_endpoint(Dns, local_addr=("127.0.0.1", 53))
     await loop.create_datagram_endpoint(lambda: Udp(3478), local_addr=("127.0.0.1", 3478))
     for port in sorted({80, 443, PORT, PORT + 1}):
         await asyncio.start_server(lambda r, w, p=port: tcp(r, w, p), "127.0.0.1", port)
+    await asyncio.start_server(blackhole, "127.0.0.1", 9)
     log("ready")
     await asyncio.Event().wait()
 

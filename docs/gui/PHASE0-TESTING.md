@@ -30,7 +30,63 @@ accessibility bus, which desktop sessions have.
 | Focus outline in Windows high-contrast (forced colours) | Playwright | See the latest run |
 | Hostile text shown as text, bidirectional overrides shown as codes | Playwright | See the latest run |
 | Number of progress announcements during a run | Playwright | See the latest run |
-| What the Linux accessibility bus receives from the real desktop window | `gui/tests/atspi` with WebKitGTK | See the latest run |
+| What the Linux accessibility bus receives from the real desktop window, including the grid's cells and its full row count | `gui/tests/atspi` with WebKitGTK | 19 of 19 expected objects |
+| The window cannot send anything to the network | `gui/tests/egress` (below) | Nothing left the window |
+
+## Network containment
+
+The question: if an attacker ever got script running inside the app's window, could it send
+data out? (Text from samples is only ever shown as text, so this should never happen; this test
+assumes it has.)
+
+`gui/tests/egress/run.sh` starts a test-only build of the real app (`--features egress-probe`)
+whose page runs hostile JavaScript, `gui/app/src/egress_probe.js`. The app runs in a private
+network namespace whose only network is a fake DNS server and listeners that log every name
+lookup and connection (`listener.py`). Each attempt uses its own host name
+(`v-<attempt>.leak.test`), so a leak names its route.
+
+The probe tries 36 routes from inside the page and 6 navigations: `fetch` (GET, POST,
+no-cors, HTTPS, bare IP), XMLHttpRequest, WebSocket, EventSource, `sendBeacon`, dynamic
+`import()`, workers (URL and blob), service workers, `FontFace`, WebRTC, images (element, bare
+IP, CSS property, `<style>`, stylesheet), `<link>` with `prefetch`, `preload`, `dns-prefetch`,
+`preconnect`, `modulepreload` and `icon`, a plain link's presence, scripts, iframes (URL and
+`srcdoc`), `<object>`, `<embed>`, audio, video and its poster, SVG images, `<base>`, then
+`window.open`, a clicked link with `ping`, meta refresh, a submitted form and `location.href`
+(name and bare IP).
+
+The verdict comes from the listeners, not from what the page reports.
+
+**Results on Linux (WebKitGTK 2.52), 17 November 2026**
+
+| Build | Reached the network | Caught by the black-hole proxy | Navigations refused |
+| --- | --- | --- | --- |
+| Control: all protections removed | 30 routes, with DNS lookups and connections | – | 0 |
+| Policy only, before the proxy was added | 2: `preconnect` and the clicked link (DNS lookup and an empty connection each) | – | 4 |
+| Guard and proxy, policy removed | nothing | 26 | 8 |
+| **As shipped: policy, guard and proxy** | **nothing** | 2 | 4 |
+
+The control run is what makes the others meaningful: the same probe, with nothing in the way,
+is seen leaking through both name lookups and connections. The second row is why the proxy
+exists: those two leaks happen before any policy is checked.
+
+Two lessons from building the test, both kept in the harness:
+- A proxy set in the environment made WebKit fail requests for host names before looking them
+  up, which hid leaks. The app is now started with no proxy settings.
+- With no default route, WebKit considers itself offline and fails host-name requests early,
+  hiding leaks the same way. The private network has a default route that goes nowhere.
+
+`cargo test -p javabyte-gui` also fails if the policy, the proxy setting or the window's
+permissions are loosened in configuration.
+
+**Windows (WebView2)** runs the same probe in CI as an experimental job: there is no private
+network there, so only connections to local listeners can be seen, not name lookups. To run it
+by hand on a Windows test machine, see `gui/README.md`.
+
+**Not covered:** the operating system's own traffic from the web engine (for example WebView2
+updates), which no page script controls; and a compromised backend, which is outside the
+window and covered by the emulator's own containment.
+
+## What automated checks cannot tell you
 
 Automated checks find perhaps a third of real accessibility problems. They cannot tell whether
 NVDA or Orca reads things sensibly. That is what the manual script below is for.

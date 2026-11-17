@@ -20,6 +20,11 @@ unshare --net --mount bash -s "$app" "$here" "$work" "$port" <<'INNER'
 set -eu
 app="$1" here="$2" work="$3" port="$4"
 ip link set lo up
+# A default route (to nowhere: everything goes to the loopback interface). Without one, WebKit
+# decides the machine is offline and fails requests for host names before looking them up,
+# which would hide name-based leaks from this test instead of stopping them in real use.
+ip addr add 10.255.0.1/32 dev lo
+ip route add default dev lo
 # Name lookups go to the fake DNS server, through a private copy of resolv.conf.
 echo "nameserver 127.0.0.1" > "$work/resolv.conf"
 mount --bind "$work/resolv.conf" /etc/resolv.conf
@@ -29,46 +34,16 @@ for _ in $(seq 50); do grep -q ready "$work/network.log" 2>/dev/null && break; s
 Xvfb :93 -screen 0 1280x900x24 -nolisten tcp >/dev/null 2>&1 &
 display=$!
 sleep 1
-DISPLAY=:93 NO_AT_BRIDGE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+# No proxy settings: with one, the web view would hand requests for host names to a proxy that
+# does not exist in here, and they would fail before any name lookup, hiding exactly the leaks
+# this test looks for.
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
+  -u no_proxy -u NO_PROXY -u ftp_proxy -u FTP_PROXY \
+  DISPLAY=:93 NO_AT_BRIDGE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
   JAVABYTE_PROBE_PORT="$port" JAVABYTE_PROBE_REPORT="$work/report.json" \
   timeout 120 dbus-run-session -- "$app" > "$work/app.log" 2>&1 || true
 sleep 1
 kill "$listener" "$display" 2>/dev/null || true
 INNER
 
-python3 - "$work" "$mode" <<'CHECK'
-import json, pathlib, sys
-work, mode = pathlib.Path(sys.argv[1]), sys.argv[2]
-events = [json.loads(l) for l in (work / "network.log").read_text().splitlines() if l.strip()]
-hits = [e for e in events if e["kind"] != "ready"]
-report_file = work / "report.json"
-report = json.loads(report_file.read_text()) if report_file.exists() else None
-app_log = (work / "app.log").read_text(errors="replace")
-print("== What the page saw")
-if report is None:
-    print("  no report: the probe did not run or could not report")
-else:
-    for name, outcome in report["results"].items():
-        print(f"  {name:22} {outcome}")
-    print(f"  policy violations reported by the page: {len(report['violations'])}")
-    print(f"  WebRTC available to page script: {report['webrtcAvailable']}")
-print("== What reached the fake network")
-for e in hits:
-    detail = e.get("name") or e.get("first_line") or f"{e.get('size')} bytes"
-    print(f"  {e['kind']:4} port {e.get('port', 53):<5} {detail}")
-if not hits:
-    print("  nothing")
-blocked = app_log.count("blocked navigation away from the app")
-print(f"== Navigations refused by the app: {blocked}")
-print(f"== Work folder: {work}")
-if report is None:
-    print("FAIL the probe did not report, so this run proves nothing")
-    sys.exit(1)
-if mode == "expect-leaks":
-    ok = len(hits) > 0
-    print("PASS control run: the harness detected leaks" if ok else "FAIL control run saw no leaks: the harness cannot be trusted")
-else:
-    ok = not hits
-    print("PASS nothing left the window" if ok else f"FAIL {len(hits)} attempts reached the network")
-sys.exit(0 if ok else 1)
-CHECK
+python3 "$here/check.py" "$work" "$mode"

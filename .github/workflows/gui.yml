@@ -52,12 +52,28 @@ jobs:
           node run.mjs ../../ui/dist
       - name: Build the desktop app
         run: cargo build --release -p javabyte-gui
+      - name: Configuration and guard tests
+        run: cargo test -p javabyte-gui
       - name: Accessibility bus check (WebKitGTK)
         run: PYTHON=/usr/bin/python3 tests/atspi/run.sh "$PWD/target/release/javabyte-gui" --print
       - uses: actions/upload-artifact@v4
         with:
           name: javabyte-gui-trial-linux-x86_64
           path: gui/target/release/javabyte-gui
+      # Hostile script inside the real window, in a private network whose only network is a
+      # fake DNS server and logging listeners. The control build has every protection removed
+      # and must leak, or the clean result of the real build would prove nothing.
+      - name: Build the egress probe and its control
+        run: |
+          cargo build --release -p javabyte-gui --features egress-probe
+          cp target/release/javabyte-gui "$RUNNER_TEMP/probe"
+          TAURI_CONFIG='{"app":{"security":{"csp":null},"windows":[{"label":"main","title":"JavaByte"}]}}' \
+            cargo build --release -p javabyte-gui --features egress-control
+          cp target/release/javabyte-gui "$RUNNER_TEMP/control"
+      - name: Egress test (must leak nothing)
+        run: sudo tests/egress/run.sh "$RUNNER_TEMP/probe"
+      - name: Egress control (must leak)
+        run: sudo tests/egress/run.sh "$RUNNER_TEMP/control" expect-leaks
 
   windows:
     runs-on: windows-latest
@@ -83,3 +99,32 @@ jobs:
         with:
           name: javabyte-gui-trial-windows-x86_64
           path: gui/target/release/javabyte-gui.exe
+      # Experimental: whether a hosted runner can show a WebView2 window is not yet known.
+      # There is no private network here, so only connections to local listeners can be
+      # observed, not name lookups. The Linux job is the full test.
+      - name: Build the egress probe and its control
+        shell: pwsh
+        run: |
+          cargo build --release -p javabyte-gui --features egress-probe
+          Copy-Item target/release/javabyte-gui.exe "$env:RUNNER_TEMP/probe.exe"
+          $env:TAURI_CONFIG = '{"app":{"security":{"csp":null},"windows":[{"label":"main","title":"JavaByte"}]}}'
+          cargo build --release -p javabyte-gui --features egress-control
+          Copy-Item target/release/javabyte-gui.exe "$env:RUNNER_TEMP/control.exe"
+      - name: Egress test and control (experimental)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          function Probe($exe, $mode) {
+            $work = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP ([IO.Path]::GetRandomFileName()))
+            $listener = Start-Process python -ArgumentList "tests/egress/listener.py", "$work/network.log", "8099", "--no-dns" -PassThru
+            Start-Sleep 3
+            $env:JAVABYTE_PROBE_PORT = "8099"
+            $env:JAVABYTE_PROBE_REPORT = "$work/report.json"
+            $app = Start-Process $exe -PassThru -RedirectStandardError "$work/app.log"
+            if (-not $app.WaitForExit(120000)) { $app.Kill() }
+            Stop-Process $listener.Id
+            python tests/egress/check.py "$work" $mode
+            if ($LASTEXITCODE -ne 0) { throw "egress check failed for $exe" }
+          }
+          Probe "$env:RUNNER_TEMP/probe.exe" "expect-none-without-dns"
+          Probe "$env:RUNNER_TEMP/control.exe" "expect-leaks-without-dns"

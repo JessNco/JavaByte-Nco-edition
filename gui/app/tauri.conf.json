@@ -19,7 +19,8 @@
         "width": 1100,
         "height": 800,
         "minWidth": 320,
-        "minHeight": 400
+        "minHeight": 400,
+        "proxyUrl": "http://127.0.0.1:9"
       }
     ],
     "security": {

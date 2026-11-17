@@ -1,0 +1,12 @@
+description: Settings stored as serialized Java objects are read; a class outside the safe list is refused and reported.
+techniques: [deserialization, deserialization-filter, resource-loading]
+fixture: dev.javabyte.guest.sim.ConfigReader
+builder: serialized-config
+stages:
+  - name: run
+    expect:
+      outcomes: [completed]
+      stdout: ['server c2\.config\.test port 4443', 'gadget refused']
+      events:
+        - {category: resource, action: read, where: {name: '^config\.ser$', found: 'true'}}
+        - {category: policy, action: blocked, where: {kind: deserialization, member: 'java\.net\.URL'}}

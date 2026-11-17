@@ -167,17 +167,38 @@ public final class Values {
         return text.length() <= max ? text : text.substring(0, max) + "...(" + text.length() + " chars)";
     }
 
-    /** Renders bytes as text when they are printable, otherwise as hex. Used for payload previews. */
+    /**
+     * Renders the start of some bytes for a report.
+     *
+     * <p>Plain text is shown as text. Data that is mostly text with a few binary bytes, such as
+     * a length-prefixed protocol frame, is shown as text with {@code \xNN} escapes, because the
+     * readable parts are what an analyst is looking for. Anything else is shown as hex.
+     */
     public static String preview(byte[] data, int max) {
         int length = Math.min(data.length, max);
-        boolean printable = true;
-        for (int i = 0; i < length && printable; i++) {
-            int b = data[i] & 0xFF;
-            printable = b == '\n' || b == '\r' || b == '\t' || (b >= 0x20 && b < 0x7F);
+        int printable = 0;
+        for (int i = 0; i < length; i++) {
+            if (isPrintable(data[i] & 0xFF)) {
+                printable++;
+            }
         }
-        String body = printable
-                ? new String(data, 0, length, StandardCharsets.US_ASCII)
-                : "hex:" + HexFormat.of().formatHex(data, 0, length);
+        String body;
+        if (printable == length) {
+            body = new String(data, 0, length, StandardCharsets.US_ASCII);
+        } else if (printable * 2 >= length) {
+            StringBuilder escaped = new StringBuilder();
+            for (int i = 0; i < length; i++) {
+                int b = data[i] & 0xFF;
+                escaped.append(isPrintable(b) && b != '\\' ? String.valueOf((char) b) : String.format("\\x%02x", b));
+            }
+            body = escaped.toString();
+        } else {
+            body = "hex:" + HexFormat.of().formatHex(data, 0, length);
+        }
         return data.length > max ? body + "...(" + data.length + " bytes)" : body;
+    }
+
+    private static boolean isPrintable(int b) {
+        return b == '\n' || b == '\r' || b == '\t' || (b >= 0x20 && b < 0x7F);
     }
 }

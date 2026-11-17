@@ -1,0 +1,17 @@
+description: A length-prefixed binary protocol over a raw socket, fed from configured bytes.
+techniques: [raw-socket, socket-rules, binary-protocol, command-execution, system-exit]
+fixture: dev.javabyte.guest.sim.SocketRat
+stages:
+  - name: session
+    config:
+      network:
+        sockets: [{endpoint: '198\.51\.100\.77:5555', base64: AAAABElORk8AAAAOU0hFTEwgaG9zdG5hbWUAAAAEUVVJVA==}]
+      processes: [{command: hostname, stdout: "DESKTOP-TEST\n"}]
+    expect:
+      outcomes: [exit]
+      stdout: ['told to quit']
+      events:
+        - {category: net, action: connect, where: {endpoint: '^198\.51\.100\.77:5555$', responseSize: '^34$'}, min: 1, max: 1}
+        - {category: process, action: exec, where: {command: '^hostname$'}}
+        - {category: net, action: send, where: {preview: 'HELLO admin Windows 10'}}
+      artifacts: ['network/socket-send-']

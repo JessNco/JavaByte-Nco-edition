@@ -1,0 +1,19 @@
+description: The same installer on the Linux profile uses autostart entries, the shell profile and cron.
+techniques: [linux-profile, autostart-desktop-entry, shell-profile, cron, nio-files-api]
+fixture: dev.javabyte.guest.sim.Persistence
+stages:
+  - name: install
+    config:
+      environment:
+        os: linux
+        files: [{path: /home/admin/.bashrc, text: "export EXISTING=1\n"}]
+    expect:
+      outcomes: [completed]
+      stdout: ['installed to /home/admin/\.cache/\.updater\.jar']
+      events:
+        - {category: file, action: write, where: {path: '^/home/admin/\.cache/\.updater\.jar$'}}
+        - {category: file, action: write, where: {path: 'autostart/updater\.desktop$', preview: 'Exec=java -jar'}}
+        - {category: file, action: write, where: {path: '/home/admin/\.bashrc$', preview: 'export EXISTING=1'}, because: the existing profile content must be read back and kept}
+        - {category: process, action: exec, where: {command: 'crontab'}}
+        - {category: process, action: exec, where: {command: 'chmod \+x'}}
+      maxGaps: 0

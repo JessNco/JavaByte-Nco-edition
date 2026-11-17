@@ -28,7 +28,8 @@ public final class SerializationGuard {
             "java.lang.Enum", "java.lang.Object", "java.math.BigInteger", "java.math.BigDecimal",
             "java.util.ArrayList", "java.util.LinkedList", "java.util.Vector", "java.util.Stack",
             "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap", "java.util.Hashtable",
-            "java.util.Properties", "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet",
+            // HashMap and Hashtable allocate their bucket arrays as Map.Entry[].
+            "java.util.Map$Entry", "java.util.Properties", "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet",
             "java.util.ArrayDeque", "java.util.Date", "java.util.UUID", "java.util.BitSet",
             "java.util.concurrent.ConcurrentHashMap", "java.util.concurrent.atomic.AtomicInteger",
             "java.util.concurrent.atomic.AtomicLong", "java.util.concurrent.atomic.AtomicBoolean",

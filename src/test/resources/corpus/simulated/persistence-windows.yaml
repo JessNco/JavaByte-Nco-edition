@@ -1,0 +1,28 @@
+description: Installer copies itself to AppData, registers three autostart mechanisms and relaunches.
+techniques: [self-copy, registry-run-key, scheduled-task, startup-folder, hidden-file, relaunch, self-location]
+fixture: dev.javabyte.guest.sim.Persistence
+stages:
+  - name: install
+    expect:
+      outcomes: [exit]
+      stdout: ['installed to C:\\Users\\admin\\AppData\\Roaming\\WinUpdater\\updater\.jar']
+      events:
+        - {category: file, action: write, where: {path: 'Roaming\\WinUpdater\\updater\.jar$'}, because: the sample must be able to read and copy its own jar}
+        - {category: process, action: exec, where: {command: 'reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v WinUpdater'}}
+        - {category: process, action: exec, where: {command: 'schtasks /create /tn WinUpdater /sc onlogon'}}
+        - {category: process, action: exec, where: {command: 'attrib \+h \+s'}}
+        - {category: file, action: write, where: {path: 'Startup\\updater\.bat$', preview: 'javaw\.exe'}}
+        - {category: process, action: exec, where: {command: 'javaw\.exe -jar .*updater\.jar --installed'}}
+        - {category: system, action: exit, where: {status: '^0$'}}
+      artifacts: ['dropped/.*WinUpdater/updater\.jar$', 'dropped/.*Startup/updater\.bat$']
+      maxGaps: 0
+  # The copy saved under dropped/ must be a working jar: run it as the relaunched process would.
+  - name: relaunched
+    sampleFromArtifact: 'dropped/.*WinUpdater/updater\.jar$'
+    config:
+      environment: {samplePath: 'C:\Users\admin\AppData\Roaming\WinUpdater\updater.jar'}
+      entryPoints: [{type: main, args: ['--installed']}]
+    expect:
+      outcomes: [completed]
+      stdout: ['running from C:\\Users\\admin\\AppData\\Roaming\\WinUpdater\\updater\.jar']
+      absent: [{category: process, action: exec}]

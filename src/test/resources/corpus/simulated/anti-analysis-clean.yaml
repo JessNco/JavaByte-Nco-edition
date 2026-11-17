@@ -1,0 +1,14 @@
+description: Environment checks find nothing suspicious on the default simulated machine, so the payload is released.
+techniques: [sandbox-detection, sleep-timing-check, debugger-check, mac-address-check, process-list-check, virtual-clock]
+fixture: dev.javabyte.guest.sim.AntiAnalysis
+stages:
+  - name: run
+    expect:
+      outcomes: [completed]
+      stdout: ['environment looks real']
+      events:
+        - {category: process, action: exec, where: {command: 'tasklist'}}
+        - {category: process, action: exec, where: {command: 'payload\.exe --go'}, because: 'a one-minute sleep must pass in virtual time, or the sleep check would trip'}
+        - {category: file, action: check, where: {path: 'VBoxMouse\.sys', exists: 'false'}}
+        - {category: reflect, action: forName, where: {name: 'org\.objectweb\.asm\.ClassReader', found: 'false'}, because: the emulator's own libraries must be invisible to the sample}
+      maxGaps: 0

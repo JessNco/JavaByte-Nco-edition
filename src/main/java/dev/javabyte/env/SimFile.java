@@ -62,8 +62,10 @@ public final class SimFile extends File {
     @Override public boolean canWrite() { return true; }
     @Override public boolean canExecute() { return fs.exists(path); }
     @Override public boolean exists() { return fs.exists(path); }
-    @Override public boolean isDirectory() { return fs.isDirectory(path); }
-    @Override public boolean isFile() { return fs.isFile(path); }
+    // Like exists(), these go through fs.exists() first so the probe is reported: which files a
+    // sample looks for is evidence, whichever of the three methods it happens to use.
+    @Override public boolean isDirectory() { return fs.exists(path) && fs.isDirectory(path); }
+    @Override public boolean isFile() { return fs.exists(path) && fs.isFile(path); }
     @Override public boolean isHidden() { return getName().startsWith("."); }
 
     @Override

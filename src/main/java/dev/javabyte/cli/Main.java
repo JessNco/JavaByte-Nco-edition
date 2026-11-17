@@ -50,6 +50,14 @@ public final class Main {
     }
 
     public static void main(String[] args) {
+        System.exit(execute(args));
+    }
+
+    /**
+     * Runs the tool and returns its exit code without ending the JVM, so it can be called from
+     * tests and from other programs.
+     */
+    public static int execute(String... args) {
         CommandLine commandLine = new CommandLine(new Main());
         commandLine.setExecutionExceptionHandler((exception, cmd, parseResult) -> {
             if (exception instanceof ConfigException) {
@@ -59,8 +67,7 @@ public final class Main {
             exception.printStackTrace(cmd.getErr());
             return EXIT_INTERNAL;
         });
-        int exit = args.length == 0 ? usage(commandLine) : commandLine.execute(args);
-        System.exit(exit);
+        return args.length == 0 ? usage(commandLine) : commandLine.execute(args);
     }
 
     private static int usage(CommandLine commandLine) {

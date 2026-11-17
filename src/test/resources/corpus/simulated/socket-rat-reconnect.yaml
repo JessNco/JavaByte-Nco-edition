@@ -1,0 +1,11 @@
+description: A peer that sends nothing closes the stream; the sample reconnects until the sleep budget ends it.
+techniques: [reconnect-loop, sleep-budget, default-socket-answer]
+fixture: dev.javabyte.guest.sim.SocketRat
+stages:
+  - name: session
+    config:
+      limits: {maxSleeps: 3}
+    expect:
+      outcomes: [sleep-budget]
+      stdout: ['connection closed by peer']
+      events: [{category: net, action: connect, where: {matchedRule: '^none'}, min: 3, max: 4}]

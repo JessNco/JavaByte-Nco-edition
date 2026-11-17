@@ -1,0 +1,11 @@
+description: With the network set to offline every connection fails the way it would on an unplugged machine.
+techniques: [offline-network]
+fixture: dev.javabyte.guest.sim.HttpRat
+stages:
+  - name: session
+    config:
+      network: {mode: offline}
+    expect:
+      outcomes: [uncaught-exception]
+      events: [{category: net, action: http, where: {result: 'connection refused'}}]
+      absent: [{category: process, action: exec}]

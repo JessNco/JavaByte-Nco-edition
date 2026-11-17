@@ -58,6 +58,15 @@ public final class ConfigLoader {
         }
     }
 
+    /** Builds a validated config from an already parsed tree, such as a section of a larger file. */
+    public static EmulatorConfig fromMap(java.util.Map<String, Object> tree) {
+        try {
+            return validate(YAML.convertValue(tree == null ? java.util.Map.of() : tree, EmulatorConfig.class));
+        } catch (IllegalArgumentException e) {
+            throw new ConfigException("Invalid config: " + e.getMessage());
+        }
+    }
+
     /**
      * Applies one {@code a.b.c=value} override. The value is parsed as YAML so that numbers,
      * booleans and inline lists keep their types without a second syntax to learn.

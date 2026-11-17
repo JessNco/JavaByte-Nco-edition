@@ -90,3 +90,7 @@ indicators-title-count = { $title } ({ $count })
 indicators-shortened = { " " }… ({ $count } characters in full, in the report file)
 indicators-copy = Copy the list
 indicators-copy-label = Copy the list: { $title }
+report-tab-limits = Limits and gaps
+report-tab-files = Files
+report-tab-settings = Settings used
+report-compare = Compare with another run

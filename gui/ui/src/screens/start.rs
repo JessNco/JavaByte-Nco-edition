@@ -60,6 +60,20 @@ pub fn StartScreen() -> impl IntoView {
         });
     };
 
+    // A report made earlier, by the app or on the command line.
+    let open_from_disk = move |folder: bool| {
+        spawn_local(async move {
+            match bridge::open_report_from_disk(folder).await {
+                Ok(Some(view)) => {
+                    recent.set(bridge::recent_runs().await);
+                    open_report(view);
+                }
+                Ok(None) => {}
+                Err(message) => report_error(error, "start-error", message),
+            }
+        });
+    };
+
     let pick = move |folder: bool| {
         spawn_local(async move {
             match bridge::choose_sample(folder).await {
@@ -129,6 +143,14 @@ pub fn StartScreen() -> impl IntoView {
         <p class="inline-status" role="status">{move || if busy.get() { t!("reading-sample") } else { String::new() }}</p>
 
         <h3 id="recent-heading">{t!("recent-heading")}</h3>
+        <div class="buttons">
+            <button type="button" aria-describedby="open-report-hint" on:click=move |_| open_from_disk(false)>{t!("open-report")}</button>
+            <button type="button" aria-describedby="open-report-hint" on:click=move |_| open_from_disk(true)>{t!("open-report-folder")}</button>
+            <Show when=move || recent.with(|r| r.len() >= 2)>
+                <button type="button" on:click=move |_| show(Screen::Compare)>{t!("compare-two")}</button>
+            </Show>
+        </div>
+        <p class="hint" id="open-report-hint">{t!("open-report-hint")}</p>
         {move || {
             let runs = recent.get();
             if runs.is_empty() {

@@ -50,13 +50,50 @@ type Counts = Option<(u64, u64)>;
 pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> impl IntoView {
     let layout = RwSignal::new(Layout::Grid);
     let category = RwSignal::new(String::new());
+    let action = RwSignal::new(String::new());
+    let actions = RwSignal::new(Vec::<String>::new());
     let text = RwSignal::new(String::new());
     let filter = RwSignal::new(EventFilter::default());
     let counts = RwSignal::new(None::<(u64, u64)>);
     let selected = RwSignal::new(None::<EventRow>);
+    // A position in the filtered list to move to, and the event number there.
+    let jump = RwSignal::new(None::<(u64, u64)>);
+    let jump_text = RwSignal::new(String::new());
 
     let apply = move || {
-        filter.set(EventFilter { category: non_empty(category.get_untracked()), text: non_empty(text.get_untracked()) });
+        filter.set(EventFilter {
+            category: non_empty(category.get_untracked()),
+            action: non_empty(action.get_untracked()),
+            text: non_empty(text.get_untracked()),
+        });
+    };
+    // The actions offered follow the category.
+    Effect::new(move |_| {
+        let chosen = category.get();
+        action.set(String::new());
+        if chosen.is_empty() {
+            actions.set(Vec::new());
+            return;
+        }
+        spawn_local(async move {
+            actions.set(bridge::event_actions(&chosen).await);
+        });
+    });
+    let go_to_event = move || {
+        let Ok(seq) = jump_text.get_untracked().trim().replace(',', "").parse::<u64>() else {
+            announcer().say(t!("events-jump-invalid"));
+            return;
+        };
+        let current = filter.get_untracked();
+        spawn_local(async move {
+            match bridge::event_position(seq, &current).await {
+                Some(position) => {
+                    jump.set(Some((position, seq)));
+                    announcer().say(t!("events-jumped", seq = seq));
+                }
+                None => announcer().say(t!("events-jump-hidden", seq = seq)),
+            }
+        });
     };
     // Another report: the counts and rows belong to the old one, so start again.
     Effect::new(move |previous: Option<()>| {
@@ -97,6 +134,25 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                 </select>
             </div>
             <div class="field">
+                <label for="filter-action">{t!("events-action")}</label>
+                <select
+                    id="filter-action"
+                    aria-describedby="filter-action-hint"
+                    disabled=move || category.with(String::is_empty)
+                    on:change=move |ev| {
+                        action.set(event_target_value(&ev));
+                        apply();
+                    }
+                >
+                    <option value="" selected=move || action.with(String::is_empty)>{t!("events-all-actions")}</option>
+                    {move || actions.get().into_iter().map(|a| {
+                        let shown = display_text(&a, 60).text;
+                        view! { <option value=a>{shown}</option> }
+                    }).collect_view()}
+                </select>
+                <p class="hint" id="filter-action-hint" hidden=move || !category.with(String::is_empty)>{t!("events-action-hint")}</p>
+            </div>
+            <div class="field">
                 <label for="filter-text">{t!("events-text")}</label>
                 <input
                     id="filter-text"
@@ -113,6 +169,7 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                     type="button"
                     on:click=move |_| {
                         category.set(String::new());
+                        action.set(String::new());
                         text.set(String::new());
                         if let Some(select) = document().get_element_by_id("filter-category") {
                             let _ = select.unchecked_into::<web_sys::HtmlInputElement>().set_value("");
@@ -123,6 +180,15 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
                     {t!("events-clear")}
                 </button>
             </div>
+        </form>
+        <form class="input-row jump" on:submit=move |ev| {
+            ev.prevent_default();
+            go_to_event();
+        }>
+            <label for="jump-to-event">{t!("events-jump")}</label>
+            <input id="jump-to-event" type="text" inputmode="numeric" class="input-short" autocomplete="off"
+                prop:value=move || jump_text.get() on:input=move |ev| jump_text.set(event_target_value(&ev)) />
+            <button type="submit">{t!("events-jump-go")}</button>
         </form>
         // A status region: announced when the count changes after filtering, not on scrolling.
         <p id="events-count" role="status">
@@ -158,9 +224,9 @@ pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> imp
         </fieldset>
         <Show
             when=move || layout.get() == Layout::Grid
-            fallback=move || view! { <PagedTable filter counts selected /> }
+            fallback=move || view! { <PagedTable filter counts selected jump /> }
         >
-            <EventGrid filter counts selected visible />
+            <EventGrid filter counts selected visible jump />
         </Show>
         <EventDetails selected />
     }
@@ -180,7 +246,13 @@ fn cell_text(column: usize, row: &EventRow) -> (String, bool) {
 }
 
 #[component]
-fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: RwSignal<Option<EventRow>>, visible: Signal<bool>) -> impl IntoView {
+fn EventGrid(
+    filter: RwSignal<EventFilter>,
+    counts: RwSignal<Counts>,
+    selected: RwSignal<Option<EventRow>>,
+    visible: Signal<bool>,
+    jump: RwSignal<Option<(u64, u64)>>,
+) -> impl IntoView {
     let scroller = NodeRef::<html::Div>::new();
     let rows = RwSignal::new(Vec::<EventRow>::new());
     let rows_offset = RwSignal::new(0u64);
@@ -276,6 +348,18 @@ fn EventGrid(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: 
             element.set_scroll_top((top + height - view).ceil() as i32);
         }
     };
+
+    // Go to event number: the event's first cell becomes the active one and takes focus, once
+    // its row is loaded.
+    Effect::new(move |_| {
+        let Some((position, _)) = jump.get() else { return };
+        jump.set(None);
+        has_focus.set(true);
+        active.set((position, 0));
+        scroll_to_row(position);
+        let target = format!("cell-{position}-0");
+        set_timeout(move || focus_id(target), std::time::Duration::from_millis(150));
+    });
 
     let on_scroll = move |_| {
         let Some(element) = scroller.get_untracked() else { return };
@@ -429,8 +513,15 @@ fn measure(scroller: NodeRef<html::Div>, viewport: RwSignal<f64>, row_height: Rw
 }
 
 #[component]
-fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected: RwSignal<Option<EventRow>>) -> impl IntoView {
+fn PagedTable(
+    filter: RwSignal<EventFilter>,
+    counts: RwSignal<Counts>,
+    selected: RwSignal<Option<EventRow>>,
+    jump: RwSignal<Option<(u64, u64)>>,
+) -> impl IntoView {
     let page = RwSignal::new(0u64);
+    // The event to show in the details once its page has loaded.
+    let wanted = StoredValue::new(None::<u64>);
     let rows = RwSignal::new(Vec::<EventRow>::new());
     let go_to = RwSignal::new(String::new());
     let pages = move || counts.get().map_or(1, |(m, _)| m.div_ceil(TABLE_PAGE).max(1));
@@ -447,12 +538,21 @@ fn PagedTable(filter: RwSignal<EventFilter>, counts: RwSignal<Counts>, selected:
             match bridge::events_page(request).await {
                 Ok(result) => {
                     counts.set(Some((result.total, result.unfiltered_total)));
-                    selected.set(result.rows.first().cloned());
+                    let shown = wanted.get_value().and_then(|seq| result.rows.iter().find(|r| r.seq == seq).cloned());
+                    wanted.set_value(None);
+                    selected.set(shown.or_else(|| result.rows.first().cloned()));
                     rows.set(result.rows);
                 }
                 Err(message) => announcer().say(t!("events-load-failed", detail = message)),
             }
         });
+    });
+
+    Effect::new(move |_| {
+        let Some((position, seq)) = jump.get() else { return };
+        jump.set(None);
+        wanted.set_value(Some(seq));
+        page.set(position / TABLE_PAGE);
     });
 
     let show_page = move |target: u64| {

@@ -79,3 +79,4 @@ next-classpath = Add the library it needs under Libraries it needs.
 next-native-bridge-python = Check the native bridge's Python interpreter.
 next-tasks = Allow more threads and timers.
 next-max-events = Keep more events per category.
+next-allow = Allow a feature only if it has no effect outside the program.

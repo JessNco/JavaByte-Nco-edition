@@ -171,11 +171,24 @@ await section(`axe, ${theme}, ${textSize}%`, async () => {
   await axe(page, `running, ${theme}, ${textSize}%`);
   await page.getByRole('button', { name: 'Stop analysis' }).click();
   await page.getByRole('button', { name: 'View the report' }).click({ timeout: 10000 });
-  for (const tab of ['Summary', 'Indicators', 'Events']) {
+  for (const tab of ['Summary', 'Indicators', 'Events', 'Limits and gaps', 'Files', 'Settings used']) {
     await reportTab(page, tab);
     if (tab === 'Events') await page.waitForSelector('[role="gridcell"]');
+    if (tab === 'Files') {
+      await page.getByRole('button', { name: 'View stage.bin' }).click();
+      await page.waitForSelector('.file-view');
+    }
+    await openAllDisclosures(page);
     await axe(page, `report ${tab}, ${theme}, ${textSize}%`);
   }
+  await reportTab(page, 'Files');
+  await page.getByRole('button', { name: 'Save as is…' }).click();
+  await axe(page, `save-as-is warning, ${theme}, ${textSize}%`);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Compare with another run' }).click();
+  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+  await page.waitForSelector('#compare-result-heading');
+  await axe(page, `compare, ${theme}, ${textSize}%`);
   await page.getByRole('button', { name: 'Display settings' }).click();
   await axe(page, `display settings, ${theme}, ${textSize}%`);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
@@ -234,7 +247,7 @@ await section('screens and focus', async () => {
   check(await page.locator('#report-panel-indicators').isVisible(), 'the Indicators panel shows');
   check((await page.locator('#report-panel-indicators h3').count()) >= 1, 'indicator lists have headings');
   await page.keyboard.press('End');
-  check(await focusIs(page, 'report-tab-events'), 'End moves to the last tab');
+  check(await focusIs(page, 'report-tab-settings'), 'End moves to the last tab');
 
   // The recent list opens a report too.
   await page.getByRole('button', { name: 'Start', exact: true }).click();
@@ -364,6 +377,119 @@ await section('settings', async () => {
   await context.close();
 });
 
+// 3c. The full report: limits, files (viewer, zip, the warning), settings used, compare,
+// event actions and jumping, and opening reports from disk.
+await section('full report', async () => {
+  const { page, context, errors } = await open();
+  await toReport(page);
+
+  // Limits and gaps: every part's ending, in words.
+  await reportTab(page, 'Limits and gaps');
+  check((await page.locator('#report-panel-limits h3').count()) === 4, 'limits has its four headings');
+  check((await page.locator('#report-panel-limits .endings li').first().textContent()).includes('The sample ran to its end.'), 'endings are in words');
+
+  // Files: a table, hostile names shown safely.
+  await reportTab(page, 'Files');
+  await page.waitForSelector('#report-panel-files tbody tr');
+  check((await page.locator('#report-panel-files tbody tr').count()) === 4, 'every saved file is listed');
+  const panelText = await page.locator('#report-panel-files').textContent();
+  check(!panelText.includes('‮'), 'a right-to-left override in a name is not passed to the page');
+  check(panelText.includes('invoice'), 'the name is still shown');
+
+  // Zip: needs a selection first; the button says why.
+  const zip = page.getByRole('button', { name: 'Save selected as a password zip…' });
+  check(await zip.isDisabled(), 'the zip button waits for a selection');
+  check((await zip.getAttribute('aria-describedby')) === 'files-zip-hint', 'and says why');
+  await page.getByRole('checkbox', { name: 'Select stage.bin' }).check();
+  await zip.click();
+  await page.waitForTimeout(200);
+  check((await page.locator('#report-panel-files .inline-status').textContent()).includes('1 file saved in a password zip'), 'saving a zip is confirmed');
+
+  // The viewer: text, hex, pages, and markup shown literally.
+  await page.getByRole('button', { name: /^View invoice/ }).click();
+  check(await focusIs(page, 'viewer-heading'), 'viewing a file focuses its heading');
+  const text = await page.locator('.file-view').textContent();
+  check(text.includes('<img src=x onerror=alert(1)>'), 'markup in a file is shown as text');
+  check((await page.locator('.file-view img').count()) === 0, 'and never becomes an element');
+  check(!text.includes('‮') && !text.includes('\u0007'), 'control and direction characters are shown as codes');
+  await page.getByLabel('Hex', { exact: true }).check();
+  check(/^00000000  3c 69 6d 67/.test(await page.locator('.file-view').textContent()), 'hex has offsets and bytes');
+  await page.getByRole('button', { name: 'View stage.bin' }).click();
+  check((await page.locator('.viewer [role="status"]').textContent()).includes('65,536 of 200,008'), 'the viewer shows the first 64 KB and says so');
+  await page.getByRole('button', { name: /^Show 64\.0 KB more/ }).click();
+  await page.waitForTimeout(200);
+  check((await page.locator('.viewer [role="status"]').textContent()).includes('131,072 of 200,008'), 'Show more adds the next 64 KB');
+  await page.getByRole('button', { name: 'View Loader.class' }).click();
+  await page.getByLabel('Instructions (bytecode)').check();
+  await page.waitForTimeout(200);
+  const listing = await page.locator('.file-view').textContent();
+  check(listing.includes('LDC') && listing.includes('<script>') && (await page.locator('.file-view script').count()) === 0, 'class instructions are shown, as text');
+
+  // Save as is: a real alert dialog, Cancel first, the box before saving, no timer.
+  const opener = page.getByRole('button', { name: 'Save as is…' });
+  await opener.click();
+  const dialog = page.getByRole('alertdialog');
+  check(await dialog.isVisible(), 'the warning is an alert dialog');
+  check(await focusIs(page, 'as-is-cancel'), 'focus starts on Cancel');
+  check((await dialog.getAttribute('aria-describedby')) === 'as-is-warning', 'the warning is the dialog description');
+  check((await page.locator('#as-is-warning').textContent()).includes('may be malware'), 'the warning says what can happen');
+  const saveAsIs = page.locator('#as-is-save');
+  check(await saveAsIs.isDisabled(), 'Save as is waits for the box');
+  await page.keyboard.press('Escape');
+  check(!(await dialog.isVisible()), 'Escape closes the warning');
+  check(await focusIs(page, 'save-as-is-open'), 'focus returns to the button that opened it');
+  await opener.click();
+  await page.getByLabel('I understand this file may be harmful').check();
+  check(!(await saveAsIs.isDisabled()), 'ticking the box enables Save as is');
+  await saveAsIs.click();
+  await page.waitForTimeout(200);
+  check((await page.locator('#report-panel-files .inline-status').textContent()).includes('saved as is'), 'saving as is is confirmed');
+
+  // Settings used, and running again with changes.
+  await reportTab(page, 'Settings used');
+  check((await page.locator('#report-panel-settings pre').count()) === 2, 'the settings file and the effective settings are shown');
+  await page.getByRole('button', { name: 'Run again with changes' }).click();
+  check(await focusIs(page, 'settings-heading', 5000), 'Run again with changes opens the settings');
+
+  // Events: filter by action, and go to an event number.
+  await page.getByRole('button', { name: 'Report', exact: true }).click();
+  await reportTab(page, 'Events');
+  await page.waitForSelector('[role="gridcell"]');
+  check(await page.locator('#filter-action').isDisabled(), 'the action filter waits for a category');
+  await page.locator('#filter-category').selectOption('net');
+  await page.waitForFunction(() => document.querySelectorAll('#filter-action option').length > 1);
+  check(!(await page.locator('#filter-action').isDisabled()), 'choosing a category offers its actions');
+  const firstAction = await page.locator('#filter-action option').nth(1).getAttribute('value');
+  await page.locator('#filter-action').selectOption(firstAction);
+  await page.waitForTimeout(300);
+  const cats = await page.locator('[role="gridcell"][aria-colindex="3"]').allTextContents();
+  check(cats.length > 0 && cats.every((a) => a === firstAction), `only ${firstAction} events are listed`);
+  await page.getByRole('button', { name: 'Clear filter' }).click();
+  await page.waitForTimeout(300);
+  await page.locator('#jump-to-event').fill('123456');
+  await page.getByRole('button', { name: 'Go', exact: true }).click();
+  check(await focusIs(page, 'cell-123456-0', 5000), 'going to an event number focuses its row');
+
+  // Compare: the previous run of the same sample is suggested.
+  await page.getByRole('button', { name: 'Compare with another run' }).click();
+  check(await focusIs(page, 'compare-heading'), 'Compare focuses its heading');
+  check((await page.locator('#compare-first option:checked').textContent()).includes('2026-11-16 18:00'), 'the previous run of the same sample is suggested first');
+  check((await page.locator('#compare-second option:checked').textContent()).includes('2026-11-17 10:00'), 'the open report is the second');
+  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+  check(await focusIs(page, 'compare-result-heading'), 'the result takes focus');
+  const result = await page.locator('.compare-result').textContent();
+  check(result.includes('limits.maxSleeps'), 'settings that differ are named');
+  check(result.includes('c2.example.test/next'), 'what is new in the second run is listed');
+
+  // Opening a report from disk.
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.getByRole('button', { name: 'Open a report…' }).click();
+  check(await focusIs(page, 'report-heading', 5000), 'an opened report shows');
+  check((await page.locator('#report-heading').textContent()).includes('cli-run.jar'), 'the opened report is the one chosen');
+  check(errors.length === 0, `page errors: ${errors.join('; ')}`);
+  await context.close();
+});
+
 // 3. The event grid in the report: one tab stop, arrow keys, jumps over 300,000 rows.
 await section('event grid', async () => {
   const { page, context } = await open();
@@ -466,10 +592,22 @@ await section('reflow', async () => {
   check((await overflow()) <= 1, `running at 320 px scrolls sideways by ${await overflow()} px`);
   await page.getByRole('button', { name: 'Stop analysis' }).click();
   await page.getByRole('button', { name: 'View the report' }).click({ timeout: 10000 });
-  for (const tab of ['Summary', 'Indicators', 'Events']) {
+  for (const tab of ['Summary', 'Indicators', 'Events', 'Limits and gaps', 'Files', 'Settings used']) {
     await reportTab(page, tab);
+    if (tab === 'Files') {
+      await page.getByRole('button', { name: 'View stage.bin' }).click();
+      await page.waitForSelector('.file-view');
+    }
     check((await overflow()) <= 1, `report ${tab} at 320 px scrolls sideways by ${await overflow()} px`);
   }
+  await reportTab(page, 'Files');
+  await page.getByRole('button', { name: 'Save as is…' }).click();
+  check((await overflow()) <= 1, `the warning at 320 px scrolls sideways by ${await overflow()} px`);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Compare with another run' }).click();
+  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+  await page.waitForSelector('#compare-result-heading');
+  check((await overflow()) <= 1, `compare at 320 px scrolls sideways by ${await overflow()} px`);
   await context.close();
 });
 

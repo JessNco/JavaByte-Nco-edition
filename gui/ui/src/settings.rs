@@ -266,3 +266,40 @@ pub fn analyse(busy: RwSignal<bool>, on_error: impl Fn(String) + 'static) {
         busy.set(false);
     });
 }
+
+/// **Run again with changes**: the open report's sample and settings, in Settings. With a
+/// setting (from Limits and gaps), that field is shown and focused once the forms are ready.
+pub fn run_again_and_show(setting: Option<String>) {
+    let flow = flow();
+    spawn_local(async move {
+        match bridge::run_again().await {
+            Ok(overview) => {
+                flow.sample.set(Some(overview.sample.clone()));
+                flow.overview.set(Some(overview));
+                load();
+                show(Screen::Settings);
+                if let Some(setting) = setting {
+                    focus_when_ready(javabyte_gui_protocol::form::field_element_id(&setting), 40);
+                }
+            }
+            Err(message) => announcer().say(message),
+        }
+    });
+}
+
+/// Focuses an element once it exists (the forms appear after the settings load), opening any
+/// folded group around it. Gives up quietly after `tries` attempts a tenth of a second apart.
+fn focus_when_ready(id: String, tries: u32) {
+    set_timeout(
+        move || match document().get_element_by_id(&id) {
+            Some(element) if settings().text.with_untracked(|t| !t.is_empty()) => {
+                settings().tab.set(0);
+                crate::util::open_disclosures_around(&element);
+                focus_id(id);
+            }
+            _ if tries > 0 => focus_when_ready(id, tries - 1),
+            _ => {}
+        },
+        Duration::from_millis(100),
+    );
+}

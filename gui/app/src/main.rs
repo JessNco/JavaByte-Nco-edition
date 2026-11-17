@@ -18,7 +18,7 @@ use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::Validation;
 use javabyte_gui_protocol::compare::Comparison;
 use javabyte_gui_protocol::views::{Artifact, EngineStatus, FilePage, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
-use javabyte_gui_protocol::{Page, PageRequest, RunStatus};
+use javabyte_gui_protocol::{EventFilter, Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
@@ -292,6 +292,16 @@ fn open_recent(id: String, state: tauri::State<'_, AppState>) -> Result<ReportVi
 }
 
 #[tauri::command]
+fn event_actions(category: String, state: tauri::State<'_, AppState>) -> Vec<String> {
+    session(&state).event_actions(&category)
+}
+
+#[tauri::command]
+fn event_position(seq: u64, filter: EventFilter, state: tauri::State<'_, AppState>) -> Option<u64> {
+    session(&state).event_position(seq, &filter)
+}
+
+#[tauri::command]
 fn events_page(request: PageRequest, state: tauri::State<'_, AppState>) -> Page {
     session(&state).events_page(&request)
 }
@@ -365,7 +375,7 @@ fn main() {
                 settings_text, set_settings_text, config_schema, check_settings, presets, presets_folder, save_preset,
                 load_preset, delete_preset, import_settings, export_settings, choose_host_file,
                 open_report_file, open_report_folder, artifacts, artifact_page, artifact_disasm, save_zip, save_as_is,
-                compare_runs, run_again $(, $extra)*]
+                compare_runs, run_again, event_actions, event_position $(, $extra)*]
         };
     }
     #[cfg(not(feature = "egress-probe"))]

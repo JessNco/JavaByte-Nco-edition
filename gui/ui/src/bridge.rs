@@ -119,7 +119,9 @@ fn example_sample(folder: bool) -> SampleChoice {
 
 fn example_report(sample_name: &str) -> ReportView {
     let report: Report = serde_json::from_str(SAMPLE_REPORT).expect("the committed sample report reads");
-    views::report_view(&report, sample_name, "C:\\Users\\you\\Documents\\JavaByte\\2026-11-17 10-00-00 example.jar")
+    let mut view = views::report_view(&report, sample_name, CURRENT_RUN);
+    view.config_text = Some(in_page(|b| b.settings.clone()));
+    view
 }
 
 pub async fn engine_status() -> EngineStatus {
@@ -372,23 +374,41 @@ pub async fn current_report() -> Result<ReportView, String> {
     if in_desktop_app() {
         invoke("current_report", NoArgs {}).await
     } else {
-        Ok(in_page(|b| example_report(b.sample.as_ref().map_or("example.jar", |s| s.name.as_str()))))
+        // The name first: example_report borrows the stand-in itself.
+        let name = in_page(|b| b.sample.as_ref().map_or_else(|| "example.jar".to_string(), |s| s.name.clone()));
+        Ok(example_report(&name))
     }
+}
+
+/// The stand-in's run folders: the run just made, an earlier run of the same sample, and a run of
+/// another sample, so the recent list and Compare can be tested.
+const CURRENT_RUN: &str = "C:\\Users\\you\\Documents\\JavaByte\\2026-11-17 10-00-00 example.jar";
+const PREVIOUS_RUN: &str = "C:\\Users\\you\\Documents\\JavaByte\\2026-11-16 18-00-00 example.jar";
+const OTHER_RUN: &str = "C:\\Users\\you\\Documents\\JavaByte\\2026-11-16 09-30-00 earlier.jar";
+
+fn stand_in_recent(finished: bool) -> Vec<RecentRun> {
+    let run = |folder: &str, name: &str, when: &str| RecentRun {
+        id: folder.rsplit('\\').next().unwrap_or(folder).to_string(),
+        sample_name: name.into(),
+        when: when.into(),
+        outcome: javabyte_gui_protocol::report::describe_outcome("completed"),
+        events: 27,
+        output_dir: folder.into(),
+    };
+    let mut list = Vec::new();
+    if finished {
+        list.push(run(CURRENT_RUN, "example.jar", "2026-11-17 10:00"));
+    }
+    list.push(run(PREVIOUS_RUN, "example.jar", "2026-11-16 18:00"));
+    list.push(run(OTHER_RUN, "earlier.jar", "2026-11-16 09:30"));
+    list
 }
 
 pub async fn recent_runs() -> Vec<RecentRun> {
     if in_desktop_app() {
         invoke("recent_runs", NoArgs {}).await.unwrap_or_default()
     } else {
-        // One earlier run, so the list and its buttons can be tested.
-        vec![RecentRun {
-            id: "2026-11-16 09-30-00 earlier.jar".into(),
-            sample_name: "earlier.jar".into(),
-            when: "2026-11-16 09:30".into(),
-            outcome: javabyte_gui_protocol::report::describe_outcome("completed"),
-            events: 27,
-            output_dir: "C:\\Users\\you\\Documents\\JavaByte\\2026-11-16 09-30-00 earlier.jar".into(),
-        }]
+        in_page(|b| stand_in_recent(b.finished_once))
     }
 }
 
@@ -401,5 +421,143 @@ pub async fn events_page(request: PageRequest) -> Result<Page, String> {
         invoke("events_page", PageArgs { request: &request }).await
     } else {
         Ok(in_page(|b| b.events.page(&request)))
+    }
+}
+
+// --- Reports and their files ---
+
+#[derive(Serialize)]
+struct PageOfFile<'a> {
+    path: &'a str,
+    offset: u64,
+}
+
+#[derive(Serialize)]
+struct PathArgs<'a> {
+    path: &'a str,
+}
+
+#[derive(Serialize)]
+struct PathsArgs<'a> {
+    paths: &'a [String],
+}
+
+#[derive(Serialize)]
+struct CompareArgs<'a> {
+    a: &'a str,
+    b: &'a str,
+}
+
+#[derive(Serialize)]
+struct CategoryArgs<'a> {
+    category: &'a str,
+}
+
+#[derive(Serialize)]
+struct PositionArgs<'a> {
+    seq: u64,
+    filter: &'a javabyte_gui_protocol::EventFilter,
+}
+
+/// Opens a report.json (or, with `folder`, a results folder) the person picks.
+pub async fn open_report_from_disk(folder: bool) -> Result<Option<ReportView>, String> {
+    if in_desktop_app() {
+        invoke(if folder { "open_report_folder" } else { "open_report_file" }, NoArgs {}).await
+    } else {
+        Ok(Some(example_report("cli-run.jar")))
+    }
+}
+
+/// The browser stand-in's saved files: hostile on purpose, so the viewer's escaping is tested.
+fn stand_in_files() -> Vec<(views::Artifact, Vec<u8>)> {
+    let mut stage = b"MZ\x90\x00\x03\x00\x00\x00".to_vec();
+    stage.extend((0..200_000u32).map(|i| (i % 251) as u8));
+    let hostile = "<img src=x onerror=alert(1)> bell\u{7} rtl\u{202e}txt.exe zero\u{200b}width\nline two\n".as_bytes().to_vec(); // not-ui-text: pretend sample data
+    let mut class = vec![0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 61];
+    class.extend(b"pretend constant pool"); // not-ui-text: pretend sample data
+    let artifact = |path: &str, name: &str, kind: &str, origin: &str, bytes: &[u8], sha: char| views::Artifact {
+        path: path.into(),
+        name: name.into(),
+        kind: kind.into(),
+        size: bytes.len() as u64,
+        sha256: std::iter::repeat_n(sha, 64).collect(),
+        origin: Some(origin.into()),
+    };
+    vec![
+        (artifact("dropped/C_/Users/Public/stage.bin", "stage.bin", "dropped", "C:\\Users\\Public\\stage.bin", &stage, 'a'), stage.clone()),
+        (artifact("dropped/C_/Users/admin/invoice\u{202e}fdp.exe", "invoice\u{202e}fdp.exe", "dropped", "C:\\Users\\admin\\invoice\u{202e}fdp.exe", &hostile, 'b'), hostile.clone()),
+        (artifact("defined-classes/a/b/Loader.class", "Loader.class", "class", "a.b.Loader", &class, 'c'), class.clone()),
+        (artifact("network/http-request-0.bin", "http-request-0.bin", "network", "http://c2.example.test/register", b"id=1&os=Windows", 'd'), b"id=1&os=Windows".to_vec()),
+    ]
+}
+
+pub async fn artifacts() -> Result<Vec<views::Artifact>, String> {
+    if in_desktop_app() { invoke("artifacts", NoArgs {}).await } else { Ok(stand_in_files().into_iter().map(|(a, _)| a).collect()) }
+}
+
+pub async fn artifact_page(path: &str, offset: u64) -> Result<views::FilePage, String> {
+    if in_desktop_app() {
+        invoke("artifact_page", PageOfFile { path, offset }).await
+    } else {
+        let (_, bytes) = stand_in_files().into_iter().find(|(a, _)| a.path == path).ok_or_else(|| t!("error-artifact-refused", path = path))?;
+        let start = (offset as usize).min(bytes.len());
+        let end = (start + views::PAGE_BYTES as usize).min(bytes.len());
+        Ok(views::FilePage { offset: start as u64, total: bytes.len() as u64, bytes: bytes[start..end].to_vec() })
+    }
+}
+
+pub async fn artifact_disasm(path: &str) -> Result<String, String> {
+    if in_desktop_app() {
+        invoke("artifact_disasm", PathArgs { path }).await
+    } else {
+        Ok(include_str!("example-disasm.txt").to_string())
+    }
+}
+
+pub async fn save_zip(paths: &[String]) -> Result<bool, String> {
+    if in_desktop_app() { invoke("save_zip", PathsArgs { paths }).await } else { Ok(true) }
+}
+
+pub async fn save_as_is(path: &str) -> Result<bool, String> {
+    if in_desktop_app() { invoke("save_as_is", PathArgs { path }).await } else { Ok(true) }
+}
+
+pub async fn compare_runs(a: &str, b: &str) -> Result<javabyte_gui_protocol::compare::Comparison, String> {
+    if in_desktop_app() {
+        invoke("compare_runs", CompareArgs { a, b }).await
+    } else {
+        // The committed report, and a variant with a changed setting and an extra request.
+        let report: Report = serde_json::from_str(SAMPLE_REPORT).map_err(|e| e.to_string())?;
+        let mut other = report.clone();
+        other.config["limits"]["maxSleeps"] = serde_json::json!(200);
+        other.summary.http_requests.push(serde_json::json!("http://c2.example.test/next"));
+        let pick = |id: &str| if id.contains("18-00-00") { (&report, "example.jar", PREVIOUS_RUN) } else { (&other, "example.jar", CURRENT_RUN) };
+        Ok(javabyte_gui_protocol::compare::compare(pick(a), pick(b)))
+    }
+}
+
+/// The open report's sample with the run's settings, for Run again with changes.
+pub async fn run_again() -> Result<Overview, String> {
+    if in_desktop_app() {
+        invoke("run_again", NoArgs {}).await
+    } else {
+        let inspection: Inspection = serde_json::from_str(SAMPLE_INSPECTION).map_err(|e| e.to_string())?;
+        Ok(views::overview(example_sample(false), inspection))
+    }
+}
+
+pub async fn event_actions(category: &str) -> Vec<String> {
+    if in_desktop_app() {
+        invoke("event_actions", CategoryArgs { category }).await.unwrap_or_default()
+    } else {
+        in_page(|b| b.events.actions(category))
+    }
+}
+
+pub async fn event_position(seq: u64, filter: &javabyte_gui_protocol::EventFilter) -> Option<u64> {
+    if in_desktop_app() {
+        invoke("event_position", PositionArgs { seq, filter }).await.ok().flatten()
+    } else {
+        in_page(|b| b.events.position_of(seq, filter))
     }
 }

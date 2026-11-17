@@ -38,3 +38,7 @@ picker-open-report-folder = Open a results folder
 picker-save-zip = Save a copy (password zip)
 picker-zip-files = Zip archives
 picker-save-as-is = Save as is
+open-report = Open a report…
+open-report-folder = Open a results folder…
+open-report-hint = A report.json or results folder from an earlier analysis, including one made on the command line.
+compare-two = Compare two analyses

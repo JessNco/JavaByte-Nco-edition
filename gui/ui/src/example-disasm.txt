@@ -1,0 +1,12 @@
+// class version 61.0 (61)
+// access flags 0x21
+public class a/b/Loader {
+
+  // access flags 0x9
+  public static load()V
+    LDC "<script>alert(1)</script>\u202etxt.exe"
+    INVOKESTATIC java/lang/System.loadLibrary (Ljava/lang/String;)V
+    RETURN
+    MAXSTACK = 1
+    MAXLOCALS = 0
+}

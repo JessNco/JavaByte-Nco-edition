@@ -56,6 +56,9 @@ pub struct PageRequest {
 pub struct EventFilter {
     /// Only this category, e.g. `net`.
     pub category: Option<String>,
+    /// Only this action, e.g. `http`. Used together with a category.
+    #[serde(default)]
+    pub action: Option<String>,
     /// Case-insensitive text that must appear in the action, details or caller.
     pub text: Option<String>,
 }

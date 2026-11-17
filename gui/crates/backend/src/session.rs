@@ -56,8 +56,10 @@ struct Active {
 struct OpenReport {
     view: ReportView,
     events: EventStore,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     folder: PathBuf,
     /// The report's `artifacts` list: the only files the app will read or copy.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     artifacts: Vec<String>,
     sample_path: PathBuf,
 }
@@ -407,6 +409,7 @@ impl Session {
         Ok(overview)
     }
 
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn open_report(&self) -> Result<&OpenReport, String> {
         self.report.as_ref().ok_or_else(|| t!("error-no-report"))
     }
@@ -467,6 +470,16 @@ impl Session {
         let open = self.open_report()?;
         let artifact = self.artifacts()?.into_iter().find(|a| a.path == relative).ok_or_else(|| t!("error-artifact-refused", path = relative))?;
         crate::artifacts::save_as_is(destination, &open.folder, &artifact, &self.artifact_path(relative)?)
+    }
+
+    /// The actions in one category of the open report's events.
+    pub fn event_actions(&mut self, category: &str) -> Vec<String> {
+        self.report.as_mut().map(|r| r.events.actions(category)).unwrap_or_default()
+    }
+
+    /// Where an event number is in the filtered list of the open report's events.
+    pub fn event_position(&mut self, seq: u64, filter: &javabyte_gui_protocol::EventFilter) -> Option<u64> {
+        self.report.as_mut().and_then(|r| r.events.position_of(seq, filter))
     }
 
     /// A page of the open report's events; empty if none is open.

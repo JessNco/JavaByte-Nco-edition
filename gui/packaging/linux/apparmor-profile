@@ -1,0 +1,11 @@
+# Lets JavaByte start each analysis in its own network namespace (no network), which Ubuntu
+# 24.04 otherwise refuses to programs without a profile. "unconfined" adds no other limit or
+# permission: the profile exists only to allow user namespaces. Installed by the .deb package.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile javabyte-gui /usr/bin/javabyte-gui flags=(unconfined) {
+  userns,
+
+  include if exists <local/javabyte-gui>
+}

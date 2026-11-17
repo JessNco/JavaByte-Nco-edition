@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- JavaByte: code braces seen through a magnifying glass. Plain shapes only, so it stays
+       legible at 16 px and keeps its contrast in every theme. -->
+  <rect x="32" y="32" width="960" height="960" rx="200" fill="#16345c"/>
+  <!-- the braces { } -->
+  <g fill="none" stroke="#ffffff" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M330 220 C 250 220 250 260 250 330 L 250 440 C 250 480 220 500 180 500 C 220 500 250 520 250 560 L 250 670 C 250 740 250 780 330 780"/>
+    <path d="M560 220 C 640 220 640 260 640 330 L 640 400"/>
+  </g>
+  <!-- the magnifying glass over the right brace -->
+  <circle cx="610" cy="560" r="150" fill="#16345c" stroke="#f5b83d" stroke-width="64"/>
+  <circle cx="610" cy="560" r="62" fill="#ffffff"/>
+  <line x1="722" y1="672" x2="840" y2="790" stroke="#f5b83d" stroke-width="84" stroke-linecap="round"/>
+</svg>

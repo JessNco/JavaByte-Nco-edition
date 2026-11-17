@@ -287,7 +287,9 @@ neither eyes nor screen readers are misled.
   3. A black-hole proxy: all of the web view's network traffic goes to a closed port on the
      computer itself (`127.0.0.1:9`). This also stops what neither of the others can, such as
      `<link rel="preconnect">` and the connection the engine opens when a link is clicked,
-     both of which look up the host name (which can carry stolen data) before any check.
+     both of which look up the host name (which can carry stolen data) before any check. On
+     Windows the proxy is also told not to exempt `localhost`, which Chromium otherwise
+     sends direct.
   The app's files and its channel to the backend are served inside the process, not over the
   network, so none of this affects them. `gui/tests/egress` attacks all three from inside the
   real window; see [gui/PHASE0-TESTING.md](gui/PHASE0-TESTING.md#network-containment).

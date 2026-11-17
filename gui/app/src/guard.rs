@@ -12,6 +12,11 @@
 //!   opens when a link is clicked, look up the host name and connect before any check. The
 //!   window's `proxyUrl` in `tauri.conf.json` sends all web traffic to a closed local port,
 //!   so these go nowhere.
+//! - **Loopback on Windows.** WebView2 (Chromium) sends `localhost` and `127.0.0.1` past any
+//!   proxy unless told otherwise, and the CI egress test showed a navigation to `127.0.0.1`
+//!   getting out that way. The window's `additionalBrowserArgs` repeat wry's default arguments,
+//!   set the proxy themselves (wry adds `--proxy-server` only when no arguments are given) and
+//!   add `--proxy-bypass-list=<-loopback>`, which routes loopback through the black hole too.
 //!
 //! Text from a sample is never treated as code, so none of this should ever be needed. It is
 //! here so that a mistake elsewhere still cannot turn into data leaving the machine.
@@ -53,6 +58,10 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
                 // The URL is not printed: it may carry the very data someone tried to send.
                 eprintln!("javabyte-gui: blocked navigation away from the app ({} scheme)", url.scheme());
             }
+            // Test builds name every decision, so the egress test can show which navigations
+            // the guard saw at all.
+            #[cfg(feature = "egress-probe")]
+            eprintln!("javabyte-gui: navigation {} to {}", if allowed { "allowed" } else { "refused" }, url);
             allowed
         })
         .build()
@@ -115,9 +124,13 @@ mod tests {
         }
         assert_ne!(config["app"]["security"]["dangerousDisableAssetCspModification"], serde_json::json!(true));
 
-        // Every window sends all web traffic to a closed local port.
+        // Every window sends all web traffic, loopback included, to a closed local port.
         for window in config["app"]["windows"].as_array().unwrap() {
             assert_eq!(window["proxyUrl"].as_str(), Some("http://127.0.0.1:9"), "window {}", window["label"]);
+            let args = window["additionalBrowserArgs"].as_str().unwrap_or_default();
+            for required in ["--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=<-loopback>", "msSmartScreenProtection"] {
+                assert!(args.split_whitespace().any(|a| a.contains(required)), "window {} WebView2 arguments lack {required}", window["label"]);
+            }
         }
 
         let capabilities: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();

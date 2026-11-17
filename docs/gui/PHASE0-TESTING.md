@@ -45,14 +45,14 @@ network namespace whose only network is a fake DNS server and listeners that log
 lookup and connection (`listener.py`). Each attempt uses its own host name
 (`v-<attempt>.leak.test`), so a leak names its route.
 
-The probe tries 36 routes from inside the page and 6 navigations: `fetch` (GET, POST,
-no-cors, HTTPS, bare IP), XMLHttpRequest, WebSocket, EventSource, `sendBeacon`, dynamic
+The probe tries 38 routes from inside the page and 7 navigations: `fetch` (GET, POST,
+no-cors, HTTPS, bare IP, `localhost`), XMLHttpRequest, WebSocket, EventSource, `sendBeacon`, dynamic
 `import()`, workers (URL and blob), service workers, `FontFace`, WebRTC, images (element, bare
 IP, CSS property, `<style>`, stylesheet), `<link>` with `prefetch`, `preload`, `dns-prefetch`,
 `preconnect`, `modulepreload` and `icon`, a plain link's presence, scripts, iframes (URL and
 `srcdoc`), `<object>`, `<embed>`, audio, video and its poster, SVG images, `<base>`, then
 `window.open`, a clicked link with `ping`, meta refresh, a submitted form and `location.href`
-(name and bare IP).
+(name, bare IP and `localhost`).
 
 The verdict comes from the listeners, not from what the page reports.
 
@@ -63,7 +63,7 @@ The verdict comes from the listeners, not from what the page reports.
 | Control: all protections removed | 30 routes, with DNS lookups and connections | – | 0 |
 | Policy only, before the proxy was added | 2: `preconnect` and the clicked link (DNS lookup and an empty connection each) | – | 4 |
 | Guard and proxy, policy removed | nothing | 26 | 8 |
-| **As shipped: policy, guard and proxy** | **nothing** | 2 | 4 |
+| **As shipped: policy, guard and proxy** | **nothing** | 2 | 5 |
 
 The control run is what makes the others meaningful: the same probe, with nothing in the way,
 is seen leaking through both name lookups and connections. The second row is why the proxy
@@ -78,9 +78,18 @@ Two lessons from building the test, both kept in the harness:
 `cargo test -p javabyte-gui` also fails if the policy, the proxy setting or the window's
 permissions are loosened in configuration.
 
-**Windows (WebView2)** runs the same probe in CI as an experimental job: there is no private
-network there, so only connections to local listeners can be seen, not name lookups. To run it
-by hand on a Windows test machine, see `gui/README.md`.
+**Windows (WebView2)** runs the same probe in CI on a GitHub-hosted runner, where the window
+does start. There is no private network there, so only connections to the local listeners can
+be seen, not name lookups, and port 80 cannot be watched (Windows reserves it).
+
+The first Windows run found a leak that Linux does not have: a page navigation to
+`http://127.0.0.1:8099/...?secret=stolen` reached the listener. Two things let it through.
+Chromium, on which WebView2 is built, sends loopback addresses past any proxy unless told not
+to; and the navigation guard did not refuse that navigation, although it refused three others.
+Loopback cannot reach the internet, but it can reach any program on the same machine. The
+window now passes `--proxy-bypass-list=<-loopback>` to WebView2, so loopback also goes to the
+black hole, and the probe now also attacks `localhost` by name. The test build logs every
+navigation decision, to find out why the guard missed that one.
 
 **Not covered:** the operating system's own traffic from the web engine (for example WebView2
 updates), which no page script controls; and a compromised backend, which is outside the

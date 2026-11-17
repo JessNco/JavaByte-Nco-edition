@@ -23,6 +23,10 @@ fn only_the_reports_own_files_inside_the_folder() {
     // Listed by a (hostile or damaged) report, but leading out of the folder: refused.
     assert!(artifacts::resolve(&run, &listed, "../outside.txt").is_err());
     assert!(artifacts::resolve(&run, &listed, "/etc/passwd").is_err());
+    // A report from an older Windows version, with backslashes, still works.
+    let windows = vec!["dropped\\C_\\Users\\stage.bin".to_string(), "..\\outside.txt".to_string()];
+    assert!(artifacts::resolve(&run, &windows, "dropped\\C_\\Users\\stage.bin").is_ok());
+    assert!(artifacts::resolve(&run, &windows, "..\\outside.txt").is_err(), "and cannot be used to leave the folder");
     // Inside the folder but not listed: refused.
     assert!(artifacts::resolve(&run, &listed, "dropped").is_err());
     #[cfg(unix)]

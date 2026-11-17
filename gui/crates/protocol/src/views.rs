@@ -245,7 +245,8 @@ pub const PAGE_BYTES: u64 = 64 * 1024;
 
 /// The kind of a saved file from where the tool put it.
 pub fn artifact_kind(path: &str) -> &'static str {
-    match path.split('/').next() {
+    // Reports from older versions on Windows use '\\'.
+    match path.split(['/', '\\']).next() {
         Some("dropped") => "dropped",
         Some("defined-classes") => "class",
         Some("network") => "network",

@@ -75,6 +75,8 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - The tool version comes from `pom.xml` only.
 
 ### Fixed
+- Saved-file paths in the report (`artifacts`, `requestBodyFile`) use `/` on every system;
+  on Windows they used `\\`, which broke reading a report made on another system.
 - Writing without end to one open file exhausted memory before `limits.maxWrittenBytes` applied.
 - Method handles invoked with `byte`, `short`, `char` or `boolean` arguments failed.
 - An exception inside `CompletableFuture.supplyAsync` or `runAsync` escaped to the caller.

@@ -28,7 +28,9 @@ pub fn resolve(run_folder: &Path, artifacts: &[String], relative: &str) -> Resul
     if !artifacts.iter().any(|a| a == relative) {
         return Err(refused());
     }
-    let rel = Path::new(relative);
+    // Older versions of the tool wrote '\\' on Windows; either separator works on any system.
+    let portable = relative.replace('\\', "/");
+    let rel = Path::new(&portable);
     if rel.is_absolute() || !rel.components().all(|c| matches!(c, Component::Normal(_))) {
         return Err(refused());
     }
@@ -52,7 +54,7 @@ pub fn list(run_folder: &Path, report: &javabyte_gui_protocol::report::Report) -
             let full = resolve(run_folder, &report.artifacts, relative).ok()?;
             let size = full.metadata().ok()?.len();
             Some(Artifact {
-                name: relative.rsplit('/').next().unwrap_or(relative).to_string(),
+                name: relative.rsplit(['/', '\\']).next().unwrap_or(relative).to_string(),
                 kind: views::artifact_kind(relative).to_string(),
                 sha256: sha256_of(&full).ok()?,
                 origin: origins.get(relative).cloned(),

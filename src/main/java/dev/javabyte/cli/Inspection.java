@@ -45,15 +45,38 @@ final class Inspection {
             // A usage error (exit code 2), not an emulator failure: the caller named a wrong file.
             throw new dev.javabyte.config.ConfigLoader.ConfigException("Sample not found: " + path);
         }
-        byte[] bytes = Files.readAllBytes(path);
         ClassRepository repository = new ClassRepository();
         Manifest manifest = null;
-        if (bytes.length > 1 && bytes[0] == 'P' && bytes[1] == 'K') {
-            manifest = repository.addArchive(bytes, "sample");
+        long size = 0;
+        if (Files.isDirectory(path)) {
+            // A folder of classes, as 'run' accepts: every .class file under it, and every file
+            // as a resource, keyed by its path relative to the folder.
+            try (java.util.stream.Stream<Path> files = Files.walk(path)) {
+                for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+                    String relative = path.relativize(file).toString().replace('\\', '/');
+                    byte[] data = Files.readAllBytes(file);
+                    size += data.length;
+                    if (relative.endsWith(".class")) {
+                        repository.addClassBytes(relative.substring(0, relative.length() - ".class".length()), data, "sample");
+                    }
+                    repository.addResource(relative, data);
+                    if (relative.equalsIgnoreCase("META-INF/MANIFEST.MF")) {
+                        manifest = new Manifest(new java.io.ByteArrayInputStream(data));
+                    }
+                }
+            }
         } else {
-            repository.addClassFile(bytes, "sample");
+            byte[] bytes = Files.readAllBytes(path);
+            size = bytes.length;
+            if (bytes.length > 1 && bytes[0] == 'P' && bytes[1] == 'K') {
+                manifest = repository.addArchive(bytes, "sample");
+            } else if (bytes.length > 3 && (bytes[0] & 0xFF) == 0xCA && (bytes[1] & 0xFF) == 0xFE) {
+                repository.addClassFile(bytes, "sample");
+            } else {
+                throw new dev.javabyte.config.ConfigLoader.ConfigException(path + " is neither a jar/zip archive nor a class file");
+            }
         }
-        Inspection inspection = new Inspection(path, bytes.length, repository.unparseable());
+        Inspection inspection = new Inspection(path, size, repository.unparseable());
         if (manifest != null) {
             inspection.mainClass = manifest.getMainAttributes().getValue("Main-Class");
             inspection.agentClass = manifest.getMainAttributes().getValue("Premain-Class");

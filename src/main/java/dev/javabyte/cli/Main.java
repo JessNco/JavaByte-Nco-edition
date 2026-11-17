@@ -1,6 +1,7 @@
 package dev.javabyte.cli;
 
 import dev.javabyte.Emulator;
+import dev.javabyte.RunControl;
 import dev.javabyte.config.ConfigLoader;
 import dev.javabyte.config.ConfigLoader.ConfigException;
 import dev.javabyte.config.EmulatorConfig;
@@ -33,7 +34,8 @@ import picocli.CommandLine.Parameters;
  */
 @Command(name = "javabyte", mixinStandardHelpOptions = true, versionProvider = Main.Version.class,
         description = "Emulates JVM bytecode to analyse untrusted Java code without running it on a real JVM.",
-        subcommands = {Main.Run.class, Main.Inspect.class, Main.Init.class, Main.Defaults.class, Main.Policy.class})
+        subcommands = {Main.Run.class, Main.Inspect.class, Main.Init.class, Main.Validate.class, Main.Schema.class,
+                Main.Defaults.class, Main.Policy.class})
 public final class Main {
 
     static final int EXIT_OK = 0;
@@ -97,8 +99,28 @@ public final class Main {
         @Option(names = "--json", description = "Print the full JSON report to stdout instead of the text summary.")
         boolean json;
 
+        @Option(names = "--events", paramLabel = "FORMAT",
+                description = "Stream the run to stdout as it happens. FORMAT is 'jsonl': one JSON object per line. "
+                        + "The text summary then goes to stderr.")
+        String events;
+
+        @Option(names = "--progress", description = "Report progress about every half second: in the event stream if "
+                + "--events is given, otherwise on stderr.")
+        boolean progress;
+
+        @Option(names = "--control", paramLabel = "SOURCE",
+                description = "Accept commands while running. SOURCE is 'stdin': the line 'stop', or the end of input, "
+                        + "stops the run and still writes the report.")
+        String control;
+
         @Override
         public Integer call() throws Exception {
+            if (events != null && !events.equals("jsonl")) {
+                throw new ConfigException("--events must be 'jsonl', found '" + events + "'");
+            }
+            if (control != null && !control.equals("stdin")) {
+                throw new ConfigException("--control must be 'stdin', found '" + control + "'");
+            }
             EmulatorConfig loaded = ConfigLoader.load(config, overrides);
             if (sample != null) {
                 loaded.sample = sample;
@@ -109,18 +131,89 @@ public final class Main {
             if (json) {
                 loaded.output.console = "json";
             }
-            Report report = Emulator.run(loaded, Path.of(loaded.output.directory));
-            switch (loaded.output.console) {
-                case "json":
-                    System.out.println(report.toJson());
-                    break;
-                case "text":
-                    System.out.print(report.toText());
-                    System.out.println("\nFull report: " + Path.of(loaded.output.directory, "report.json"));
-                    break;
-                default:
-                    break;
+            RunControl runControl = new RunControl();
+            EventStream stream = null;
+            if (events != null) {
+                stream = new EventStream(System.out, loaded.output.directory, progress);
+                runControl.listen(stream);
+            } else if (progress) {
+                runControl.listen(new ProgressPrinter(System.err));
             }
+            if (control != null) {
+                listenForStop(runControl);
+            }
+            // Ctrl+C stops the run like the Stop button: the report is written before the
+            // process ends. The hook waits for that, but not for ever.
+            Thread interrupt = new Thread(() -> {
+                runControl.requestStop();
+                try {
+                    runControl.awaitFinished(30, java.util.concurrent.TimeUnit.SECONDS);
+                    finishedOutput.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "javabyte-stop-on-interrupt");
+            Runtime.getRuntime().addShutdownHook(interrupt);
+            try {
+                Path reportPath = Path.of(loaded.output.directory, "report.json");
+                Report report = Emulator.run(loaded, Path.of(loaded.output.directory), runControl);
+                int exitCode = exitCode(report);
+                // With an event stream, standard output belongs to it; people read stderr.
+                java.io.PrintStream human = stream != null ? System.err : System.out;
+                switch (loaded.output.console) {
+                    case "json":
+                        if (stream == null) {
+                            System.out.println(report.toJson());
+                        }
+                        break;
+                    case "text":
+                        human.print(report.toText());
+                        human.println("\nFull report: " + reportPath);
+                        break;
+                    default:
+                        break;
+                }
+                if (stream != null) {
+                    stream.finish(report, exitCode, reportPath.toString());
+                }
+                return exitCode;
+            } finally {
+                finishedOutput.countDown();
+                try {
+                    Runtime.getRuntime().removeShutdownHook(interrupt);
+                } catch (IllegalStateException alreadyShuttingDown) {
+                    // The hook is running; it is waiting for the latch counted down above.
+                }
+            }
+        }
+
+        private final java.util.concurrent.CountDownLatch finishedOutput = new java.util.concurrent.CountDownLatch(1);
+
+        /**
+         * Reads commands from standard input on a background thread. The end of input also
+         * stops the run: the program that started this one has gone, and nobody would read the
+         * rest of the stream.
+         */
+        private static void listenForStop(RunControl runControl) {
+            Thread reader = new Thread(() -> {
+                try (java.io.BufferedReader in = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8))) {
+                    for (String line = in.readLine(); line != null; line = in.readLine()) {
+                        if (line.trim().equalsIgnoreCase("stop")) {
+                            break;
+                        }
+                    }
+                } catch (java.io.IOException e) {
+                    // Treated like the end of input.
+                }
+                runControl.requestStop();
+            }, "javabyte-control");
+            reader.setDaemon(true);
+            reader.start();
+        }
+
+        /** Exit codes are documented in README.md and AGENTS.md; a stopped run is a normal end. */
+        private static int exitCode(Report report) {
             if (report.hasOutcome("internal-error")) {
                 return EXIT_INTERNAL;
             }
@@ -159,6 +252,67 @@ public final class Main {
         public Integer call() throws Exception {
             Inspection inspection = Inspection.of(Path.of(sample));
             System.out.print(inspection.starterConfig());
+            return EXIT_OK;
+        }
+    }
+
+    /** Checks a config without running anything, and lists every problem at once. */
+    @Command(name = "validate", mixinStandardHelpOptions = true,
+            description = "Check a config and list every problem, each with the key it concerns. Exit code 0 if valid, 2 if not.")
+    static final class Validate implements Callable<Integer> {
+
+        @Option(names = {"-c", "--config"}, paramLabel = "FILE", description = "YAML or JSON config file.")
+        Path config;
+
+        @Option(names = {"-s", "--set"}, paramLabel = "KEY=VALUE", description = "Override one config value. Repeatable.")
+        List<String> overrides = new ArrayList<>();
+
+        @Option(names = "--json", description = "Print JSON: {valid, problems: [{key, message}]}.") boolean json;
+
+        @Override
+        public Integer call() throws Exception {
+            List<ConfigLoader.Problem> problems;
+            try {
+                problems = ConfigLoader.problems(ConfigLoader.readTree(config, overrides));
+            } catch (ConfigException unreadable) {
+                // A file that cannot be parsed at all is one problem with the whole file.
+                problems = unreadable.problems();
+            }
+            if (json) {
+                java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+                result.put("valid", problems.isEmpty());
+                result.put("problems", problems);
+                System.out.println(ConfigLoader.json().writeValueAsString(result));
+            } else if (problems.isEmpty()) {
+                System.out.println("The config is valid.");
+            } else {
+                System.out.println(problems.size() == 1 ? "1 problem:" : problems.size() + " problems:");
+                problems.forEach(p -> System.out.println("  " + (p.key().isEmpty() ? "(file)" : p.key()) + ": " + p.message()));
+            }
+            return problems.isEmpty() ? EXIT_OK : EXIT_USAGE;
+        }
+    }
+
+    /** Describes every config option, for forms, editors and agents. */
+    @Command(name = "schema", mixinStandardHelpOptions = true,
+            description = "Describe every config option: key, type, default, allowed values and meaning.")
+    static final class Schema implements Callable<Integer> {
+
+        @Option(names = "--json", description = "Print JSON instead of a table.") boolean json;
+
+        @Override
+        public Integer call() throws Exception {
+            if (json) {
+                System.out.println(ConfigLoader.json().writeValueAsString(dev.javabyte.config.ConfigSchema.toMap()));
+                return EXIT_OK;
+            }
+            for (dev.javabyte.config.ConfigSchema.Option option : dev.javabyte.config.ConfigSchema.options()) {
+                String type = option.element() == null ? option.type() : option.type() + " of " + option.element();
+                System.out.println(option.path() + "  (" + type + ")"
+                        + (option.defaultValue() == null ? "" : "  default: " + option.defaultValue())
+                        + (option.allowed().isEmpty() ? "" : "  one of: " + String.join(", ", option.allowed())));
+                System.out.println("    " + option.description());
+            }
             return EXIT_OK;
         }
     }

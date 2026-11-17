@@ -7,6 +7,8 @@
 
 pub mod events;
 pub mod report;
+pub mod runner;
+pub mod session;
 pub mod simulation;
 pub mod synthetic;
 

@@ -63,12 +63,18 @@ java -jar target/javabyte-0.1.0.jar run -c sample.yaml
 | Command | Purpose |
 | --- | --- |
 | `run [SAMPLE] [-c FILE] [-s KEY=VALUE]... [-o DIR] [--json]` | Emulate and report |
+| `run ... --events jsonl [--progress] [--control stdin]` | Stream the run live as JSON lines; accept `stop` on standard input |
 | `inspect SAMPLE [--json]` | Static description: entry points, loaders, natives, resources |
+| `validate [-c FILE] [-s KEY=VALUE]... [--json]` | Check a config and list every problem; exit code 0 or 2 |
+| `schema [--json]` | Every config option with its type, default, allowed values and meaning |
 | `init SAMPLE` | Print a starter config |
 | `defaults [--json]` | Print every option with its default |
 | `policy` | Print the built-in JDK allow-list |
 
-Exit codes: `0` the command ran (for `run`, read the report for what the sample did); `1` the
+Ctrl+C during `run` stops the run and still writes the report.
+
+Exit codes: `0` the command ran (for `run`, read the report for what the sample did, including a
+run stopped on request); `1` the
 emulator itself failed; `2` bad usage or config; `3` the run hit the instruction or time limit.
 
 ## Configuration in one page

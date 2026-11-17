@@ -1,0 +1,326 @@
+{
+  "schemaVersion" : 1,
+  "tool" : {
+    "name" : "javabyte",
+    "version" : "0.1.0"
+  },
+  "sample" : {
+    "path" : "<work>/basics/basics.jar",
+    "sha256" : "0000000000000000000000000000000000000000000000000000000000000000",
+    "size" : 13909,
+    "mainClass" : "dev.javabyte.guest.Basics",
+    "classCount" : 9,
+    "virtualPath" : "C:\\Users\\admin\\Downloads\\basics.jar"
+  },
+  "runs" : [ {
+    "entry" : "dev.javabyte.guest.Basics.main",
+    "outcome" : "completed",
+    "instructions" : 222639
+  }, {
+    "entry" : "dev.javabyte.guest.Basics.main (queued tasks)",
+    "outcome" : "completed",
+    "instructions" : 0
+  }, {
+    "entry" : "(shutdown hooks)",
+    "outcome" : "completed",
+    "instructions" : 0
+  } ],
+  "summary" : {
+    "instructions" : 222639,
+    "eventCounts" : {
+      "lifecycle" : 1,
+      "console" : 22,
+      "string" : 4
+    },
+    "eventsDropped" : { },
+    "processes" : [ ],
+    "httpRequests" : [ ],
+    "connections" : [ ],
+    "dnsLookups" : [ ],
+    "filesWritten" : [ ],
+    "classesDefined" : [ ],
+    "nativeLibraries" : [ ],
+    "blockedCalls" : [ ],
+    "gaps" : 0
+  },
+  "artifacts" : [ ],
+  "events" : [ {
+    "seq" : 0,
+    "category" : "lifecycle",
+    "action" : "entry",
+    "data" : {
+      "method" : "dev/javabyte/guest/Basics.main([Ljava/lang/String;)V"
+    }
+  }, {
+    "seq" : 1,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.main:113",
+    "data" : {
+      "text" : "args=0 counter=42"
+    }
+  }, {
+    "seq" : 2,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:126",
+    "data" : {
+      "text" : "-2147483648"
+    }
+  }, {
+    "seq" : 3,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:127",
+    "data" : {
+      "text" : "4611686018427387904"
+    }
+  }, {
+    "seq" : 4,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:128",
+    "data" : {
+      "text" : "-56 4464 a 3 -2"
+    }
+  }, {
+    "seq" : 5,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:129",
+    "data" : {
+      "text" : "3 -3 1 3.5 Infinity NaN"
+    }
+  }, {
+    "seq" : 6,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:130",
+    "data" : {
+      "text" : "2 8589934592 -4 15 15"
+    }
+  }, {
+    "seq" : 7,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:131",
+    "data" : {
+      "text" : "1 7 6 -6"
+    }
+  }, {
+    "seq" : 8,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:132",
+    "data" : {
+      "text" : "0 2147483647 -9223372036854775808 0.33333334"
+    }
+  }, {
+    "seq" : 9,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:133",
+    "data" : {
+      "text" : "-9223372036854775808 -2147483648 2"
+    }
+  }, {
+    "seq" : 10,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arithmetic:135",
+    "data" : {
+      "text" : "false false false true false"
+    }
+  }, {
+    "seq" : 11,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.controlFlow:178",
+    "data" : {
+      "text" : "aaabeoeoeoeo1232?!23 collatz=111 fib=6765 colour=RED"
+    }
+  }, {
+    "seq" : 12,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arraysAndStrings:202",
+    "data" : {
+      "text" : "[[0, 0, 0, 0], [0, 1, 2, 3], [0, 2, 4, 6]] [1, 5, 3] Hello truefalse Bytes 6 a,b,c"
+    }
+  }, {
+    "seq" : 13,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arraysAndStrings:205",
+    "data" : {
+      "text" : "QUICK10The quick br0wn f0x1xy-1739336029"
+    }
+  }, {
+    "seq" : 14,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.arraysAndStrings:207",
+    "data" : {
+      "text" : "6 3"
+    }
+  }, {
+    "seq" : 15,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.objects:221",
+    "data" : {
+      "text" : "Circle area=7.07"
+    }
+  }, {
+    "seq" : 16,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.objects:221",
+    "data" : {
+      "text" : "Rect area=6.00"
+    }
+  }, {
+    "seq" : 17,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.objects:221",
+    "data" : {
+      "text" : "Rect area=1.00"
+    }
+  }, {
+    "seq" : 18,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.objects:228",
+    "data" : {
+      "text" : "1second Rect[2x3] Circle[radius=2.0] true true dev.javabyte.guest.Basics$Rect"
+    }
+  }, {
+    "seq" : 19,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.objects:237",
+    "data" : {
+      "text" : "anon:42 false 1 nnullt7"
+    }
+  }, {
+    "seq" : 20,
+    "category" : "string",
+    "action" : "returned",
+    "caller" : "dev/javabyte/guest/Basics.exceptions:282",
+    "data" : {
+      "method" : "dev/javabyte/guest/Basics.nested()Ljava/lang/String;",
+      "value" : " deep43"
+    }
+  }, {
+    "seq" : 21,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.exceptions:284",
+    "data" : {
+      "text" : "failed3 finally1 cce aioobe:Index 2 out of bounds for length 2 div:/ by zero npe nfe inner deep43"
+    }
+  }, {
+    "seq" : 22,
+    "category" : "string",
+    "action" : "returned",
+    "caller" : "dev/javabyte/guest/Basics.collectionsAndLambdas:317",
+    "data" : {
+      "method" : "dev/javabyte/guest/Basics.lambda$collectionsAndLambdas$3(Ldev/javabyte/guest/Basics$Rect;)Ljava/lang/String;",
+      "value" : "3:3"
+    }
+  }, {
+    "seq" : 23,
+    "category" : "string",
+    "action" : "returned",
+    "caller" : "dev/javabyte/guest/Basics.collectionsAndLambdas:317",
+    "data" : {
+      "method" : "dev/javabyte/guest/Basics.lambda$collectionsAndLambdas$3(Ldev/javabyte/guest/Basics$Rect;)Ljava/lang/String;",
+      "value" : "2:2"
+    }
+  }, {
+    "seq" : 24,
+    "category" : "string",
+    "action" : "returned",
+    "caller" : "dev/javabyte/guest/Basics.collectionsAndLambdas:317",
+    "data" : {
+      "method" : "dev/javabyte/guest/Basics.lambda$collectionsAndLambdas$3(Ldev/javabyte/guest/Basics$Rect;)Ljava/lang/String;",
+      "value" : "1:2"
+    }
+  }, {
+    "seq" : 25,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.collectionsAndLambdas:326",
+    "data" : {
+      "text" : "[Rect[1x2], Rect[2x2], Rect[3x3]] [Rect[3x3], Rect[2x2], Rect[1x2]] 22 3:3|2:2|1:2 143 thread-body {a=3, b=2, c=1}"
+    }
+  }, {
+    "seq" : 26,
+    "category" : "console",
+    "action" : "stdout",
+    "caller" : "dev/javabyte/guest/Basics.wideStackOps:340",
+    "data" : {
+      "text" : "[16, 27][3.75, 2.5]42 3.5 -1"
+    }
+  } ],
+  "config" : {
+    "sample" : "<work>/basics/basics.jar",
+    "classpath" : [ ],
+    "entryPoints" : [ ],
+    "limits" : {
+      "maxInstructions" : 2000000000,
+      "timeoutSeconds" : 120,
+      "maxCallDepth" : 1500,
+      "maxSleeps" : 40,
+      "maxTasks" : 512,
+      "maxEventsPerCategory" : 20000,
+      "maxWrittenBytes" : 268435456
+    },
+    "environment" : {
+      "os" : "windows",
+      "userName" : "admin",
+      "hostName" : "DESKTOP-4QK7B2M",
+      "properties" : { },
+      "env" : { },
+      "files" : [ ],
+      "directories" : [ ],
+      "clockStart" : "2024-03-01T09:00:00Z",
+      "randomSeed" : 7
+    },
+    "network" : {
+      "mode" : "respond",
+      "http" : [ ],
+      "sockets" : [ ],
+      "dns" : { },
+      "defaultAddress" : "203.0.113.10",
+      "localAddress" : "192.168.56.101",
+      "macAddress" : "00:1B:44:11:3A:B7"
+    },
+    "processes" : [ ],
+    "policy" : {
+      "allow" : [ ],
+      "deny" : [ ],
+      "onBlocked" : "phantom"
+    },
+    "hooks" : [ ],
+    "trace" : {
+      "strings" : "static",
+      "methods" : [ ],
+      "instructions" : [ ],
+      "hostCalls" : false
+    },
+    "threads" : {
+      "mode" : "deferred",
+      "periodicRuns" : 1,
+      "runShutdownHooks" : true
+    },
+    "output" : {
+      "directory" : "<work>/out",
+      "dumpDefinedClasses" : true,
+      "dumpDroppedFiles" : true,
+      "console" : "text"
+    },
+    "plugins" : { }
+  }
+}

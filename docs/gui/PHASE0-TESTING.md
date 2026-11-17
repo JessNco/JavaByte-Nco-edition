@@ -215,6 +215,14 @@ Fill in one copy per tester and platform.
 | D | 1–6 | | | |
 | E | 1–5 | | | |
 
+### Recorded result
+
+17 November 2026: the project owner reported that the manual test **passes**. Per-step results
+for each platform were not recorded; fill in the table above on the next round of testing.
+
+**Decision: go.** Tauri with the system web view is kept on Windows and Linux, and phase 2
+builds on the patterns tested here.
+
 ## Go or no-go
 
 The trial passes, and phase 1 starts with the chosen toolkit, if:

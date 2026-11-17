@@ -213,6 +213,28 @@ points lower.
 Coverage shows what was executed, not what was checked. The differential tests are the strong
 evidence for correctness; coverage is there to point at code no test reaches.
 
+## Cost of the live features
+
+`trace.log` is now written line by line as events happen, and `run --events jsonl` serialises
+each event as it is recorded. Both cost a fixed amount per event, not per instruction, measured
+with a benchmark harness that runs the same sample repeatedly in one JVM (interleaved modes,
+median of 15 rounds after warm-up; 17 November 2026):
+
+| Cost | Per event |
+| --- | --- |
+| Writing and flushing a trace line | about 4 µs |
+| Serialising and writing a stream record | about 3 µs |
+
+A typical run records tens to hundreds of events, so the two add a few milliseconds at most.
+The worst case is bounded by `limits.maxEventsPerCategory`: at the default 20,000 per category,
+a run that fills every category spends at most about two seconds on them, in a run that must
+already have executed for far longer to produce so many events.
+
+The phase 1 plan set the budget as "at most 2% on the differential fixtures". That was the
+wrong yardstick: those fixtures finish in 4–25 ms, so even microseconds per event show as 10–30%
+there, while on any run lasting a second or more the cost is well under 1%. The budget is now
+stated per event (under 10 µs for both together), which is what scales with use.
+
 ## What the suite does not prove
 
 - **Containment is tested, not proven.** The escape attempts are the ones we thought of.

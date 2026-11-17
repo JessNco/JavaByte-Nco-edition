@@ -58,7 +58,10 @@ public final class VirtualMachine {
     final Interpreter interpreter;
 
     private long instructions;
-    private volatile boolean cancelled;
+    /** Why the run must end at the next checkpoint; null while it may continue. */
+    private volatile EmulationAbort.Reason cancelReason;
+    /** Called at every checkpoint on the emulator thread; used for progress reports. */
+    private Runnable checkpointHook = () -> {};
     /** The JDK call in progress, for diagnosing a run that blocks inside real code. */
     private volatile String hostCallInProgress;
     private Throwable escapingGuestException;
@@ -115,9 +118,11 @@ public final class VirtualMachine {
         // The limits are checked every 16384 instructions; a per-instruction check of a
         // volatile flag would slow the hot loop for no practical gain in precision.
         if ((++instructions & 0x3FFF) == 0) {
-            if (cancelled) {
-                throw new EmulationAbort(EmulationAbort.Reason.TIMEOUT, "wall-clock limit reached");
+            EmulationAbort.Reason cancel = cancelReason;
+            if (cancel != null) {
+                throw new EmulationAbort(cancel, cancel == EmulationAbort.Reason.STOPPED ? "stop requested" : "wall-clock limit reached");
             }
+            checkpointHook.run();
             if (instructions > config.limits.maxInstructions) {
                 throw new EmulationAbort(EmulationAbort.Reason.INSTRUCTION_LIMIT,
                         "executed " + instructions + " instructions");
@@ -132,7 +137,21 @@ public final class VirtualMachine {
 
     /** Asks the emulator thread to stop at its next budget check. Safe to call from any thread. */
     public void cancel() {
-        cancelled = true;
+        cancel(EmulationAbort.Reason.TIMEOUT);
+    }
+
+    /**
+     * Asks the emulator thread to stop at its next budget check for the given reason. The first
+     * reason wins: a stop requested by a person is not relabelled as a timeout afterwards.
+     */
+    public void cancel(EmulationAbort.Reason reason) {
+        if (cancelReason == null) {
+            cancelReason = reason;
+        }
+    }
+
+    public void setCheckpointHook(Runnable hook) {
+        this.checkpointHook = hook;
     }
 
     public void enterHostCall(String owner, String name) {

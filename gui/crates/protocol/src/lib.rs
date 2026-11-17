@@ -1,9 +1,21 @@
-//! Types exchanged between the GUI's screens (WebAssembly) and its backend (native Rust).
+//! Types exchanged between the GUI's screens (WebAssembly) and its backend (native Rust), and the
+//! formats the command-line tool writes: the event stream, the report, `inspect`, `schema` and
+//! `validate` output.
 //!
-//! This is the only place the GUI defines the shape of data it passes around, so both sides
-//! always agree. It has no dependencies beyond `serde`, so it compiles for both targets.
+//! This is the only place the GUI defines the shape of data it passes around, so all sides
+//! agree. The tool's formats are checked against real output: `tests/tool-output/` is written by the
+//! Java test `ContractSamplesTest`, and `tests/tool_output.rs` reads it with these types. Readers
+//! ignore fields they do not know, so the tool may add fields without breaking the GUI.
+//!
+//! Only `serde` and `serde_json` are needed, so the crate compiles for both targets.
 
 mod display;
+pub mod inspect;
+pub mod report;
+pub mod schema;
+pub mod stream;
+pub mod validate;
+pub mod views;
 
 pub use display::{DisplayText, display_text};
 use serde::{Deserialize, Serialize};
@@ -73,6 +85,18 @@ pub struct RunStatus {
     pub notable: Vec<EventRow>,
     /// How the run ended, in the emulator's words (`completed`, `stopped`, ...), once it has.
     pub outcome: Option<String>,
+    /// The sample being analysed, for headings.
+    #[serde(default)]
+    pub sample_name: String,
+    /// The entry point running now.
+    #[serde(default)]
+    pub entry: String,
+    /// Once the run has ended: what happened, in plain words.
+    #[serde(default)]
+    pub ended: Option<String>,
+    /// Once the run has ended: whether a report is ready to open.
+    #[serde(default)]
+    pub report_ready: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

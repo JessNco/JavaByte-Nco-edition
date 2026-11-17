@@ -1,0 +1,393 @@
+{
+  "schemaVersion" : 1,
+  "options" : [ {
+    "path" : "sample",
+    "type" : "string",
+    "description" : "The code to analyse: a .jar or .zip, a single .class file, or a folder of classes."
+  }, {
+    "path" : "classpath",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "More jars or folders whose classes are interpreted alongside the sample, such as libraries it expects to find."
+  }, {
+    "path" : "entryPoints",
+    "type" : "list",
+    "element" : "object",
+    "default" : [ ],
+    "description" : "What to run, in order. Empty means the main method named in the sample's manifest."
+  }, {
+    "path" : "entryPoints[].type",
+    "type" : "string",
+    "default" : "main",
+    "allowed" : [ "main", "method", "clinit-sweep" ],
+    "description" : "main runs the main method; method runs one named method; clinit-sweep runs every class's start-up code, which makes most obfuscators decrypt their hidden text without running the program."
+  }, {
+    "path" : "entryPoints[].class",
+    "type" : "string",
+    "description" : "The class to run, with dots or slashes. For main it defaults to the manifest's Main-Class."
+  }, {
+    "path" : "entryPoints[].method",
+    "type" : "string",
+    "description" : "The method to run. Required when type is method."
+  }, {
+    "path" : "entryPoints[].descriptor",
+    "type" : "string",
+    "description" : "The method's JVM descriptor, such as (Ljava/lang/String;)V. Needed only when the method name is overloaded."
+  }, {
+    "path" : "entryPoints[].args",
+    "type" : "list",
+    "element" : "any",
+    "default" : [ ],
+    "description" : "For main: the program arguments. For method: one value per parameter."
+  }, {
+    "path" : "entryPoints[].include",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "For clinit-sweep: class-name patterns to include. Empty means every class."
+  }, {
+    "path" : "limits",
+    "type" : "object",
+    "description" : "Budgets that end a run with a named reason instead of letting it hang."
+  }, {
+    "path" : "limits.maxInstructions",
+    "type" : "integer",
+    "default" : 2000000000,
+    "description" : "Bytecode instructions the run may execute before it ends with outcome instruction-limit."
+  }, {
+    "path" : "limits.timeoutSeconds",
+    "type" : "integer",
+    "default" : 120,
+    "description" : "Real seconds the run may take before it ends with outcome timeout."
+  }, {
+    "path" : "limits.maxCallDepth",
+    "type" : "integer",
+    "default" : 1500,
+    "description" : "How deep the sample's calls may nest before it gets a StackOverflowError, as on a real JVM."
+  }, {
+    "path" : "limits.maxSleeps",
+    "type" : "integer",
+    "default" : 40,
+    "description" : "Sleeps one thread may perform. Beacon loops sleep for ever, so this is what ends them."
+  }, {
+    "path" : "limits.maxTasks",
+    "type" : "integer",
+    "default" : 512,
+    "description" : "Threads, timers and background jobs one run may start."
+  }, {
+    "path" : "limits.maxEventsPerCategory",
+    "type" : "integer",
+    "default" : 20000,
+    "description" : "Events kept per category. Further events are counted but not stored."
+  }, {
+    "path" : "limits.maxWrittenBytes",
+    "type" : "integer",
+    "default" : 268435456,
+    "description" : "Total bytes the sample may write to the pretend disk."
+  }, {
+    "path" : "environment",
+    "type" : "object",
+    "description" : "The pretend machine the sample believes it is running on."
+  }, {
+    "path" : "environment.os",
+    "type" : "string",
+    "default" : "windows",
+    "allowed" : [ "windows", "linux" ],
+    "description" : "The operating system to pretend to be. It decides path style and system properties."
+  }, {
+    "path" : "environment.userName",
+    "type" : "string",
+    "default" : "admin",
+    "description" : "The user name the sample sees."
+  }, {
+    "path" : "environment.hostName",
+    "type" : "string",
+    "default" : "DESKTOP-4QK7B2M",
+    "description" : "The computer name the sample sees."
+  }, {
+    "path" : "environment.samplePath",
+    "type" : "string",
+    "description" : "Where the sample believes it is stored. Droppers copy or restart themselves from here."
+  }, {
+    "path" : "environment.properties",
+    "type" : "map",
+    "element" : "string",
+    "default" : { },
+    "description" : "Extra or changed Java system properties."
+  }, {
+    "path" : "environment.env",
+    "type" : "map",
+    "element" : "string",
+    "default" : { },
+    "description" : "Extra or changed environment variables."
+  }, {
+    "path" : "environment.files",
+    "type" : "list",
+    "element" : "object",
+    "default" : [ ],
+    "description" : "Files that exist on the pretend disk before the run starts."
+  }, {
+    "path" : "environment.files[].path",
+    "type" : "string",
+    "description" : "Where the file is on the pretend disk."
+  }, {
+    "path" : "environment.files[].text",
+    "type" : "string",
+    "description" : "The file's content as text."
+  }, {
+    "path" : "environment.files[].base64",
+    "type" : "string",
+    "description" : "The file's content as base64, for binary files."
+  }, {
+    "path" : "environment.files[].hostFile",
+    "type" : "string",
+    "description" : "A real file on this computer whose content the pretend file has."
+  }, {
+    "path" : "environment.directories",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "Folders that exist on the pretend disk before the run starts."
+  }, {
+    "path" : "environment.clockStart",
+    "type" : "string",
+    "description" : "When the pretend clock starts, as an ISO-8601 time such as 2024-03-01T09:00:00Z. Empty means now."
+  }, {
+    "path" : "environment.randomSeed",
+    "type" : "integer",
+    "default" : 1247901281,
+    "description" : "Seed for random numbers the sample does not seed itself, so that runs are repeatable. Empty means truly random."
+  }, {
+    "path" : "network",
+    "type" : "object",
+    "description" : "The simulated network. Nothing is ever really sent."
+  }, {
+    "path" : "network.mode",
+    "type" : "string",
+    "default" : "respond",
+    "allowed" : [ "respond", "offline" ],
+    "description" : "respond: connections succeed and get the answers set here or an empty one. offline: connections fail as on an unplugged computer."
+  }, {
+    "path" : "network.http",
+    "type" : "list",
+    "element" : "object",
+    "default" : [ ],
+    "description" : "Answers for web requests. The first rule whose pattern matches the address is used."
+  }, {
+    "path" : "network.http[].url",
+    "type" : "string",
+    "description" : "A regular expression searched for in the full web address. Required."
+  }, {
+    "path" : "network.http[].status",
+    "type" : "integer",
+    "default" : 200,
+    "description" : "The HTTP status code of the answer."
+  }, {
+    "path" : "network.http[].headers",
+    "type" : "map",
+    "element" : "string",
+    "default" : { },
+    "description" : "Headers of the answer."
+  }, {
+    "path" : "network.http[].body",
+    "type" : "string",
+    "description" : "The answer's body as text."
+  }, {
+    "path" : "network.http[].bodyBase64",
+    "type" : "string",
+    "description" : "The answer's body as base64, for binary data."
+  }, {
+    "path" : "network.http[].bodyFile",
+    "type" : "string",
+    "description" : "A real file on this computer whose content is the answer's body."
+  }, {
+    "path" : "network.sockets",
+    "type" : "list",
+    "element" : "object",
+    "default" : [ ],
+    "description" : "Data sent back on raw network connections. The first matching rule is used."
+  }, {
+    "path" : "network.sockets[].endpoint",
+    "type" : "string",
+    "description" : "A regular expression matched against host:port. Required."
+  }, {
+    "path" : "network.sockets[].text",
+    "type" : "string",
+    "description" : "Data sent back, as text."
+  }, {
+    "path" : "network.sockets[].base64",
+    "type" : "string",
+    "description" : "Data sent back, as base64."
+  }, {
+    "path" : "network.sockets[].file",
+    "type" : "string",
+    "description" : "A real file on this computer whose content is sent back."
+  }, {
+    "path" : "network.dns",
+    "type" : "map",
+    "element" : "string",
+    "default" : { },
+    "description" : "Host names and the addresses they look up to. Other names get the default address."
+  }, {
+    "path" : "network.defaultAddress",
+    "type" : "string",
+    "default" : "203.0.113.10",
+    "description" : "The address every host name not listed under dns looks up to."
+  }, {
+    "path" : "network.localAddress",
+    "type" : "string",
+    "default" : "192.168.56.101",
+    "description" : "The pretend computer's own network address."
+  }, {
+    "path" : "network.macAddress",
+    "type" : "string",
+    "default" : "00:1B:44:11:3A:B7",
+    "description" : "The pretend computer's network card address. Sandbox checks often look at it."
+  }, {
+    "path" : "processes",
+    "type" : "list",
+    "element" : "object",
+    "default" : [ ],
+    "description" : "Made-up results for programs the sample tries to start. Nothing is ever really started."
+  }, {
+    "path" : "processes[].command",
+    "type" : "string",
+    "description" : "A regular expression searched for in the command line. Required."
+  }, {
+    "path" : "processes[].stdout",
+    "type" : "string",
+    "default" : "",
+    "description" : "What the pretend program prints."
+  }, {
+    "path" : "processes[].stderr",
+    "type" : "string",
+    "default" : "",
+    "description" : "What the pretend program prints as errors."
+  }, {
+    "path" : "processes[].exitCode",
+    "type" : "integer",
+    "default" : 0,
+    "description" : "The pretend program's exit code."
+  }, {
+    "path" : "policy",
+    "type" : "object",
+    "description" : "Changes to which real JDK calls the sample may make."
+  }, {
+    "path" : "policy.allow",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "JDK members to allow in addition to the built-in list. Allow only code with no effect outside the process."
+  }, {
+    "path" : "policy.deny",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "JDK members to refuse even though the built-in list allows them."
+  }, {
+    "path" : "policy.onBlocked",
+    "type" : "string",
+    "default" : "phantom",
+    "allowed" : [ "phantom", "throw", "abort" ],
+    "description" : "What a refused JDK call does. phantom: record it and give back a harmless value so the run continues. throw: give the sample a SecurityException. abort: end the run."
+  }, {
+    "path" : "hooks",
+    "type" : "list",
+    "element" : "object",
+    "default" : [ ],
+    "description" : "Overrides for chosen methods in the sample, applied before they run."
+  }, {
+    "path" : "hooks[].method",
+    "type" : "string",
+    "description" : "Which methods, as a pattern such as com/example/Checks.isSandbox()Z; * matches anything. Required."
+  }, {
+    "path" : "hooks[].action",
+    "type" : "string",
+    "default" : "return",
+    "allowed" : [ "return", "skip", "throw", "trace" ],
+    "description" : "return: skip the method and give back value. skip: do nothing. throw: raise the exception class named in value. trace: run it normally and record its calls."
+  }, {
+    "path" : "hooks[].value",
+    "type" : "any",
+    "description" : "For return: the value to give back. For throw: the exception class name."
+  }, {
+    "path" : "trace",
+    "type" : "object",
+    "description" : "What to record beyond the sample's behaviour."
+  }, {
+    "path" : "trace.strings",
+    "type" : "string",
+    "default" : "static",
+    "allowed" : [ "static", "all", "none" ],
+    "description" : "Which methods have the text they return recorded. static catches decryption helpers without flooding the report; all includes instance methods; none turns it off."
+  }, {
+    "path" : "trace.methods",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "Patterns of methods whose calls, arguments and results are recorded."
+  }, {
+    "path" : "trace.instructions",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "Patterns of methods recorded instruction by instruction in the trace. Very verbose."
+  }, {
+    "path" : "trace.hostCalls",
+    "type" : "boolean",
+    "default" : false,
+    "description" : "Record every call into the real JDK. Verbose; useful when extending the allow-list."
+  }, {
+    "path" : "threads",
+    "type" : "object",
+    "description" : "How the sample's threads are scheduled. They take turns; only one runs at a time."
+  }, {
+    "path" : "threads.mode",
+    "type" : "string",
+    "default" : "deferred",
+    "allowed" : [ "deferred", "inline" ],
+    "description" : "deferred: a new thread first runs when the current one waits or uses up its turn. inline: a new thread runs at once."
+  }, {
+    "path" : "threads.periodicRuns",
+    "type" : "integer",
+    "default" : 1,
+    "description" : "How many times a repeating timer or scheduled job is run."
+  }, {
+    "path" : "threads.runShutdownHooks",
+    "type" : "boolean",
+    "default" : true,
+    "description" : "Whether the sample's shutdown code runs at the end."
+  }, {
+    "path" : "output",
+    "type" : "object",
+    "description" : "Where and how results are written."
+  }, {
+    "path" : "output.directory",
+    "type" : "string",
+    "default" : "javabyte-out",
+    "description" : "The folder for the report, trace and saved files."
+  }, {
+    "path" : "output.dumpDefinedClasses",
+    "type" : "boolean",
+    "default" : true,
+    "description" : "Save every class the sample creates while running, in defined-classes/."
+  }, {
+    "path" : "output.dumpDroppedFiles",
+    "type" : "boolean",
+    "default" : true,
+    "description" : "Save every file the sample writes, in dropped/."
+  }, {
+    "path" : "output.console",
+    "type" : "string",
+    "default" : "text",
+    "allowed" : [ "text", "json", "quiet" ],
+    "description" : "What the run command prints. text: a readable summary. json: the report. quiet: nothing."
+  }, {
+    "path" : "plugins",
+    "type" : "map",
+    "element" : "map",
+    "default" : { },
+    "description" : "Settings for plugins, by plugin id. A plugin runs only if it has an entry here."
+  } ]
+}

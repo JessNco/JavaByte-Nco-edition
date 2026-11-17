@@ -47,7 +47,7 @@ enum Layout {
 type Counts = Option<(u64, u64)>;
 
 #[component]
-pub fn EventsPanel(visible: Signal<bool>) -> impl IntoView {
+pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> impl IntoView {
     let layout = RwSignal::new(Layout::Grid);
     let category = RwSignal::new(String::new());
     let text = RwSignal::new(String::new());
@@ -58,10 +58,19 @@ pub fn EventsPanel(visible: Signal<bool>) -> impl IntoView {
     let apply = move || {
         filter.set(EventFilter { category: non_empty(category.get_untracked()), text: non_empty(text.get_untracked()) });
     };
+    // Another report: the counts and rows belong to the old one, so start again.
+    Effect::new(move |previous: Option<()>| {
+        reload.track();
+        if previous.is_some() {
+            counts.set(None);
+            filter.set(EventFilter::default());
+            selected.set(None);
+        }
+    });
 
     view! {
-        <h2 id="events-heading">"Events"</h2>
-        <p>"Everything the sample did, in order. The list holds 300,000 made-up events, including deliberately hostile text."</p>
+        <h3 id="events-heading">"Events"</h3>
+        <p>"Everything the sample did, in order."</p>
         <form
             class="filters"
             role="search"
@@ -539,7 +548,7 @@ fn EventDetails(selected: RwSignal<Option<EventRow>>) -> impl IntoView {
     });
     view! {
         <section class="details" aria-labelledby="details-heading">
-            <h3 id="details-heading">"Current event"</h3>
+            <h4 id="details-heading">"Current event"</h4>
             {move || match selected.get() {
                 None => view! { <p>"No event selected."</p> }.into_any(),
                 Some(row) => {

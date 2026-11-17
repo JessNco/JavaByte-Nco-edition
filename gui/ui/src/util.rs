@@ -64,3 +64,34 @@ thread_local! {
 pub fn announcer() -> Announcer {
     ANNOUNCER.with(|cell| *cell.get_or_init(Announcer::new))
 }
+
+/// Copies text to the clipboard. False where the web view does not allow it, so the screen can
+/// say how to copy by hand instead.
+pub fn copy_text(text: &str) -> bool {
+    // Reached through reflection: the Clipboard API is not in every web-sys build, and the
+    // promise's result is not needed to tell the person something useful.
+    let Some(window) = web_sys::window() else { return false };
+    let window: wasm_bindgen::JsValue = window.into();
+    let Ok(navigator) = js_sys::Reflect::get(&window, &"navigator".into()) else { return false };
+    let Ok(clipboard) = js_sys::Reflect::get(&navigator, &"clipboard".into()) else { return false };
+    if clipboard.is_undefined() {
+        return false;
+    }
+    let Ok(write) = js_sys::Reflect::get(&clipboard, &"writeText".into()) else { return false };
+    let Ok(write) = write.dyn_into::<js_sys::Function>() else { return false };
+    write.call1(&clipboard, &text.into()).is_ok()
+}
+
+/// The message after a copy attempt.
+pub fn copied_message(done: bool) -> &'static str {
+    if done { "Copied." } else { "Copying is not available here. Select the text and press Control and C." }
+}
+
+/// File size for people: "13.6 KB".
+pub fn fmt_size(bytes: u64) -> String {
+    match bytes {
+        0..=1023 => format!("{bytes} bytes"),
+        1024..=1_048_575 => format!("{:.1} KB", bytes as f64 / 1024.0),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+    }
+}

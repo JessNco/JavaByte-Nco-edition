@@ -87,7 +87,7 @@ pub fn DisplayPanel() -> impl IntoView {
         ("contrast", "High contrast"),
     ];
     view! {
-        <h2>"Display"</h2>
+        <h2 id="display-heading" tabindex="-1">"Display settings"</h2>
         <p>"Changes apply at once and are remembered. By default the app follows your system settings."</p>
         <fieldset>
             <legend>"Colours"</legend>

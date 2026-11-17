@@ -16,7 +16,8 @@ import sys
 work, mode = pathlib.Path(sys.argv[1]), (sys.argv[2] if len(sys.argv) > 2 else "expect-none")
 log_file = work / "network.log"
 events = [json.loads(l) for l in log_file.read_text().splitlines() if l.strip()] if log_file.exists() else []
-hits = [e for e in events if e["kind"] not in ("ready", "blackhole")]
+hits = [e for e in events if e["kind"] not in ("ready", "blackhole", "bind-failed")]
+unwatched = [e for e in events if e["kind"] == "bind-failed"]
 absorbed = [e for e in events if e["kind"] == "blackhole"]
 report_file = work / "report.json"
 report = json.loads(report_file.read_text()) if report_file.exists() else None
@@ -31,6 +32,10 @@ else:
     print(f"  policy violations reported by the page: {len(report['violations'])}")
     print(f"  WebRTC available to page script: {report['webrtcAvailable']}")
 print("== Caught by the black-hole proxy (went nowhere): %d" % len(absorbed))
+for e in unwatched:
+    print(f"== Not watched: {e['listener']} port {e['port']} ({e['error']})")
+if not any(e["kind"] == "ready" for e in events):
+    print("== The listener never became ready")
 print("== What reached the fake network")
 for e in hits:
     detail = e.get("name") or e.get("first_line") or f"{e.get('size')} bytes"

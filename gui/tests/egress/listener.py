@@ -95,12 +95,20 @@ async def blackhole(reader, writer):
 
 async def main():
     loop = asyncio.get_running_loop()
+    # A port that cannot be opened (Windows reserves some) is logged, not fatal: the others
+    # still catch what reaches them, and the log says what was not watched.
+    async def bind(kind, port, start):
+        try:
+            await start()
+        except OSError as error:
+            log("bind-failed", listener=kind, port=port, error=str(error))
+
     if WITH_DNS:
-        await loop.create_datagram_endpoint(Dns, local_addr=("127.0.0.1", 53))
-    await loop.create_datagram_endpoint(lambda: Udp(3478), local_addr=("127.0.0.1", 3478))
+        await bind("dns", 53, lambda: loop.create_datagram_endpoint(Dns, local_addr=("127.0.0.1", 53)))
+    await bind("udp", 3478, lambda: loop.create_datagram_endpoint(lambda: Udp(3478), local_addr=("127.0.0.1", 3478)))
     for port in sorted({80, 443, PORT, PORT + 1}):
-        await asyncio.start_server(lambda r, w, p=port: tcp(r, w, p), "127.0.0.1", port)
-    await asyncio.start_server(blackhole, "127.0.0.1", 9)
+        await bind("tcp", port, lambda p=port: asyncio.start_server(lambda r, w, q=p: tcp(r, w, q), "127.0.0.1", p))
+    await bind("blackhole", 9, lambda: asyncio.start_server(blackhole, "127.0.0.1", 9))
     log("ready")
     await asyncio.Event().wait()
 

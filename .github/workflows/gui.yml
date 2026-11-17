@@ -118,13 +118,18 @@ jobs:
         run: |
           function Probe($exe, $mode) {
             $work = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP ([IO.Path]::GetRandomFileName()))
-            $listener = Start-Process python -ArgumentList "tests/egress/listener.py", "$work/network.log", "8099", "--no-dns" -PassThru
+            $listener = Start-Process python -ArgumentList "tests/egress/listener.py", "$work/network.log", "8099", "--no-dns" `
+              -PassThru -RedirectStandardError "$work/listener.err"
             Start-Sleep 3
             $env:JAVABYTE_PROBE_PORT = "8099"
             $env:JAVABYTE_PROBE_REPORT = "$work/report.json"
+            $started = Get-Date
             $app = Start-Process $exe -PassThru -RedirectStandardError "$work/app.log"
             if (-not $app.WaitForExit(120000)) { $app.Kill() }
-            Stop-Process $listener.Id
+            Write-Host "App ran for $([int]((Get-Date) - $started).TotalSeconds) s, exit code $($app.ExitCode)"
+            Stop-Process -Id $listener.Id -ErrorAction SilentlyContinue
+            Write-Host "--- listener errors"; Get-Content "$work/listener.err" -ErrorAction SilentlyContinue
+            Write-Host "--- app log"; Get-Content "$work/app.log" -ErrorAction SilentlyContinue
             python tests/egress/check.py "$work" $mode
             if ($LASTEXITCODE -ne 0) { throw "egress check failed for $exe" }
           }

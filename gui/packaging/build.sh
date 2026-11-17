@@ -21,8 +21,9 @@ tauri=(${TAURI_CLI:-npx --yes @tauri-apps/cli@2.12.5})
 version="$(packaging/version.sh)"
 
 packaging/stage.sh "${bridge_flag[@]}"
-configs=(--config packaging/tauri.bundle.conf.json)
-[[ -n "$suffix" ]] && configs+=(--config packaging/tauri.bridge.conf.json)
+# Absolute paths: the Tauri CLI runs in app/.
+configs=(--config "$gui/packaging/tauri.bundle.conf.json")
+[[ -n "$suffix" ]] && configs+=(--config "$gui/packaging/tauri.bridge.conf.json")
 
 case "$(uname -s)" in
     Linux) os=linux; bundles=deb,appimage ;;

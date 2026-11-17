@@ -276,8 +276,23 @@ neither eyes nor screen readers are misled.
   app", no shell execution, no link following. Dropped files, payloads and defined classes are
   shown as text or hex inside the app.
 - **All sample text is inserted as text**, never as HTML; Leptos escapes by default and the
-  code forbids raw HTML insertion (checked by a lint). The web view has a strict content
-  security policy: no remote content, no inline scripts, no network access.
+  code forbids raw HTML insertion (checked by a lint).
+- **The window cannot reach the network**, in three independent layers, so that a mistake in
+  one does not open it:
+  1. A strict content security policy: only the app's own packaged files, no inline scripts,
+     no frames, workers, plugins, media, forms or `<base>`.
+  2. A navigation guard in Rust that refuses any navigation away from the app's own origin
+     (links, forms, `window.location`, meta refresh), which the policy does not cover. WebRTC
+     is removed before any page script runs, because it sends UDP outside the policy.
+  3. A black-hole proxy: all of the web view's network traffic goes to a closed port on the
+     computer itself (`127.0.0.1:9`). This also stops what neither of the others can, such as
+     `<link rel="preconnect">` and the connection the engine opens when a link is clicked,
+     both of which look up the host name (which can carry stolen data) before any check. On
+     Windows the proxy is also told not to exempt `localhost`, which Chromium otherwise
+     sends direct.
+  The app's files and its channel to the backend are served inside the process, not over the
+  network, so none of this affects them. `gui/tests/egress` attacks all three from inside the
+  real window; see [gui/PHASE0-TESTING.md](gui/PHASE0-TESTING.md#network-containment).
 - **Tauri permissions are minimal**: the screens can call a short list of typed backend
   commands and nothing else; file access is limited to files the user picked and the output
   folders.

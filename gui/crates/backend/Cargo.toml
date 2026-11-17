@@ -1,0 +1,11 @@
+[package]
+name = "javabyte-gui-backend"
+description = "The JavaByte GUI's non-visual logic: event storage, filtering, run tracking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+javabyte-gui-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true

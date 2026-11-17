@@ -7,3 +7,8 @@ samples/
 .idea/
 *.iml
 .venv-native-bridge/
+
+# Desktop app build output
+gui/ui/dist/
+gui/app/gen/
+node_modules/

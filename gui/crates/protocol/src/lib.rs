@@ -126,6 +126,13 @@ pub struct RunStatus {
     /// Once the run has ended: whether a report is ready to open.
     #[serde(default)]
     pub report_ready: bool,
+    /// Before the analysis itself starts, what is happening, when that takes long enough to
+    /// say (Windows Sandbox starting).
+    #[serde(default)]
+    pub starting: Option<String>,
+    /// The isolation chosen could not start, and why; the screen offers another way.
+    #[serde(default)]
+    pub isolation_failed: Option<String>,
 }
 
 /// Where a run is in its life.

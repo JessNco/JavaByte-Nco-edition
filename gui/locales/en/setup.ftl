@@ -6,7 +6,9 @@ picker-output-folder = Choose where analyses are saved
 
 isolation-unavailable = This system does not let JavaByte turn off the network for an analysis ({ $detail }). Installing the .deb package adds the permission Ubuntu 24.04 asks for.
 isolation-unavailable-appimage = The AppImage cannot turn off the network for an analysis on this system ({ $detail }). Install the .deb package instead: it adds the permission Ubuntu 24.04 asks for.
-isolation-not-on-this-system = Windows has no way to turn off the network for one program without administrator rights. Run JavaByte inside a virtual machine without network when you analyse live malware.
+isolation-not-on-this-system = Windows has no way to turn off the network for one program without administrator rights or an extra part. Install the JavaByte sandbox add-on (a separate download on the releases page) to run each analysis with no network, or run JavaByte inside a virtual machine without network when you analyse live malware.
+isolation-addon-check-failed = The sandbox add-on is installed but did not answer. Reinstall it, or run JavaByte inside a virtual machine without network.
+isolation-addon-problem = { $detail }
 
 self-check-yes = yes
 self-check-no = no
@@ -20,6 +22,9 @@ self-check-bridge = Native bridge: { $path } (Speakeasy imports: { $works })
 self-check-no-bridge = Native bridge: not installed.
 self-check-isolation-on = Network isolation for analyses: available.
 self-check-isolation-off = Network isolation for analyses: not available. { $detail }
+self-check-sandbox-addon = Sandbox add-on: { $path }
+self-check-windows-sandbox-on = Windows Sandbox: available.
+self-check-windows-sandbox-off = Windows Sandbox: not available. { $detail }
 
 ## The Preferences screen.
 
@@ -62,3 +67,12 @@ isolation-question-dont-ask = Don't ask me again (you can change this in Prefere
 isolation-question-cancel = Cancel
 isolation-question-run = Analyse without isolation
 prefs-accessibility = Something hard to use with your screen reader, keyboard or display settings? Please tell us at github.com/JessNco/JavaByte-Nco-edition/issues, with the label "accessibility".
+
+## Windows: AppContainer or Windows Sandbox, with the sandbox add-on.
+
+prefs-isolation-method = How to isolate each analysis
+prefs-isolation-appcontainer = AppContainer: no network, starts at once (recommended)
+prefs-isolation-windows-sandbox = Windows Sandbox: strongest isolation, a fresh Windows for each analysis; slower to start
+prefs-isolation-windows-sandbox-unavailable = Windows Sandbox cannot be used here: { $detail }
+prefs-isolation-appcontainer-on = Analyses will run in an AppContainer.
+prefs-isolation-windows-sandbox-on = Analyses will run in Windows Sandbox.

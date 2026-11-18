@@ -12,7 +12,7 @@ mod guard;
 mod egress_probe;
 
 use javabyte_gui_backend::session::Session;
-use javabyte_gui_backend::setup::{self, Setup};
+use javabyte_gui_backend::setup::Setup;
 use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::Validation;
@@ -116,6 +116,13 @@ fn run_question(state: tauri::State<'_, AppState>) -> Option<String> {
     isolation_question(&state)
 }
 
+/// Starts the analysis again in an AppContainer, after Windows Sandbox could not start and the
+/// person chose the lighter isolation for this run (docs/gui/WINDOWS-SANDBOX.md).
+#[tauri::command]
+fn start_run_without_sandbox(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    session(&state).start_without_sandbox()
+}
+
 /// Starts the analysis of the chosen sample with its settings. One at a time. Refused when a
 /// question must be answered first and `without_isolation` does not answer it.
 #[tauri::command]
@@ -138,6 +145,8 @@ enum PreferenceChange {
     Isolate(bool),
     /// Ask before a run that cannot be isolated.
     AskWithoutIsolation(bool),
+    /// Windows, with the sandbox add-on: use Windows Sandbox rather than an AppContainer.
+    Strongest(bool),
     /// Use the Java that came with the app again.
     BundledJava,
     /// Save runs in Documents/JavaByte again.
@@ -165,6 +174,7 @@ fn change_preference(change: PreferenceChange, state: tauri::State<'_, AppState>
     match change {
         PreferenceChange::Isolate(on) => preferences.isolate = on,
         PreferenceChange::AskWithoutIsolation(ask) => preferences.ask_without_isolation = ask,
+        PreferenceChange::Strongest(on) => preferences.strongest_isolation = on,
         PreferenceChange::BundledJava => preferences.java = None,
         PreferenceChange::DefaultOutputFolder => preferences.output_folder = None,
     }
@@ -460,7 +470,7 @@ fn plain_path(path: PathBuf) -> PathBuf {
 /// can ask for it, and CI uses it to test installers. Exit code 0 when the tool runs.
 fn self_check(setup: &Setup) -> i32 {
     let preferences = setup.preferences();
-    let isolation = setup::isolation_status();
+    let isolation = setup.isolation_status();
     let status = setup.status(&preferences, &isolation);
     let yes_no = |found: bool| if found { t!("self-check-yes") } else { t!("self-check-no") };
     let mut lines = vec![
@@ -491,6 +501,13 @@ fn self_check(setup: &Setup) -> i32 {
         (true, None) => t!("self-check-isolation-on"),
         (_, problem) => t!("self-check-isolation-off", detail = problem.clone().unwrap_or_default()),
     });
+    if let Some(helper) = setup.sandbox_helper() {
+        lines.push(t!("self-check-sandbox-addon", path = helper.display().to_string()));
+        lines.push(match &isolation.strongest_problem {
+            None if isolation.strongest_available => t!("self-check-windows-sandbox-on"),
+            problem => t!("self-check-windows-sandbox-off", detail = problem.clone().unwrap_or_default()),
+        });
+    }
     for line in lines {
         println!("{line}");
     }
@@ -511,7 +528,7 @@ fn main() {
             // unless Preferences name another folder.
             let setup = setup_for(app.path().resource_dir()?, app.path().app_data_dir()?, app.path().document_dir().ok());
             let preferences = setup.preferences();
-            let isolation = setup::isolation_status();
+            let isolation = setup.isolation_status();
             let launcher = setup.launcher(&preferences, &isolation);
             let runs_root = setup.output_folder(&preferences);
             let recent = setup.data.join("recent-runs.json");
@@ -538,7 +555,7 @@ fn main() {
     macro_rules! commands {
         ($($extra:path),*) => {
             tauri::generate_handler![engine_status, choose_sample, choose_sample_folder, take_dropped, inspect_sample,
-                command_line, run_question, start_run, setup_status, change_preference, choose_java, choose_output_folder, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
+                command_line, run_question, start_run, start_run_without_sandbox, setup_status, change_preference, choose_java, choose_output_folder, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
                 settings_text, set_settings_text, config_schema, tool_policy, check_settings, presets, presets_folder, save_preset,
                 load_preset, delete_preset, import_settings, export_settings, choose_host_file,
                 open_report_file, open_report_folder, artifacts, artifact_page, artifact_disasm, save_zip, save_as_is,

@@ -189,6 +189,17 @@ pub async fn run_question() -> Option<String> {
     }
 }
 
+/// Starts the analysis again in an AppContainer, after Windows Sandbox could not start.
+pub async fn start_run_without_sandbox() -> Result<(), String> {
+    if in_desktop_app() {
+        invoke("start_run_without_sandbox", NoArgs {}).await
+    } else {
+        // The stand-in's AppContainer: the ordinary pretend run.
+        in_page(|b| b.preferences.strongest_isolation = false);
+        start_run(false).await
+    }
+}
+
 /// Starts the analysis of the chosen sample with its settings. `without_isolation` answers the
 /// [`run_question`], when there was one.
 pub async fn start_run(without_isolation: bool) -> Result<(), String> {
@@ -403,6 +414,21 @@ pub async fn run_status() -> Result<RunStatus, String> {
             let mut status = b.run.status(js_sys::Date::now());
             if let Some(sample) = &b.sample {
                 status.sample_name = sample.name.clone();
+            }
+            // Windows Sandbox chosen: a few seconds of starting, then the run, or a failed start.
+            if b.preferences.strongest_isolation && page_asks("os=windows") {
+                let since = status.elapsed_ms;
+                if page_asks("sandbox=fails") && since >= 1500 {
+                    return RunStatus {
+                        state: RunState::Finished,
+                        sample_name: status.sample_name,
+                        isolation_failed: Some(t!("running-isolation-failed", detail = "Windows Sandbox did not start the analysis within 3 minutes.")), // not-ui-text: the add-on's own words, imitated
+                        ..RunStatus::default()
+                    };
+                }
+                if since < 3000 && status.state == RunState::Running {
+                    status.starting = Some(t!("running-starting-sandbox"));
+                }
             }
             if status.state == RunState::Finished {
                 b.finished_once = true;
@@ -619,18 +645,35 @@ pub async fn event_position(seq: u64, filter: &javabyte_gui_protocol::EventFilte
 
 // --- Preferences ---
 
-/// The browser stand-in's computer: Linux, with isolation available unless the page address
-/// asks otherwise (`?isolation=unavailable`, for testing the question before a run).
+/// Whether the page address asks the stand-in to imitate something (`?isolation=unavailable`).
+fn page_asks(flag: &str) -> bool {
+    web_sys::window().and_then(|w| w.location().search().ok()).is_some_and(|q| q.contains(flag))
+}
+
+/// The browser stand-in's computer, for the accessibility checks: Linux with isolation, unless
+/// the page address asks for something else:
+///
+/// - `?isolation=unavailable`: Linux where isolation is refused (the question before a run);
+/// - `?os=windows`: Windows with the sandbox add-on, where Windows Sandbox is not turned on;
+/// - `?os=windows&sandbox=works`: the same with Windows Sandbox available, which takes a few
+///   seconds to "start" each run; `&sandbox=fails` makes that start fail.
 fn stand_in_setup() -> SetupStatus {
-    let unavailable = web_sys::window().and_then(|w| w.location().search().ok()).is_some_and(|q| q.contains("isolation=unavailable"));
-    let isolation = if unavailable {
-        Isolation { supported: true, available: false, problem: Some(t!("isolation-unavailable-appimage", detail = "Permission denied (os error 13)")) } // not-ui-text: a system error as the stand-in reports it
+    let windows = page_asks("os=windows");
+    let isolation = if page_asks("isolation=unavailable") {
+        Isolation { supported: true, problem: Some(t!("isolation-unavailable-appimage", detail = "Permission denied (os error 13)")), ..Isolation::default() } // not-ui-text: a system error as the stand-in reports it
+    } else if windows && !page_asks("sandbox=") {
+        Isolation {
+            supported: true,
+            available: true,
+            strongest_problem: Some("Windows Sandbox is not turned on.".into()), // not-ui-text: the add-on's own words, imitated
+            ..Isolation::default()
+        }
     } else {
-        Isolation { supported: true, available: true, problem: None }
+        Isolation { supported: true, available: true, strongest_available: windows, ..Isolation::default() }
     };
     SetupStatus {
         version: env!("CARGO_PKG_VERSION").into(),
-        os: "linux".into(), // not-ui-text: an operating system id
+        os: if windows { "windows" } else { "linux" }.into(), // not-ui-text: an operating system id
         java: "/opt/javabyte/lib/javabyte/runtime/bin/java".into(), // not-ui-text: a path
         java_bundled: true,
         java_version: Some("21.0.5".into()),
@@ -655,6 +698,8 @@ pub enum PreferenceChange {
     Isolate(bool),
     /// Ask before a run that cannot be isolated.
     AskWithoutIsolation(bool),
+    /// Windows: use Windows Sandbox rather than an AppContainer.
+    Strongest(bool),
     /// Use the Java that came with the app again.
     BundledJava,
     /// Save runs in Documents/JavaByte again.
@@ -674,6 +719,7 @@ pub async fn change_preference(change: PreferenceChange) -> Result<SetupStatus, 
         in_page(|b| match change {
             PreferenceChange::Isolate(on) => b.preferences.isolate = on,
             PreferenceChange::AskWithoutIsolation(ask) => b.preferences.ask_without_isolation = ask,
+            PreferenceChange::Strongest(on) => b.preferences.strongest_isolation = on,
             PreferenceChange::BundledJava => b.preferences.java = None,
             PreferenceChange::DefaultOutputFolder => b.preferences.output_folder = None,
         });

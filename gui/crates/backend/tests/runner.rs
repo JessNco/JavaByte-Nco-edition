@@ -145,7 +145,7 @@ fn an_isolated_run_works_and_writes_its_report() {
         eprintln!("skipped: isolation is not available here: {e}");
         return;
     }
-    launcher.isolate = true;
+    launcher.isolation = javabyte_gui_backend::runner::RunIsolation::Namespace;
     let request = request(&classes, "dev.javabyte.guest.Basics", &[], "isolated");
     let ended = launcher.start(&request).unwrap().wait(Duration::from_secs(60), Duration::from_secs(10));
     assert_eq!(ended.exit_code, Some(exit_code::OK), "{}", ended.stderr);

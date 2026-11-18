@@ -1,0 +1,24 @@
+[package]
+name = "javabyte-sandbox"
+description = "The Windows sandbox add-on: starts one program in an AppContainer or in Windows Sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+# The isolation itself exists only on Windows. Elsewhere the helper builds (so the workspace and
+# its tests build everywhere) and says it is Windows-only.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }

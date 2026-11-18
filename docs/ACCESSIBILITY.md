@@ -26,7 +26,9 @@ most public bodies are required to meet.
 ## What works
 
 - Everything can be done with a keyboard, in a logical order, with a visible focus ring that is
-  never hidden. No time limits; no keys to hold together.
+  never hidden. No time limits. Nothing needs keys held together: the one shortcut, Control
+  and full stop to stop an analysis, is optional (the Stop button does the same) and is made
+  known to screen readers.
 - Each screen has a title and a heading that receives focus when the screen opens. A "Skip to
   main content" link comes first.
 - Progress during an analysis is announced to screen readers at an interval you choose

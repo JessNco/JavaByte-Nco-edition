@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Windows sandbox add-on's installer (docs/gui/WINDOWS-SANDBOX.md), built with WiX 5 by
+     packaging/build.sh. It puts the helper where the app looks for it,
+     Program Files\JavaByte\sandbox, and nothing else: no registry entries, no services. Its own
+     UpgradeCode, so it installs, upgrades and uninstalls apart from the app. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="JavaByte sandbox add-on" Manufacturer="JavaByte" Version="$(Version)"
+           UpgradeCode="2d51a177-8430-4c07-be09-5f451b597f77" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer JavaByte sandbox add-on is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="JavaByteFolder" Name="JavaByte">
+        <Directory Id="SandboxFolder" Name="sandbox">
+          <Component Id="Helper">
+            <File Source="$(Helper)" Name="javabyte-sandbox.exe" />
+          </Component>
+          <Component Id="Readme">
+            <File Source="$(Readme)" Name="README.txt" />
+          </Component>
+          <Component Id="Licence">
+            <File Source="$(Licence)" Name="LICENSE.txt" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Main">
+      <ComponentRef Id="Helper" />
+      <ComponentRef Id="Readme" />
+      <ComponentRef Id="Licence" />
+    </Feature>
+  </Package>
+</Wix>

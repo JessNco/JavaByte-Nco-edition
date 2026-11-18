@@ -21,6 +21,7 @@ installers) and on a version tag (both editions, as a draft release).
 | `build.sh` | Runs `stage.sh`, then the Tauri bundler, and names the results |
 | `tauri.bundle.conf.json` | Added to `app/tauri.conf.json` when bundling: the resources and the per-system installer settings. Kept apart because the resources exist only after staging, and a plain `cargo build` checks every listed resource |
 | `tauri.bridge.conf.json` | Added for the "with native bridge" edition: the same resources plus `bridge/` |
+| `windows/sandbox-addon.wxs`, `windows/sandbox-addon-README.txt` | The Windows sandbox add-on's own MSI (WiX 5, built with the standard edition) and the README it installs; a zip of the same files serves the portable edition |
 | `linux/javabyte-gui.desktop` | The desktop entry: `%f` and the Java MIME types put JavaByte under "Open with" for `.jar` files without making it the default |
 | `linux/apparmor-profile`, `linux/postinst`, `linux/postrm` | Ubuntu 24.04 allows user namespaces (which network isolation needs) only to programs with a profile that permits them. The `.deb` installs this profile where AppArmor 4 is present |
 | `windows/open-with.wxs` | A WiX fragment adding JavaByte to `.jar`'s "Open with" list, leaving the default program alone |

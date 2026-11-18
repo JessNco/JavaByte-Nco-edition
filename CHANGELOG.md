@@ -6,6 +6,10 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Windows sandbox add-on, a separate download: each analysis runs with no network, in an
+  AppContainer (every edition, the default) or in a fresh Windows Sandbox (Pro and up, chosen in
+  Preferences). The Running screen shows Windows Sandbox starting; if it cannot start, the app
+  says why and asks before using an AppContainer instead. See docs/gui/WINDOWS-SANDBOX.md.
 - Desktop app, phase 6 (accessibility): checks for the WCAG 2.2 criteria axe does not test, run
   on every screen in CI; a manual audit script for NVDA and Orca (docs/gui/PHASE6-AUDIT.md); an
   accessibility statement (docs/ACCESSIBILITY.md), and where to report problems, in Preferences.

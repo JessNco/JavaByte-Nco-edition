@@ -32,6 +32,7 @@ on the path, and the tool's jar from `JAVABYTE_JAR`, a `javabyte.jar` next to th
 | `ui` | The screens (`screens/`, with the settings editor in `screens/settings/`), the event grid and table (`events/`), and the bridge to the app or, in a plain browser, to the pretend backend (`bridge.rs`) | Rust (Leptos), compiled to WebAssembly with Trunk |
 | `locales` | Every word the app shows, per language | Fluent |
 | `app` | The desktop window, its network guard (`guard.rs`) and the commands the screens may call (`main.rs`) | Rust (Tauri 2) |
+| `sandbox` | The Windows sandbox add-on: starts one program in an AppContainer or in Windows Sandbox, passing its input, output and exit code through; a separate download ([docs/gui/WINDOWS-SANDBOX.md](../docs/gui/WINDOWS-SANDBOX.md)) | Rust (`windows-sys`) |
 | `packaging` | Installers: staging the Java runtime, jar and bridge, the Tauri bundle settings, the Linux AppArmor profile and the Windows "Open with" entry | Bash, JSON, WiX |
 | `tests/a11y` | Automated accessibility checks in Chromium | Node.js, Playwright, axe-core |
 | `tests/atspi` | What the Linux accessibility bus receives from the real window | Python, AT-SPI |

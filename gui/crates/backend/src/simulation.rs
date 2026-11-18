@@ -84,6 +84,8 @@ impl Simulation {
             outcome,
             sample_name: "example.jar".into(),
             entry: "com.example.Main.main".into(),
+            starting: None,
+            isolation_failed: None,
         }
     }
 

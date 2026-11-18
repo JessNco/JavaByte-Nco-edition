@@ -115,6 +115,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: gui
@@ -136,6 +137,12 @@ jobs:
           JAVABYTE_TEST_CLASSES: ${{ github.workspace }}/target/test-classes
           JAVABYTE_RUNNER_TESTS_REQUIRED: '1'
         run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
+      # The sandbox add-on's isolation code exists only on Windows, so it is linted and its unit
+      # tests run here (its end-to-end tests are in the Installers workflow).
+      - name: Sandbox add-on lints and tests
+        run: |
+          cargo clippy -p javabyte-sandbox --all-targets -- -D warnings
+          cargo test -p javabyte-sandbox
       - name: Build the screens
         working-directory: gui/ui
         run: trunk build --release

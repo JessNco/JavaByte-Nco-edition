@@ -34,7 +34,7 @@ Not goals: replacing the command line, downloading samples, running the test cor
 | Samples | Local files only; no MalwareBazaar download, no corpus runner |
 | Saving dropped files | Password-protected zip (`infected`) by default; saving as is only after a very clear warning |
 | Code signing | No certificate yet; release unsigned at first with honest install instructions, and obtain signing before a wide release (see [Code signing](#code-signing)) |
-| Isolation on Windows | A virtual machine is the standard guidance. A built-in sandbox is explored as an optional add-on, not shipped as standard (see [Future: Windows sandbox add-on](#future-windows-sandbox-add-on)) |
+| Isolation on Windows | A separate sandbox add-on: an AppContainer on every edition, Windows Sandbox where available. Without it, a virtual machine is the guidance (see [Windows sandbox add-on](#windows-sandbox-add-on)) |
 | Runs at once | One analysis at a time |
 | Languages | English first; every piece of text in resource files so translations can be added |
 
@@ -314,9 +314,10 @@ neither eyes nor screen readers are misled.
   folders.
 - **Linux isolation**: runs start in a network namespace with no network by default, as
   `scripts/run-isolated.sh` does today. The setting can be turned off, with an explanation.
-- **Windows** has no equivalent that works without administrator rights. The GUI says so
-  plainly on the first run and in Preferences, and recommends running JavaByte inside a
-  virtual machine. A built-in sandbox may come later as an add-on (see below).
+- **Windows** has no equivalent without administrator rights or an extra part. The sandbox
+  add-on, a separate download, adds one: each analysis in an AppContainer with no network, or
+  in Windows Sandbox where available (see below). Without it, the GUI says so plainly on the
+  first run and in Preferences, and recommends a virtual machine.
 
 ### Saving files a sample produced
 
@@ -433,11 +434,11 @@ English is the only language at first, but nothing in the code holds user-visibl
 | An analyst exports a dropped file and runs it | Encrypted zip by default; "save as is" only after an explicit warning; the GUI never opens saved files |
 | Unsigned installer puts off new users | Clear install instructions with published hashes now; signing before a wide release |
 
-## Future: Windows sandbox add-on
+## Windows sandbox add-on
 
-Not part of the first release. On Windows the standard guidance stays "run JavaByte in a
-virtual machine". This section records what an optional add-on could look like, so that the
-first release leaves room for it.
+**Built**: [gui/WINDOWS-SANDBOX.md](gui/WINDOWS-SANDBOX.md) records the decisions (AppContainer
+everywhere as the default, Windows Sandbox as the strongest choice where available, a separate
+download) and how it works. What follows is the exploration that led to it.
 
 **What it would add.** On Linux, runs already have no network. The add-on would give Windows a
 comparable second layer: if the emulator ever had a flaw, the Java process still could not

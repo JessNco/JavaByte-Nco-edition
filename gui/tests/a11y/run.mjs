@@ -527,7 +527,57 @@ await section('tools', async () => {
   await context.close();
 });
 
-// 10. Chromium's accessibility tree for the grid, as assistive technology receives it.
+// 10. Windows with the sandbox add-on (the stand-in imitates it): the choice of isolation in
+// Preferences, the starting stage of Windows Sandbox, and a failed start with its offer.
+await section('windows sandbox', async () => {
+  const unavailable = await open({}, '?os=windows');
+  await unavailable.page.getByRole('button', { name: 'Preferences' }).click();
+  await unavailable.page.waitForSelector('#isolation-appcontainer');
+  check(await unavailable.page.getByRole('radio', { name: /^AppContainer/ }).isChecked(), 'AppContainer is the default');
+  const sandboxRadio = unavailable.page.getByRole('radio', { name: /^Windows Sandbox/ });
+  check(await sandboxRadio.isDisabled(), 'Windows Sandbox cannot be chosen where it is not turned on');
+  check((await sandboxRadio.getAttribute('aria-describedby')) === 'isolation-windows-sandbox-why', 'and the reason is tied to it');
+  await axe(unavailable.page, 'preferences, Windows');
+  await unavailable.context.close();
+
+  const { page, context, errors } = await open({}, '?os=windows&sandbox=works');
+  await page.getByRole('button', { name: 'Preferences' }).click();
+  await page.waitForSelector('#isolation-windows-sandbox');
+  await page.getByRole('radio', { name: /^Windows Sandbox/ }).check();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await toOverview(page);
+  await page.getByRole('button', { name: 'Analyse', exact: true }).click();
+  await page.waitForSelector('.starting', { timeout: 5000 });
+  check((await page.locator('.starting').textContent()).startsWith('Starting Windows Sandbox'), 'the starting stage is shown in words');
+  await page.waitForFunction(() => document.querySelector('#announcer')?.textContent.startsWith('Starting Windows Sandbox'), null, { timeout: 3000 }).catch(() => {});
+  check((await page.locator('#announcer').textContent()).startsWith('Starting Windows Sandbox'), 'and announced');
+  await axe(page, 'running, Windows Sandbox starting');
+  await page.waitForSelector('.starting', { state: 'detached', timeout: 6000 });
+  check(true, 'the starting stage ends when the analysis begins');
+  await page.getByRole('button', { name: 'Stop analysis' }).click();
+  check(errors.length === 0, `page errors: ${errors.join('; ')}`);
+  await context.close();
+
+  const failing = await open({}, '?os=windows&sandbox=fails');
+  await failing.page.getByRole('button', { name: 'Preferences' }).click();
+  await failing.page.getByRole('radio', { name: /^Windows Sandbox/ }).check();
+  await failing.page.waitForTimeout(200);
+  await failing.page.getByRole('button', { name: 'Start', exact: true }).click();
+  await toOverview(failing.page);
+  await failing.page.getByRole('button', { name: 'Analyse', exact: true }).click();
+  await failing.page.waitForSelector('#isolation-failed-heading', { timeout: 6000 });
+  check((await failing.page.locator('#announcer').textContent()).startsWith('Windows Sandbox could not start'), 'a failed start is announced with its reason');
+  check(!(await failing.page.getByRole('button', { name: 'View the report' }).isVisible()), 'no report is offered for a run that never began');
+  await axe(failing.page, 'running, Windows Sandbox failed');
+  await failing.page.getByRole('button', { name: 'Analyse in an AppContainer instead' }).click();
+  check(await focusIs(failing.page, 'running-heading', 3000), 'choosing the AppContainer starts again and focuses the heading');
+  await failing.page.waitForTimeout(2000);
+  check(!(await failing.page.locator('#isolation-failed-heading').isVisible()), 'and the AppContainer run goes ahead');
+  await failing.context.close();
+});
+
+// 11. Chromium's accessibility tree for the grid, as assistive technology receives it.
 await section('grid accessibility tree', async () => {
   const { page, context } = await open();
   await toReport(page);

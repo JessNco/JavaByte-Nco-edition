@@ -1,4 +1,4 @@
-## Display settings.
+## Preferences: the display part (colours, text size, motion, announcements).
 
 display-heading = Display
 display-intro = Changes apply at once and are remembered. By default the app follows your system settings.

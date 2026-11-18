@@ -65,7 +65,7 @@ for Windows and Linux. It opens a sample or an earlier report, lets you change e
 (the same YAML config the command line reads), runs the analysis with live progress, and shows
 the whole report: events, limits and gaps, saved files as text, hex or bytecode, and a
 comparison of two runs. It is built to WCAG 2.2 AA, its window has no network access, and on
-Linux each analysis also runs with no network. The installers bring their own Java; see
+Linux (and on Windows with the sandbox add-on) each analysis also runs with no network. The installers bring their own Java; see
 [docs/INSTALL.md](docs/INSTALL.md). Building it from source: [gui/README.md](gui/README.md).
 The design is in [docs/GUI-PLAN.md](docs/GUI-PLAN.md).
 

@@ -184,14 +184,18 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress -q package -DskipTests
       - name: Install Trunk
         run: cargo install --locked trunk@0.22.1
+      # WiX 5 builds the sandbox add-on's MSI (the app's own MSI comes from Tauri's WiX 3).
+      - name: Install WiX
+        if: matrix.edition == 'standard'
+        run: dotnet tool install --global wix --version 5.0.2
       - name: Build the installers
         run: packaging/build.sh ${{ matrix.edition == 'with-native-bridge' && '--bridge' || '' }}
       # A silent install, then the installed app checks itself, the "Open with" entry is there
       # without taking over .jar files, and uninstalling removes everything.
-      - name: Install, self-check and uninstall the MSI
+      - name: Install and self-check the MSI
         shell: pwsh
         run: |
-          $msi = (Get-ChildItem target/installers/*.msi).FullName
+          $msi = (Get-ChildItem target/installers/*.msi | Where-Object Name -notlike '*sandbox-addon*').FullName
           $before = (Get-ItemProperty -Path 'Registry::HKEY_CLASSES_ROOT\.jar' -ErrorAction SilentlyContinue).'(default)'
           $p = Start-Process msiexec -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', "$env:RUNNER_TEMP\install.log" -Wait -PassThru
           if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.log" -Tail 60; throw "install failed: $($p.ExitCode)" }
@@ -207,9 +211,61 @@ jobs:
           if (-not $openWith) { throw "JavaByte is not under Open with for .jar files" }
           $after = (Get-ItemProperty -Path 'Registry::HKEY_CLASSES_ROOT\.jar' -ErrorAction SilentlyContinue).'(default)'
           if ($after -ne $before) { throw ".jar's default program changed from '$before' to '$after'" }
+      # The sandbox add-on on the installed app: the AppContainer has no network while the same
+      # program outside it has; a whole analysis of a harmless fixture runs in it and writes its
+      # report; the access granted for the run is taken away afterwards. (Windows Sandbox needs
+      # nested virtualisation, which runners lack: docs/gui/WINDOWS-SANDBOX.md has the manual check.)
+      - name: Install and test the sandbox add-on
+        if: matrix.edition == 'standard'
+        shell: pwsh
+        run: |
+          $addon = (Get-ChildItem target/installers/*-sandbox-addon.msi).FullName
+          $p = Start-Process msiexec -ArgumentList '/i', "`"$addon`"", '/qn', '/l*v', "$env:RUNNER_TEMP\addon.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\addon.log" -Tail 60; throw "add-on install failed: $($p.ExitCode)" }
+          $helper = "$env:ProgramFiles\JavaByte\sandbox\javabyte-sandbox.exe"
+          if (-not (Test-Path $helper)) { throw "the add-on is not where the app looks for it" }
+          $app = "$env:ProgramFiles\JavaByte\javabyte-gui.exe"
+          Start-Process $app -ArgumentList '--self-check' -Wait -RedirectStandardOutput "$env:RUNNER_TEMP\check2.txt"
+          Get-Content "$env:RUNNER_TEMP\check2.txt"
+          if (-not (Select-String -Path "$env:RUNNER_TEMP\check2.txt" -Pattern 'Network isolation for analyses: available.' -Quiet)) { throw "the app does not find AppContainer isolation" }
+
+          # Network: the same request outside and inside the AppContainer.
+          $curl = "$env:SystemRoot\System32\curl.exe"
+          & $curl -s -m 20 -o NUL https://example.com
+          if ($LASTEXITCODE -ne 0) { throw "the runner itself has no network ($LASTEXITCODE); the test would prove nothing" }
+          & $helper appcontainer -- $curl -s -m 20 -o NUL https://example.com
+          Write-Host "curl inside the AppContainer ended with $LASTEXITCODE"
+          if ($LASTEXITCODE -eq 0) { throw "a program in the AppContainer reached the network" }
+
+          # A whole analysis of a harmless fixture, with the installed runtime and tool.
+          $work = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\appcontainer-run"
+          $sampleDir = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\appcontainer-sample"
+          $sample = "$sampleDir\http-rat.jar"
+          jar --create --file $sample --main-class dev.javabyte.guest.sim.HttpRat -C ../target/test-classes dev/javabyte/guest/sim/HttpRat.class
+          $java = "$env:ProgramFiles\JavaByte\runtime\bin\java.exe"
+          $tool = "$env:ProgramFiles\JavaByte\javabyte.jar"
+          & $helper appcontainer --read $sample --write $work -- $java -jar $tool run $sample -o $work -s output.console=quiet
+          Write-Host "the analysis in the AppContainer ended with $LASTEXITCODE"
+          if (-not (Test-Path "$work\report.json")) { throw "the analysis in the AppContainer wrote no report" }
+          $report = Get-Content "$work\report.json" -Raw | ConvertFrom-Json
+          Write-Host "outcome: $($report.runs[0].outcome); events: $($report.events.Count)"
+          if ($report.events.Count -lt 1) { throw "the analysis recorded nothing" }
+
+          # The grants were for the run only.
+          foreach ($path in @($sample, $work)) {
+            $left = (Get-Acl $path).Access | Where-Object { $_.IdentityReference.Value -like 'S-1-15-2-*' -and -not $_.IsInherited }
+            if ($left) { throw "the AppContainer still has access to $path" }
+          }
+          $p = Start-Process msiexec -ArgumentList '/x', "`"$addon`"", '/qn' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "add-on uninstall failed: $($p.ExitCode)" }
+          if (Test-Path $helper) { throw "the add-on is still there after uninstalling" }
+      - name: Uninstall the MSI
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem target/installers/*.msi | Where-Object Name -notlike '*sandbox-addon*').FullName
           $p = Start-Process msiexec -ArgumentList '/x', "`"$msi`"", '/qn' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
-          if (Test-Path $exe.FullName) { throw "the app is still there after uninstalling" }
+          if (Test-Path "$env:ProgramFiles\JavaByte\javabyte-gui.exe") { throw "the app is still there after uninstalling" }
       - name: Self-check the portable edition
         shell: pwsh
         run: |

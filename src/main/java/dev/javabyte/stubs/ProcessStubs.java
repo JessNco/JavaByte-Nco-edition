@@ -65,6 +65,11 @@ final class ProcessStubs {
         return launch(vm, command, args.length > 2 ? args[2] : null);
     }
 
+    /**
+     * Records one launch and returns the simulated process. The output comes from the first
+     * matching rule, then from the built-in commands, then is empty. The process is registered
+     * with the guest environment so that its standard input is reported at the end of the run.
+     */
     private static SimProcess launch(VirtualMachine vm, List<String> command, Object directory) {
         String line = String.join(" ", command);
         EmulatorConfig.ProcessRule matched = null;
@@ -81,9 +86,14 @@ final class ProcessStubs {
                 : builtIn != null ? "built-in:" + builtIn.command() : "none (empty output, exit 0)";
         vm.events.add("process", "exec", "command", line, "argv", command.size() > 1 ? new ArrayList<>(command) : null,
                 "directory", directory == null ? null : directory.toString(), "pid", pid, "matchedRule", source);
-        SimProcess process = matched != null ? new SimProcess(matched.stdout, matched.stderr, matched.exitCode)
-                : builtIn != null ? new SimProcess(builtIn.stdout(), builtIn.stderr(), builtIn.exitCode())
-                : new SimProcess("", "", 0);
+        // What the sample writes to the process's standard input is reported as process.stdin
+        // events; input it never flushed is reported when the run ends (Emulator.finish).
+        SimProcess process = matched != null
+                ? new SimProcess(matched.stdout, matched.stderr, matched.exitCode, line, vm.events, vm.artifacts)
+                : builtIn != null
+                ? new SimProcess(builtIn.stdout(), builtIn.stderr(), builtIn.exitCode(), line, vm.events, vm.artifacts)
+                : new SimProcess("", "", 0, line, vm.events, vm.artifacts);
+        vm.env.addProcess(process);
         PIDS.computeIfAbsent(vm, key -> new IdentityHashMap<>()).put(process, pid);
         return process;
     }

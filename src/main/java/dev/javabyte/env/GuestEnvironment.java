@@ -10,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -38,6 +40,8 @@ public final class GuestEnvironment {
 
     private final VirtualMachine vm;
     private String samplePath;
+    /** Every process the sample launched in this run, in launch order. */
+    private final List<SimProcess> processes = new ArrayList<>();
 
     public GuestEnvironment(VirtualMachine vm) {
         this.vm = vm;
@@ -386,6 +390,30 @@ public final class GuestEnvironment {
             + "# The IP address and the host name should be separated by at least one\r\n# space.\r\n#\r\n"
             + "# localhost name resolution is handled within DNS itself.\r\n"
             + "#\t127.0.0.1       localhost\r\n#\t::1             localhost\r\n";
+
+    /**
+     * Remembers a process the sample launched, so that {@link #reportProcessInput()} can report
+     * what was written to it.
+     */
+    public synchronized void addProcess(SimProcess process) {
+        processes.add(process);
+    }
+
+    /** The processes the sample launched in this run, in launch order. */
+    public synchronized List<SimProcess> processes() {
+        return List.copyOf(processes);
+    }
+
+    /**
+     * Reports, for every launched process, what the sample wrote to its standard input and never
+     * flushed or closed. Called once at the end of the run, next to
+     * {@link NetworkSimulator#reportOpenSockets()}.
+     */
+    public void reportProcessInput() {
+        for (SimProcess process : processes()) {
+            process.reportInput();
+        }
+    }
 
     public String samplePath() {
         return samplePath;

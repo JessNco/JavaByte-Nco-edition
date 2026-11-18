@@ -1,6 +1,8 @@
 package dev.javabyte.env;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.javabyte.report.Artifacts;
@@ -69,5 +71,14 @@ class SimProcessTest {
         process.reportInput();
         assertEquals(3, process.waitFor());
         assertEquals(List.of(), events.events());
+    }
+
+    @Test
+    void theProcessDoesNotMakeUpItsOwnId() {
+        // Process.pid() is answered by the ProcessStubs stub with an id from the machine; the
+        // class itself has none, and its refusal does not name the emulator's class.
+        SimProcess process = new SimProcess("", "", 0);
+        UnsupportedOperationException refused = assertThrows(UnsupportedOperationException.class, process::pid);
+        assertNull(refused.getMessage());
     }
 }

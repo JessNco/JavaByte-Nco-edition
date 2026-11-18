@@ -71,7 +71,13 @@ public final class SimProcess extends Process {
     @Override public void destroy() { }
     @Override public Process destroyForcibly() { return this; }
     @Override public boolean isAlive() { return false; }
-    @Override public long pid() { return 4242L; }
+    /**
+     * Never answered here: {@code Process.pid()} is answered by the {@code ProcessStubs} stub,
+     * which gives each launch its own id from the simulated machine. A fixed id would repeat
+     * across launches, and the JDK's own default names the implementing class in its message,
+     * so this throws without one.
+     */
+    @Override public long pid() { throw new UnsupportedOperationException(); }
     @Override public boolean supportsNormalTermination() { return true; }
 
     // The remaining Process methods expose the host's real process table and must not leak it.

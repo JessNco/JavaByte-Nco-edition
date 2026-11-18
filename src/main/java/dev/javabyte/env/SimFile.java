@@ -168,9 +168,12 @@ public final class SimFile extends File {
     @Override public boolean setExecutable(boolean executable) { return fs.exists(path); }
 
     // Plausible fixed disk figures: 256 GB total, 120 GB free.
-    @Override public long getTotalSpace() { return 256L << 30; }
-    @Override public long getFreeSpace() { return 120L << 30; }
-    @Override public long getUsableSpace() { return 120L << 30; }
+    /** The size of the simulated drive, the same figure {@code wmic logicaldisk} reports. */
+    @Override public long getTotalSpace() { return MachineProfile.VOLUME_BYTES; }
+    /** The free space on the simulated drive. */
+    @Override public long getFreeSpace() { return MachineProfile.VOLUME_FREE_BYTES; }
+    /** The space this user may use: all the free space, as on a desktop without quotas. */
+    @Override public long getUsableSpace() { return MachineProfile.VOLUME_FREE_BYTES; }
 
     @Override
     public int compareTo(File other) {

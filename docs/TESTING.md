@@ -28,7 +28,7 @@ of reported behaviour do need stated expectations; those are written as data, no
 mvn verify
 ```
 
-That runs everything that needs no malware and no Python: about 120 tests in under a minute.
+That runs everything that needs no malware and no Python: about 200 tests in a couple of minutes.
 It also writes a coverage report to `target/site/jacoco/index.html`.
 
 | To run | Command |
@@ -52,9 +52,9 @@ and CI fails if the committed copy drifts from what the tool produces.
 | Test class | Tests | What it proves |
 | --- | --- | --- |
 | `DifferentialTest` | 5 | Language features, the JDK boundary, threads, stack-trace-keyed decryption, and reflection, method handles, proxies and executors print exactly what a real JVM prints, with no gap events |
-| `BytecodeTest` | 5 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`; and that unverifiable code becomes a `VerifyError` |
-| `SimulatedCorpusTest` | 35 | 18 malware scenarios and 16 limit and limitation scenarios (below) |
-| `LoaderTest` | 7 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |
+| `BytecodeTest` | 6 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`; and that unverifiable code becomes a `VerifyError` |
+| `SimulatedCorpusTest` | 44 | Malware, limit and limitation scenarios (below) |
+| `LoaderTest` | 9 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |
 | `BehaviourTest` | 7 | `defineClass` routes, lazy loading through the sample's loader, hooks, file fixtures |
 | `ContractTest` | 19 | Config loading, overrides and every validation error; each command and exit code, `disasm`, `validate` and `schema` included; report fields; that identical runs give identical reports |
 | `StreamingTest` | 7 | The `--events jsonl` stream matches the report; `--progress`; a stop sent on `--control stdin`, and the end of that input, end the run and keep the report; a stop through `RunControl`; unknown stream options are usage errors; the trace survives a killed process |
@@ -74,7 +74,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `nativebridge/NativeBridgeProtocolTest` | 6 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
 | `cli/InspectionTest` | 2 | `inspect` reads a sample with the same code as `run`, so the two agree |
 | `cli/HostLookupBackstopTest` | 2 | In a separate JVM: once the backstop is set, no host name reaches the system resolver, while `localhost` and address literals still work |
-| `SafetyTest` | 7 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
+| `SafetyTest` | 11 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
 | `NativeTest` | 5 | Native library description, plugin handlers, load failures |
 | `NativeBridgeTest` | 3 | A test DLL runs in the CPU emulator and calls back into Java. Needs `JAVABYTE_BRIDGE_PYTHON` |
 | `RealCorpusTest` | 10 | Nine MalwareBazaar samples behave as recorded. Needs `JAVABYTE_SAMPLES` |

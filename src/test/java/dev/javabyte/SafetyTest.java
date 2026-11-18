@@ -12,6 +12,7 @@ import dev.javabyte.host.HostPolicy;
 import dev.javabyte.report.EventLog;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,59 @@ class SafetyTest {
         assertEquals(List.of(), notOverridden(javax.net.ssl.SSLSocket.class, dev.javabyte.env.SimSslSocket.class));
     }
 
+    /**
+     * Like {@link #notOverridden}, but also counting protected methods, which JDK code calls on
+     * a handler or provider it has been given.
+     */
+    private static List<String> notOverriddenIncludingProtected(Class<?> base, Class<?> sim) {
+        List<String> missing = new ArrayList<>();
+        for (Method method : base.getDeclaredMethods()) {
+            int modifiers = method.getModifiers();
+            if (!(Modifier.isPublic(modifiers) || Modifier.isProtected(modifiers)) || Modifier.isStatic(modifiers)
+                    || Modifier.isFinal(modifiers)) {
+                continue;
+            }
+            try {
+                sim.getDeclaredMethod(method.getName(), method.getParameterTypes());
+            } catch (NoSuchMethodException e) {
+                missing.add(method.getName() + Type.getMethodDescriptor(method));
+            }
+        }
+        return missing;
+    }
+
+    @Test
+    void simulatedUrlLoaderOverridesEveryLookup() {
+        assertEquals(List.of(), notOverridden(java.net.URLClassLoader.class, dev.javabyte.env.SimURLClassLoader.class),
+                "an inherited URLClassLoader method could fetch from a real URL");
+        assertEquals(List.of(), notOverridden(ClassLoader.class, dev.javabyte.env.SimURLClassLoader.class),
+                "an inherited ClassLoader method could look something up for JDK code");
+    }
+
+    @Test
+    void simulatedProviderOverridesEveryMethod() {
+        assertEquals(List.of(), notOverriddenIncludingProtected(java.security.Provider.class, dev.javabyte.env.SimProvider.class),
+                "an inherited Provider method could let a guest change reach the JDK's services");
+    }
+
+    @Test
+    void simulatedUrlHandlerOverridesEveryMethod() {
+        assertEquals(List.of(), notOverriddenIncludingProtected(java.net.URLStreamHandler.class,
+                dev.javabyte.env.SimURLStreamHandler.class), "an inherited handler method could resolve a host name");
+    }
+
+    @Test
+    void simulatedUrlHandlerNeverResolves() throws Exception {
+        dev.javabyte.env.SimURLStreamHandler handler = new dev.javabyte.env.SimURLStreamHandler("http", url -> { });
+        URL first = new URL(null, "http://javabyte-safety.invalid/a", handler);
+        URL second = new URL(null, "http://JAVABYTE-SAFETY.invalid:80/a", handler);
+        assertTrue(first.equals(second), "same host, compared as text, and the default port");
+        assertTrue(first.sameFile(second));
+        assertEquals(first.hashCode(), second.hashCode());
+        assertEquals(new URL(null, "http://javabyte-safety.invalid/a", handler).hashCode(), first.hashCode(),
+                "the hash depends on the text alone, so every run sees the same one");
+    }
+
     @Test
     void defaultPolicyKeepsDangerousMembersOut() {
         HostPolicy policy = HostPolicy.defaults();
@@ -77,6 +131,13 @@ class SafetyTest {
         assertFalse(policy.allows("java/io/PrintStream", "<init>", "(Ljava/lang/String;)V"));
         assertFalse(policy.allows("java/net/Socket", "<init>", "(Ljava/lang/String;I)V"));
         assertFalse(policy.allows("java/net/URL", "openConnection", "()Ljava/net/URLConnection;"));
+        assertFalse(policy.allows("java/net/URL", "sameFile", "(Ljava/net/URL;)Z"), "resolves both hosts");
+        assertFalse(policy.allows("java/net/InetAddress", "getCanonicalHostName", "()Ljava/lang/String;"), "a reverse lookup");
+        assertFalse(policy.allows("java/security/Provider", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"));
+        assertFalse(policy.allows("java/security/Provider", "<init>", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+                "a guest subclass of Provider would be a real provider");
+        assertTrue(policy.allows("java/security/Provider", "getName", "()Ljava/lang/String;"));
+        assertFalse(policy.allows("java/util/ResourceBundle$Control", "newBundle", null), "asks a loader for a class");
         assertFalse(policy.allows("java/util/Timer", "<init>", "()V"));
         assertFalse(policy.allows("java/nio/file/Files", "write", null));
         assertFalse(policy.allows("java/lang/reflect/Method", "invoke", null));

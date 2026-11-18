@@ -111,11 +111,8 @@ final class NetworkStubs {
             case "http", "https":
                 return new SimHttpConnection(url, vm.env.network);
             case "file": {
-                String path = url.getPath();
-                if (vm.env.windows && path.matches("/[A-Za-z]:.*")) {
-                    path = path.substring(1);
-                }
-                byte[] data = vm.env.files.read(java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8));
+                String path = FileStubs.pathFromFileUrl(url.getPath(), vm.env.windows);
+                byte[] data = vm.env.files.read(path);
                 if (data == null) {
                     throw new FileNotFoundException(path);
                 }

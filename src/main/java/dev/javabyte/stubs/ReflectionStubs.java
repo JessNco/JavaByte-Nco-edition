@@ -60,18 +60,41 @@ final class ReflectionStubs {
             "getDeclaredField", "getFields", "getDeclaredFields", "getConstructor", "getDeclaredConstructor",
             "getConstructors", "getDeclaredConstructors", "getRecordComponents", "getEnclosingMethod");
 
+    /** The {@code AccessibleObject} methods that ask for, or about, access to a member. */
+    private static final Set<String> ACCESS_CALLS = Set.of("setAccessible", "trySetAccessible", "isAccessible", "canAccess");
+
+    /**
+     * True if the call is one of {@link #ACCESS_CALLS}, which {@link #accessAnswer} answers
+     * whatever the receiver is.
+     */
+    private static boolean isAccessCall(String name) {
+        return ACCESS_CALLS.contains(name);
+    }
+
+    /**
+     * The one answer to every access call, for real members and interpreted ones alike.
+     *
+     * <p>setAccessible is never performed: the emulator does not open JDK internals for a sample,
+     * so reading a private JDK field stays blocked. It is still reported as successful, and the
+     * queries say the member is accessible, because samples that probe for a sandbox treat a
+     * refusal as a sign of one. Access checks do not apply to interpreted members in the first
+     * place. Keeping this in one place means no path can drift and grant real access.
+     *
+     * @return null for {@code setAccessible} (it returns void), else 1 (boolean true)
+     */
+    private static Object accessAnswer(String name) {
+        return name.equals("setAccessible") ? null : (Object) 1;
+    }
+
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
         stubs.onClass("java/lang/Class", ctx -> classOperation(vm, ctx));
         stubs.onClass("java/lang/reflect/Method", ctx -> methodOperation(vm, ctx));
         stubs.onClass("java/lang/reflect/Field", ctx -> fieldOperation(vm, ctx));
         stubs.onClass("java/lang/reflect/Constructor", ctx -> constructorOperation(vm, ctx));
-        // setAccessible is never performed: the emulator does not open JDK internals for a
-        // sample. Access checks do not apply to interpreted members in the first place.
-        stubs.on("java/lang/reflect/AccessibleObject", "setAccessible", ctx -> null);
-        stubs.on("java/lang/reflect/AccessibleObject", "trySetAccessible", ctx -> 1);
-        stubs.on("java/lang/reflect/AccessibleObject", "isAccessible", ctx -> 1);
-        stubs.on("java/lang/reflect/AccessibleObject", "canAccess", ctx -> 1);
+        for (String name : ACCESS_CALLS) {
+            stubs.on("java/lang/reflect/AccessibleObject", name, ctx -> accessAnswer(ctx.name));
+        }
 
         stubs.on("java/lang/reflect/Array", "newInstance", ctx -> {
             Object component = ctx.arg(0);
@@ -470,6 +493,9 @@ final class ReflectionStubs {
     // ------------------------------------------------------------------ Method
 
     private static Object methodOperation(VirtualMachine vm, CallContext ctx) {
+        if (isAccessCall(ctx.name)) {
+            return accessAnswer(ctx.name);
+        }
         if (ctx.receiver instanceof Method real) {
             switch (ctx.name) {
                 case "invoke": {
@@ -482,10 +508,6 @@ final class ReflectionStubs {
                             ? vm.router.invokeStatic(owner, real.getName(), desc, args)
                             : vm.router.invokeVirtual(owner, real.getName(), desc, ctx.arg(0), args), Type.getReturnType(desc));
                 }
-                case "setAccessible":
-                    return null;
-                case "trySetAccessible", "isAccessible", "canAccess":
-                    return 1;
                 default:
                     return ctx.proceed();
             }
@@ -556,10 +578,6 @@ final class ReflectionStubs {
     /** Operations shared by method, field and constructor mirrors. */
     private static Object memberOperation(VirtualMachine vm, CallContext ctx, int access, String description) {
         switch (ctx.name) {
-            case "setAccessible":
-                return null;
-            case "trySetAccessible", "isAccessible", "canAccess":
-                return 1;
             case "isSynthetic":
                 return (access & Opcodes.ACC_SYNTHETIC) != 0 ? 1 : 0;
             case "isBridge":
@@ -588,6 +606,9 @@ final class ReflectionStubs {
     // ------------------------------------------------------------------ Field
 
     private static Object fieldOperation(VirtualMachine vm, CallContext ctx) {
+        if (isAccessCall(ctx.name)) {
+            return accessAnswer(ctx.name);
+        }
         boolean isGetter = ctx.name.startsWith("get") && ctx.argCount() == 1 && ctx.desc.startsWith("(Ljava/lang/Object;)");
         boolean isSetter = ctx.name.startsWith("set") && ctx.argCount() == 2 && ctx.desc.startsWith("(Ljava/lang/Object;");
         // get(Object) and set(Object, Object) deal in boxed values; getInt and friends do not.
@@ -615,8 +636,7 @@ final class ReflectionStubs {
                 }
                 return null;
             }
-            return ctx.name.equals("setAccessible") ? null
-                    : Set.of("trySetAccessible", "isAccessible", "canAccess").contains(ctx.name) ? (Object) 1 : ctx.proceed();
+            return ctx.proceed();
         }
 
         FieldMirror mirror = (FieldMirror) ctx.receiver;
@@ -659,6 +679,9 @@ final class ReflectionStubs {
     // ------------------------------------------------------------------ Constructor
 
     private static Object constructorOperation(VirtualMachine vm, CallContext ctx) {
+        if (isAccessCall(ctx.name)) {
+            return accessAnswer(ctx.name);
+        }
         if (ctx.receiver instanceof Constructor<?> real) {
             if (ctx.name.equals("newInstance")) {
                 String owner = Type.getInternalName(real.getDeclaringClass());
@@ -668,8 +691,7 @@ final class ReflectionStubs {
                 // Going through instantiate() means stubs and policy apply to reflective construction.
                 return invokeReflectively(vm, () -> vm.instantiate(owner, desc, args), Type.getObjectType(owner));
             }
-            return ctx.name.equals("setAccessible") ? null
-                    : Set.of("trySetAccessible", "isAccessible", "canAccess").contains(ctx.name) ? (Object) 1 : ctx.proceed();
+            return ctx.proceed();
         }
         GuestMethod constructor = ((ConstructorMirror) ctx.receiver).method();
         switch (ctx.name) {

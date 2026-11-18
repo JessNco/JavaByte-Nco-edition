@@ -7,6 +7,7 @@ import dev.javabyte.model.GuestMethod;
 import dev.javabyte.plugin.EmulatorPlugin;
 import dev.javabyte.plugin.NativeHandler;
 import dev.javabyte.report.NativeLibraryInfo;
+import dev.javabyte.vm.EmulationAbort;
 import dev.javabyte.vm.GuestThrow;
 import dev.javabyte.vm.VirtualMachine;
 import java.io.BufferedReader;
@@ -29,6 +30,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.FieldInsnNode;
@@ -56,7 +58,13 @@ import org.objectweb.asm.tree.FieldInsnNode;
  * </pre>
  *
  * <p>Limits of this first version: 64-bit Windows DLLs only; one native call at a time (a
- * native method reached from inside another native call is reported, not emulated).
+ * native method reached from inside another native call is reported, not emulated, and so is a
+ * library loaded from inside one).
+ *
+ * <p>The protocol depends on this class answering every callback before it sends anything else.
+ * {@link #request} therefore always replies, whatever the callback throws; when the run itself is
+ * being stopped it cannot, and the helper is ended instead, so that a later call never reads an
+ * answer meant for an earlier question.
  */
 public final class NativeBridgePlugin implements EmulatorPlugin {
 
@@ -78,6 +86,12 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
     private boolean disabled;
     /** True while a native call is running in the helper; the CPU emulator cannot be re-entered. */
     private boolean busy;
+
+    /**
+     * Carries out one JNI callback. It is {@link #callback} except in tests, which replace it to
+     * make a callback fail in ways real guest code produces only with difficulty.
+     */
+    BiFunction<String, Map<String, Object>, Object> callbacks = this::callback;
 
     /** Exported symbol name to address, across all loaded libraries. */
     private final Map<String, Long> exports = new HashMap<>();
@@ -137,6 +151,26 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
         }
     }
 
+    /**
+     * Speaks the protocol over the given streams instead of a helper process. Used by tests, so
+     * that the Java side can be checked without Python; nothing is started.
+     */
+    void attach(VirtualMachine machine, BufferedReader from, BufferedWriter to) {
+        this.vm = machine;
+        this.fromHelper = from;
+        this.toHelper = to;
+    }
+
+    /** True once the bridge has given up; every later native call is reported, not emulated. */
+    boolean isDisabled() {
+        return disabled;
+    }
+
+    /** The exception native code has pending, as JNI defines it, or null. */
+    Object pendingException() {
+        return pendingException;
+    }
+
     // ------------------------------------------------------------------ helper process
 
     private void ensureStarted() throws BridgeUnavailable {
@@ -173,6 +207,20 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
                 "hint", "plugins.native-bridge.python must name an interpreter with speakeasy-emulator installed");
     }
 
+    /**
+     * Ends the helper while it is waiting for a callback answer that will never come, because
+     * the run (or this guest thread) is being stopped. Its native code cannot be resumed
+     * safely, and a later request would otherwise read the rest of this one's traffic.
+     */
+    private void abandonHelper(String reason) {
+        disabled = true;
+        if (helper != null) {
+            helper.destroyForcibly();
+        }
+        vm.events.add("gap", "native-bridge-stopped", "reason", reason,
+                "detail", "native code was interrupted part way through; later native calls are reported, not emulated");
+    }
+
     private void send(Map<String, Object> message) throws BridgeUnavailable {
         try {
             toHelper.write(JSON.writeValueAsString(message));
@@ -185,7 +233,28 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
     }
 
     /**
+     * Sends a request with the bridge marked busy, so that nothing else is sent to the helper
+     * until its result arrives. The previous state is restored afterwards rather than cleared,
+     * because a request can be made from inside a callback of another one.
+     */
+    Map<String, Object> exclusive(Map<String, Object> message) throws BridgeUnavailable {
+        boolean wasBusy = busy;
+        busy = true;
+        try {
+            return request(message);
+        } finally {
+            busy = wasBusy;
+        }
+    }
+
+    /**
      * Sends a request and serves the helper's callbacks until its result arrives.
+     *
+     * <p>Every callback gets exactly one answer, sent before anything else is read or written:
+     * the helper is blocked waiting for it. A Java exception becomes the pending JNI exception, as
+     * on a real JVM. Any other failure (an emulator defect) is reported as a gap and answered
+     * with zero. An {@link EmulationAbort} is the one exception that cannot be answered, so the
+     * helper is ended before it propagates.
      *
      * @return the result object
      */
@@ -209,13 +278,20 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
                 vm.events.add(String.valueOf(event.get("category")), String.valueOf(event.get("action")), pairs.toArray());
                 continue;
             }
+            String name = String.valueOf(reply.get("callback"));
             Object value;
             try {
-                value = callback(String.valueOf(reply.get("callback")), reply);
+                value = callbacks.apply(name, reply);
             } catch (GuestThrow thrown) {
                 // A Java exception during a JNI call becomes the pending exception; the native
                 // code sees a zero result and may check for it.
                 pendingException = thrown.value;
+                value = 0;
+            } catch (EmulationAbort stop) {
+                abandonHelper("run stopped during JNI callback " + name + ": " + stop.getMessage());
+                throw stop;
+            } catch (RuntimeException failure) {
+                vm.events.add("gap", "native-bridge-callback-failed", "callback", name, "error", failure.toString());
                 value = 0;
             }
             send(Map.of("v", value == null ? 0 : value));
@@ -243,12 +319,22 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
 
     // ------------------------------------------------------------------ entry points from the VM
 
-    /** Called when the sample loads a library: hands a supported one to the helper. */
-    private void loadLibrary(String name, byte[] data) {
+    /**
+     * Called when the sample loads a library: hands a supported one to the helper.
+     *
+     * <p>A library loaded by Java code that native code called back into is not handed over:
+     * the helper is in the middle of that native call and cannot load a module until it ends.
+     */
+    void loadLibrary(String name, byte[] data) {
         NativeLibraryInfo info = NativeLibraryInfo.parse(data);
         if (info == null || !"PE".equals(info.format) || !"x86-64".equals(info.architecture)) {
             vm.events.add("native", "bridge-skipped", "library", name,
                     "reason", "only 64-bit Windows DLLs are supported, found " + (info == null ? "unknown" : info.format + ' ' + info.architecture));
+            return;
+        }
+        if (busy) {
+            vm.events.add("gap", "native-bridge-load-failed", "library", name,
+                    "error", "loaded from inside a native call; the CPU emulator cannot load a library until that call ends");
             return;
         }
         try {
@@ -258,15 +344,12 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
             Map<String, Object> message = new LinkedHashMap<>();
             message.put("op", "load");
             message.put("path", copy.toString());
-            busy = true;
-            Map<String, Object> result = request(message);
+            Map<String, Object> result = exclusive(message);
             asMap(result.get("exports")).forEach((symbol, address) -> exports.put(symbol, ((Number) address).longValue()));
             vm.events.add("native", "bridge-loaded", "library", name, "exports", asMap(result.get("exports")).size(),
                     "registeredNatives", registered.size());
         } catch (BridgeUnavailable | IOException e) {
             vm.events.add("gap", "native-bridge-load-failed", "library", name, "error", String.valueOf(e.getMessage()));
-        } finally {
-            busy = false;
         }
         throwPending();
     }
@@ -297,15 +380,12 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
         message.put("args", arguments);
         message.put("ret", letter(method.returnType));
         Object result;
-        busy = true;
         try {
-            result = request(message).get("v");
+            result = exclusive(message).get("v");
         } catch (BridgeUnavailable e) {
             vm.events.addOnce("failed:" + method.id, "gap", "native-bridge-call-failed", "method", method.id,
                     "error", String.valueOf(e.getMessage()));
             return NativeHandler.NOT_HANDLED;
-        } finally {
-            busy = false;
         }
         vm.events.addOnce("bridged:" + method.id, "native", "emulated", "method", method.id,
                 "address", "0x" + Long.toHexString(address));
@@ -324,7 +404,8 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
 
     // ------------------------------------------------------------------ handles and value conversion
 
-    private int handle(Object object) {
+    /** The handle native code knows an object by; the same object always gets the same one. */
+    int handle(Object object) {
         if (object == null) {
             return 0;
         }
@@ -449,20 +530,39 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
                 Object array = object(request.get("h"));
                 return Map.of("length", array == null ? 0 : java.lang.reflect.Array.getLength(array), "type", arrayLetter(array));
             }
-            case "arrayGet":
-                return Base64.getEncoder().encodeToString(readArray(object(request.get("h")),
-                        ((Number) request.get("start")).intValue(), ((Number) request.get("length")).intValue()));
-            case "arraySet":
-                writeArray(object(request.get("h")), ((Number) request.get("start")).intValue(),
-                        Base64.getDecoder().decode(String.valueOf(request.get("data"))));
+            case "arrayGet": {
+                Object array = primitiveArray(request.get("h"));
+                int start = ((Number) request.get("start")).intValue();
+                int length = ((Number) request.get("length")).intValue();
+                checkRange(array, start, length);
+                return Base64.getEncoder().encodeToString(readArray(array, start, length));
+            }
+            case "arraySet": {
+                Object array = primitiveArray(request.get("h"));
+                int start = ((Number) request.get("start")).intValue();
+                checkRange(array, start, 0);
+                writeArray(array, start, Base64.getDecoder().decode(String.valueOf(request.get("data"))));
                 return 0;
+            }
             case "newArray":
                 return handle(newArray(String.valueOf(request.get("type")), ((Number) request.get("length")).intValue(), request));
-            case "objectArrayGet":
-                return handle(((Object[]) object(request.get("h")))[((Number) request.get("index")).intValue()]);
-            case "objectArraySet":
-                ((Object[]) object(request.get("h")))[((Number) request.get("index")).intValue()] = object(request.get("v"));
+            case "objectArrayGet": {
+                Object[] array = objectArray(request.get("h"));
+                int index = ((Number) request.get("index")).intValue();
+                checkRange(array, index, 1);
+                return handle(array[index]);
+            }
+            case "objectArraySet": {
+                Object[] array = objectArray(request.get("h"));
+                int index = ((Number) request.get("index")).intValue();
+                checkRange(array, index, 1);
+                Object element = object(request.get("v"));
+                if (element != null && !array.getClass().getComponentType().isInstance(element)) {
+                    throw vm.raise(new ArrayStoreException(vm.types.nameOf(element)));
+                }
+                array[index] = element;
                 return 0;
+            }
             case "registerNatives":
                 return registerNatives(request);
             case "throwNew":
@@ -565,6 +665,41 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
     }
 
     // ------------------------------------------------------------------ arrays
+
+    /**
+     * The object array a handle names. A bad handle raises a Java exception for native code to
+     * see, rather than a host exception that would break off the callback.
+     */
+    private Object[] objectArray(Object handleValue) {
+        Object array = object(handleValue);
+        if (array instanceof Object[] objects) {
+            return objects;
+        }
+        throw vm.raise(array == null ? new NullPointerException("JNI call with a null array reference")
+                : new IllegalArgumentException("JNI call expected an object array, found " + vm.types.nameOf(array)));
+    }
+
+    /** The primitive array a handle names, raising a Java exception for anything else. */
+    private Object primitiveArray(Object handleValue) {
+        Object array = object(handleValue);
+        if (array != null && array.getClass().isArray() && array.getClass().getComponentType().isPrimitive()) {
+            return array;
+        }
+        throw vm.raise(array == null ? new NullPointerException("JNI call with a null array reference")
+                : new IllegalArgumentException("JNI call expected a primitive array, found " + vm.types.nameOf(array)));
+    }
+
+    /**
+     * Raises {@code ArrayIndexOutOfBoundsException} unless {@code start..start+length} lies inside
+     * the array, as the JNI array functions do.
+     */
+    private void checkRange(Object array, int start, int length) {
+        int size = java.lang.reflect.Array.getLength(array);
+        if (start < 0 || length < 0 || (long) start + length > size) {
+            throw vm.raise(new ArrayIndexOutOfBoundsException("Array region " + start + ".." + ((long) start + length)
+                    + " out of bounds for length " + size));
+        }
+    }
 
     private static String arrayLetter(Object array) {
         if (array instanceof boolean[]) {

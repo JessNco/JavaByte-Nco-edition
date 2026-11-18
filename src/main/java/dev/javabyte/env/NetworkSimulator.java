@@ -1,5 +1,6 @@
 package dev.javabyte.env;
 
+import dev.javabyte.config.ConfigLoader;
 import dev.javabyte.config.EmulatorConfig;
 import dev.javabyte.report.Artifacts;
 import dev.javabyte.report.EventLog;
@@ -11,8 +12,10 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -34,7 +37,22 @@ public final class NetworkSimulator {
     private final java.util.List<SimSocket> openSockets = new java.util.ArrayList<>();
     private int payloadCounter;
 
+    /** An IPv4 address in dotted-quad form: four decimal parts, each 0 to 255, no leading signs. */
+    private static final Pattern IPV4 = Pattern.compile("(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}");
+
+    /** A MAC address: six two-digit hex octets separated by colons or hyphens. */
+    private static final Pattern MAC = Pattern.compile("[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}");
+
+    /**
+     * @throws ConfigLoader.ConfigException if an address in the config cannot be parsed. This is
+     *     checked here, before the run starts, because a bad value would otherwise surface only
+     *     when the guest first looks up a host or reads its network card, as an emulator failure.
+     */
     public NetworkSimulator(EmulatorConfig.Network config, EventLog events, Artifacts artifacts) {
+        List<ConfigLoader.Problem> problems = configProblems(config);
+        if (!problems.isEmpty()) {
+            throw new ConfigLoader.ConfigException(String.join("\n", problems.stream().map(ConfigLoader.Problem::message).toList()));
+        }
         this.config = config;
         this.events = events;
         this.artifacts = artifacts;
@@ -51,7 +69,9 @@ public final class NetworkSimulator {
     public InetAddress resolve(String host) throws UnknownHostException {
         String name = host == null || host.isEmpty() ? "localhost" : host;
         String address = config.dns.get(name);
-        boolean literal = name.matches("\\d{1,3}(\\.\\d{1,3}){3}");
+        // Something shaped like an address but out of range, such as 999.1.1.1, is not a literal:
+        // a real JVM would look it up as a name, so it is treated as one here too.
+        boolean literal = isIpv4(name);
         if (name.equalsIgnoreCase("localhost")) {
             address = "127.0.0.1";
         } else if (literal) {
@@ -70,11 +90,54 @@ public final class NetworkSimulator {
         return InetAddress.getByAddress(name, parseIpv4(address));
     }
 
+    /** The pretend computer's own address, under the host name it is given. */
     public InetAddress localHost(String hostName) throws UnknownHostException {
         return InetAddress.getByAddress(hostName, parseIpv4(config.localAddress));
     }
 
+    /**
+     * Problems with the addresses in a network config, each with the key it belongs to. Every
+     * address must be an IPv4 dotted quad and the MAC address six hex octets, because the
+     * simulation parses them as such. {@code ConfigLoader} should list these too, so that
+     * {@code validate} reports them; the constructor refuses them either way.
+     */
+    public static List<ConfigLoader.Problem> configProblems(EmulatorConfig.Network config) {
+        List<ConfigLoader.Problem> problems = new ArrayList<>();
+        address(problems, "network.defaultAddress", config.defaultAddress);
+        address(problems, "network.localAddress", config.localAddress);
+        config.dns.forEach((host, value) -> address(problems, "network.dns." + host, value));
+        if (!isMacAddress(config.macAddress)) {
+            problems.add(new ConfigLoader.Problem("network.macAddress", "network.macAddress must be six two-digit hex "
+                    + "octets separated by ':' or '-', such as 00:1B:44:11:3A:B7, found '" + config.macAddress + "'"));
+        }
+        return problems;
+    }
+
+    private static void address(List<ConfigLoader.Problem> problems, String key, String value) {
+        if (!isIpv4(value)) {
+            problems.add(new ConfigLoader.Problem(key, key + " must be an IPv4 address such as 203.0.113.10, found '" + value + "'"));
+        }
+    }
+
+    /** True for an IPv4 address in dotted-quad form, each part 0 to 255. */
+    public static boolean isIpv4(String address) {
+        return address != null && IPV4.matcher(address).matches();
+    }
+
+    /** True for six two-digit hex octets separated by colons or hyphens. */
+    public static boolean isMacAddress(String address) {
+        return address != null && MAC.matcher(address).matches();
+    }
+
+    /**
+     * The four bytes of a dotted-quad IPv4 address.
+     *
+     * @throws IllegalArgumentException if it is not one; callers check config values up front
+     */
     public static byte[] parseIpv4(String address) {
+        if (!isIpv4(address)) {
+            throw new IllegalArgumentException("not an IPv4 address: '" + address + "'");
+        }
         String[] parts = address.split("\\.");
         byte[] bytes = new byte[4];
         for (int i = 0; i < 4; i++) {
@@ -83,6 +146,7 @@ public final class NetworkSimulator {
         return bytes;
     }
 
+    /** The configured network card address as six bytes; the constructor has checked its form. */
     public byte[] macAddress() {
         String[] parts = config.macAddress.split("[:-]");
         byte[] mac = new byte[parts.length];

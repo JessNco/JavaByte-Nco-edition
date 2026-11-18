@@ -84,7 +84,8 @@ class EscapeTest {
             for (String line : Fixtures.stdout(report)) {
                 if (line.startsWith("LEAK")) {
                     String seen = line.replace("dev.javabyte.guest.", "");
-                    assertFalse(seen.contains("dev.javabyte") || seen.contains("objectweb") || seen.contains("Sim"),
+                    assertFalse(seen.contains("dev.javabyte") || seen.contains("objectweb") || seen.contains("Sim")
+                                    || seen.contains("$Proxy") || seen.contains("jdk.proxy"),
                             "the guest saw emulator internals: " + line);
                 }
             }

@@ -1,0 +1,13 @@
+description: A small memory and a small screen, set in the config, trip the memory and screen checks, which read the management bean and java.awt.Toolkit.
+techniques: [sandbox-detection, environment-config, management-beans, screen-size]
+fixture: dev.javabyte.guest.sim.AntiAnalysis
+stages:
+  - name: run
+    config:
+      environment: {memoryMegabytes: 2048, screenWidth: 800, screenHeight: 600}
+    expect:
+      outcomes: [exit]
+      stdout: ['analysis environment: ram,screen$']
+      events:
+        - {category: system, action: screen-size, where: {width: '^800$', height: '^600$'}}
+      absent: [{category: process, action: exec, where: {command: payload}}]

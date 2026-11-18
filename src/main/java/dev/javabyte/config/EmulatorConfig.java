@@ -138,6 +138,39 @@ public final class EmulatorConfig {
 
         @ConfigDoc("Seed for random numbers the sample does not seed itself, so that runs are repeatable. Empty means truly random.")
         public Long randomSeed = 0x4A617661L;
+
+        // The machine's hardware. Samples compare these with thresholds typical of sandboxes
+        // (one processor, under 4 GB of memory, a tiny screen), so the defaults describe an
+        // ordinary office desktop. The fixed parts of the profile are in MachineProfile.
+
+        @ConfigDoc("The computer maker the sample sees, as in wmic and systeminfo. Sandbox checks look for VMware, VirtualBox or QEMU here.")
+        public String manufacturer = "Dell Inc.";
+
+        @ConfigDoc("The computer model the sample sees, as in wmic and systeminfo.")
+        public String model = "OptiPlex 7050";
+
+        @ConfigDoc("Logical processors, as reported by Runtime.availableProcessors, NUMBER_OF_PROCESSORS and the management beans.")
+        public int processors = 4;
+
+        @ConfigDoc("Installed memory in megabytes, as reported by the management beans, wmic and systeminfo.")
+        public int memoryMegabytes = 16384;
+
+        @ConfigDoc("Screen width in pixels, as reported by java.awt.Toolkit and GraphicsEnvironment.")
+        public int screenWidth = 1920;
+
+        @ConfigDoc("Screen height in pixels, as reported by java.awt.Toolkit and GraphicsEnvironment.")
+        public int screenHeight = 1080;
+
+        @ConfigDoc("The process id of the sample's own Java process. Programs it starts get higher ids.")
+        public int processId = 6732;
+
+        @ConfigDoc("Options the Java process appears to have been started with, as RuntimeMXBean.getInputArguments reports. "
+                + "Anti-debugging checks look for -agentlib:jdwp or -javaagent here.")
+        public List<String> jvmArguments = new ArrayList<>();
+
+        @ConfigDoc("Answer common system commands (whoami, hostname, tasklist, wmic, systeminfo, ipconfig and others) from the "
+                + "pretend machine when no processes rule matches. Off means such commands print nothing.")
+        public boolean builtInCommands = true;
     }
 
     /** One pre-existing virtual file. Exactly one content source should be set. */
@@ -173,11 +206,16 @@ public final class EmulatorConfig {
         @ConfigDoc("The address every host name not listed under dns looks up to.")
         public String defaultAddress = "203.0.113.10";
 
-        @ConfigDoc("The pretend computer's own network address.")
-        public String localAddress = "192.168.56.101";
+        // A home-router LAN, chosen to avoid every hypervisor's default subnet: VirtualBox
+        // host-only 192.168.56.0/24 and NAT 10.0.2.0/24, libvirt 192.168.122.0/24, and the
+        // VMware DHCP ranges. The gateway and DNS server are taken to be .1 of the same /24.
+        @ConfigDoc("The pretend computer's own network address, on a /24 network whose router is the .1 address.")
+        public String localAddress = "192.168.1.23";
 
+        // D4:BE:D9 is registered to Dell Inc., matching the default manufacturer. Hypervisor
+        // prefixes such as 08:00:27 (VirtualBox) or 00:50:56 (VMware) give a sandbox away.
         @ConfigDoc("The pretend computer's network card address. Sandbox checks often look at it.")
-        public String macAddress = "00:1B:44:11:3A:B7";
+        public String macAddress = "D4:BE:D9:5E:3A:9C";
     }
 
     /** Answer for HTTP(S) requests whose URL matches. First matching rule wins. */

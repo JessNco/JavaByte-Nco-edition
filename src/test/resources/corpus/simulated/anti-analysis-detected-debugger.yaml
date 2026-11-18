@@ -1,0 +1,15 @@
+description: JVM options with a debugger agent and a single processor, both set in the config, trip the debugger and processor checks, and only those.
+techniques: [debugger-check, environment-config, management-beans]
+fixture: dev.javabyte.guest.sim.AntiAnalysis
+stages:
+  - name: run
+    config:
+      environment:
+        jvmArguments: ['-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005']
+        processors: 1
+    expect:
+      outcomes: [exit]
+      stdout: ['analysis environment: debugger,cpu$']
+      events:
+        - {category: process, action: exec, where: {command: 'tasklist', matchedRule: '^built-in:tasklist$'}}
+      absent: [{category: process, action: exec, where: {command: payload}}]

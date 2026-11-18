@@ -5,17 +5,33 @@ import dev.javabyte.env.SimProcess;
 import dev.javabyte.vm.VirtualMachine;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
  * Process creation. Nothing is ever launched: the command line is recorded and a
  * {@link SimProcess} with configured output is returned, so the sample continues as if the
  * command had run.
+ *
+ * <p>The output comes from the first matching {@code processes} rule in the config. Failing
+ * that, common system commands ({@code whoami}, {@code tasklist}, {@code wmic} and others) are
+ * answered by {@link BuiltInCommands} from the simulated machine, because a real Windows
+ * machine never answers them with nothing. Anything else prints nothing and exits with 0. The
+ * {@code process.exec} event's {@code matchedRule} says which of the three applied.
  */
 final class ProcessStubs {
 
     private ProcessStubs() {}
+
+    /**
+     * The process id given to each simulated launch, per run. {@code SimProcess} itself does not
+     * know its id, so {@code Process.pid()} is answered from here. The table is keyed weakly by
+     * the run, so it goes away with the run.
+     */
+    private static final Map<VirtualMachine, Map<SimProcess, Long>> PIDS =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
     static void install(VirtualMachine vm) {
         vm.stubs.on("java/lang/ProcessBuilder", "start", ctx ->
@@ -29,6 +45,11 @@ final class ProcessStubs {
             }
             return processes;
         });
+        // Each launched program has its own id, distinct from the sample's and from each other's.
+        vm.stubs.on("java/lang/Process", "pid", ctx -> ctx.receiver instanceof SimProcess process
+                ? pidOf(vm, process) : ctx.proceed());
+        vm.stubs.on("java/lang/Process", "toHandle", ctx -> ctx.receiver instanceof SimProcess process
+                ? ManagementStubs.bean(vm, ManagementStubs.Bean.PROCESS_HANDLE, pidOf(vm, process)) : ctx.proceed());
     }
 
     /** Handles all {@code Runtime.exec} overloads: (command[, envp[, dir]]) with a String or String[] command. */
@@ -53,9 +74,23 @@ final class ProcessStubs {
                 break;
             }
         }
+        long pid = vm.env.machine.nextChildPid();
+        BuiltInCommands.Answer builtIn = matched == null && vm.config.environment.builtInCommands
+                ? BuiltInCommands.answer(vm, line, pid) : null;
+        String source = matched != null ? matched.command
+                : builtIn != null ? "built-in:" + builtIn.command() : "none (empty output, exit 0)";
         vm.events.add("process", "exec", "command", line, "argv", command.size() > 1 ? new ArrayList<>(command) : null,
-                "directory", directory == null ? null : directory.toString(),
-                "matchedRule", matched == null ? "none (empty output, exit 0)" : matched.command);
-        return matched == null ? new SimProcess("", "", 0) : new SimProcess(matched.stdout, matched.stderr, matched.exitCode);
+                "directory", directory == null ? null : directory.toString(), "pid", pid, "matchedRule", source);
+        SimProcess process = matched != null ? new SimProcess(matched.stdout, matched.stderr, matched.exitCode)
+                : builtIn != null ? new SimProcess(builtIn.stdout(), builtIn.stderr(), builtIn.exitCode())
+                : new SimProcess("", "", 0);
+        PIDS.computeIfAbsent(vm, key -> new IdentityHashMap<>()).put(process, pid);
+        return process;
+    }
+
+    /** The id assigned at launch; a process this run did not launch gets the next free one. */
+    private static long pidOf(VirtualMachine vm, SimProcess process) {
+        return PIDS.computeIfAbsent(vm, key -> new IdentityHashMap<>())
+                .computeIfAbsent(process, key -> vm.env.machine.nextChildPid());
     }
 }

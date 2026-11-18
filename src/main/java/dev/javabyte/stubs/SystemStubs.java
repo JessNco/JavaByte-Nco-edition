@@ -1,6 +1,13 @@
 package dev.javabyte.stubs;
 
 import dev.javabyte.env.GuestEnvironment;
+import dev.javabyte.env.SimFuture;
+import dev.javabyte.env.SimHttpConnection;
+import dev.javabyte.env.SimPackage;
+import dev.javabyte.env.SimPath;
+import dev.javabyte.env.SimProcess;
+import dev.javabyte.env.SimSslSocket;
+import dev.javabyte.env.SimSslSocketFactory;
 import dev.javabyte.host.HostBridge;
 import dev.javabyte.host.StandIn;
 import dev.javabyte.host.StubRegistry;
@@ -11,20 +18,23 @@ import dev.javabyte.model.PhantomObject;
 import dev.javabyte.vm.EmulationAbort;
 import dev.javabyte.vm.VirtualMachine;
 import java.io.ByteArrayInputStream;
-import java.lang.management.RuntimeMXBean;
-import java.lang.reflect.Proxy;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 
 /**
  * {@code System}, {@code Runtime} and a few JVM-introspection APIs.
  *
  * <p>These are the calls through which a program learns about its machine or affects the JVM
- * as a whole. Every answer comes from {@link GuestEnvironment}; every effect (exit, library
- * load, shutdown hook) is recorded instead of performed.
+ * as a whole. Every answer comes from {@link GuestEnvironment} and its machine profile; every
+ * effect (exit, library load, shutdown hook) is recorded instead of performed. The management
+ * beans and the screen have their own stub classes, {@link ManagementStubs} and
+ * {@link ScreenStubs}, installed from here.
  */
 final class SystemStubs {
 
@@ -75,7 +85,9 @@ final class SystemStubs {
 
         installRuntime(vm);
         installLegacyCodecs(stubs);
-        installManagement(vm);
+        ManagementStubs.install(vm);
+        ScreenStubs.install(vm);
+        installPackages(vm);
 
         stubs.on("java/lang/Object", "getClass", ctx -> classOf(vm, ctx.receiver));
         // The no-argument form writes to the real System.err; send it to the guest's instead,
@@ -142,14 +154,17 @@ final class SystemStubs {
                 case "getRuntime":
                     // The real object is only a token: every method on it is answered here.
                     return Runtime.getRuntime();
+                // Processors and heap sizes follow the machine, as a real JVM's defaults do.
                 case "availableProcessors":
-                    return 4;
+                    return vm.env.machine.processors;
                 case "totalMemory":
-                    return 512L << 20;
+                    return ManagementStubs.initialHeap(vm.env.machine);
                 case "freeMemory":
-                    return 300L << 20;
+                    return ManagementStubs.freeHeap(vm.env.machine);
                 case "maxMemory":
-                    return 4096L << 20;
+                    return ManagementStubs.maxHeap(vm.env.machine);
+                case "version":
+                    return runtimeVersion(vm.env);
                 case "exit", "halt":
                     return exit(vm, ctx.intArg(0));
                 case "load", "loadLibrary":
@@ -229,49 +244,66 @@ final class SystemStubs {
         }
     }
 
-    /** Runtime bean used by anti-debugging checks, which look for agent or debugger arguments. */
-    private static void installManagement(VirtualMachine vm) {
-        vm.stubs.on("java/lang/management/ManagementFactory", "getRuntimeMXBean", ctx ->
-                Proxy.newProxyInstance(SystemStubs.class.getClassLoader(), new Class<?>[] {RuntimeMXBean.class},
-                        (proxy, method, args) -> {
-                            switch (method.getName()) {
-                                case "getInputArguments":
-                                    return List.of();
-                                case "getName":
-                                    return "4242@" + vm.config.environment.hostName;
-                                case "getVmName":
-                                    return vm.env.properties.getProperty("java.vm.name");
-                                case "getVmVendor", "getSpecVendor":
-                                    return vm.env.properties.getProperty("java.vendor");
-                                case "getVmVersion", "getSpecVersion":
-                                    return vm.env.properties.getProperty("java.version");
-                                case "getClassPath":
-                                    return vm.env.samplePath();
-                                case "getStartTime":
-                                    return vm.env.clock.currentTimeMillis() - 60_000L;
-                                case "getUptime":
-                                    return 60_000L;
-                                case "getPid":
-                                    return 4242L;
-                                case "getSystemProperties":
-                                    return java.util.Map.of();
-                                case "isBootClassPathSupported":
-                                    return false;
-                                case "hashCode":
-                                    return System.identityHashCode(proxy);
-                                case "equals":
-                                    return proxy == args[0];
-                                default:
-                                    return method.getReturnType() == String.class ? "" : null;
-                            }
-                        }));
+    /**
+     * {@code Runtime.version()}, which arrived in Java 9. The advertised Java 8 runtime has no
+     * such method, but a sample that calls it was built for a newer Java and should still see
+     * the advertised version rather than a phantom whose every number is 0. So 1.8.0_361 build
+     * 9 becomes 8.0.361+9. A {@code java.version} set in the config in the modern form, such as
+     * 11.0.2, is used as it is.
+     */
+    static Runtime.Version runtimeVersion(GuestEnvironment env) {
+        String version = env.properties.getProperty("java.version", "");
+        java.util.regex.Matcher legacy = java.util.regex.Pattern.compile("1\\.(\\d+)\\.0_(\\d+)").matcher(version);
+        if (legacy.matches()) {
+            java.util.regex.Matcher build = java.util.regex.Pattern.compile("-b(\\d+)$")
+                    .matcher(env.properties.getProperty("java.runtime.version", ""));
+            return Runtime.Version.parse(legacy.group(1) + ".0." + legacy.group(2)
+                    + (build.find() ? "+" + Integer.parseInt(build.group(1)) : ""));
+        }
+        try {
+            return Runtime.Version.parse(version);
+        } catch (IllegalArgumentException unparseable) {
+            return Runtime.Version.parse("8");
+        }
+    }
+
+    /**
+     * Package metadata from the sample's manifest. A real JVM fills {@code Package} from the
+     * jar's {@code META-INF/MANIFEST.MF}: first from the package's own section (named after the
+     * package with slashes and a trailing slash), then from the main section. Samples read their
+     * own version or campaign id this way, so the answer must match what they would see.
+     *
+     * <p>Guest classes get a {@link SimPackage}. Its attribute methods are answered here because
+     * the manifest belongs to the run, not to the package object.
+     */
+    private static void installPackages(VirtualMachine vm) {
+        Map<String, String> methods = Map.of(
+                "getImplementationTitle", "Implementation-Title",
+                "getImplementationVersion", "Implementation-Version",
+                "getImplementationVendor", "Implementation-Vendor",
+                "getSpecificationTitle", "Specification-Title",
+                "getSpecificationVersion", "Specification-Version",
+                "getSpecificationVendor", "Specification-Vendor");
+        Manifest[] manifest = new Manifest[1];
+        java.util.function.Supplier<Manifest> sampleManifest = () -> {
+            if (manifest[0] == null) {
+                manifest[0] = SimPackage.readManifest(vm.classes.resource("META-INF/MANIFEST.MF"));
+            }
+            return manifest[0];
+        };
+        methods.forEach((method, attribute) -> vm.stubs.on("java/lang/Package", method, ctx ->
+                ctx.receiver instanceof SimPackage pkg ? pkg.attribute(sampleManifest.get(), attribute) : ctx.proceed()));
+        vm.stubs.on("java/lang/Package", "isSealed", "()Z", ctx -> ctx.receiver instanceof SimPackage pkg
+                ? ("true".equalsIgnoreCase(pkg.attribute(sampleManifest.get(), Attributes.Name.SEALED.toString())) ? 1 : 0)
+                : ctx.proceed());
     }
 
     /**
      * {@code getClass()} for values that are not instances of interpreted classes. Emulator
-     * objects report the JDK class they stand for, never their own class.
+     * objects report the JDK class they stand for, never their own class or a generated proxy
+     * class. Used for every {@code getClass()} call, whichever class or interface the call names.
      */
-    private static Object classOf(VirtualMachine vm, Object value) {
+    static Object classOf(VirtualMachine vm, Object value) {
         if (value instanceof GuestClass) {
             return Class.class;
         }
@@ -300,6 +332,15 @@ final class SystemStubs {
             Class<?> imitated = vm.host.findClass(standIn.standsFor());
             return imitated != null ? imitated : Object.class;
         }
+        String bean = ManagementStubs.imitatedClass(value);
+        if (bean != null) {
+            Class<?> imitated = vm.host.findClass(bean);
+            return imitated != null ? imitated : Object.class;
+        }
+        Class<?> standsFor = imitatedBySimulation(vm, value);
+        if (standsFor != null) {
+            return standsFor;
+        }
         Class<?> cls = value.getClass();
         if (HostBridge.isSimulated(value)) {
             while (cls.getName().startsWith("dev.javabyte.")) {
@@ -307,5 +348,42 @@ final class SystemStubs {
             }
         }
         return cls;
+    }
+
+    /**
+     * The JDK class a simulated object replaces, for simulations whose nearest JDK superclass
+     * is abstract or {@code Object} and so would give the emulator away. A real JVM returns
+     * the platform's implementation class; where the analysis JDK lacks it (a Windows class on
+     * a Linux host), the other platform's class is the nearest real answer. Null for anything
+     * else, which then reports its first JDK superclass.
+     */
+    private static Class<?> imitatedBySimulation(VirtualMachine vm, Object value) {
+        String[] candidates;
+        if (value instanceof SimPath) {
+            candidates = vm.env.windows ? new String[] {"sun/nio/fs/WindowsPath", "sun/nio/fs/UnixPath"}
+                    : new String[] {"sun/nio/fs/UnixPath", "sun/nio/fs/WindowsPath"};
+        } else if (value instanceof SimFuture<?>) {
+            candidates = new String[] {"java/util/concurrent/ScheduledThreadPoolExecutor$ScheduledFutureTask",
+                "java/util/concurrent/FutureTask"};
+        } else if (value instanceof SimProcess) {
+            candidates = new String[] {"java/lang/ProcessImpl"};
+        } else if (value instanceof SimSslSocket) {
+            candidates = new String[] {"sun/security/ssl/SSLSocketImpl"};
+        } else if (value instanceof SimSslSocketFactory) {
+            candidates = new String[] {"sun/security/ssl/SSLSocketFactoryImpl"};
+        } else if (value instanceof SimHttpConnection connection) {
+            candidates = "https".equals(connection.getURL().getProtocol())
+                    ? new String[] {"sun/net/www/protocol/https/HttpsURLConnectionImpl"}
+                    : new String[] {"sun/net/www/protocol/http/HttpURLConnection"};
+        } else {
+            return null;
+        }
+        for (String candidate : candidates) {
+            Class<?> found = vm.host.findClass(candidate);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 }

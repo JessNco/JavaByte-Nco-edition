@@ -66,6 +66,14 @@ java/lang/ProcessBuilder$Redirect
 java/lang/ProcessBuilder$Redirect$Type
 java/lang/Process
 
+# ---------------------------------------------------------------- hardware and management
+# The management beans, ProcessHandle, the screen (Toolkit, GraphicsEnvironment) and
+# Runtime.version are stubs that describe the simulated machine (dev.javabyte.env.MachineProfile);
+# the objects they hand out are simulated too. Only the plain value classes they return are
+# listed here. Nothing else in java/lang/management, java/awt or com/sun/management is allowed.
+java/lang/management/MemoryUsage
+java/lang/Runtime$Version
+
 # ---------------------------------------------------------------- reflection and method handles
 # Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed
 # through this same policy, so reflection cannot be used to reach a blocked method.

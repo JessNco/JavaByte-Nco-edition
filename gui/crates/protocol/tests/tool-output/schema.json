@@ -159,6 +159,52 @@
     "default" : 1247901281,
     "description" : "Seed for random numbers the sample does not seed itself, so that runs are repeatable. Empty means truly random."
   }, {
+    "path" : "environment.manufacturer",
+    "type" : "string",
+    "default" : "Dell Inc.",
+    "description" : "The computer maker the sample sees, as in wmic and systeminfo. Sandbox checks look for VMware, VirtualBox or QEMU here."
+  }, {
+    "path" : "environment.model",
+    "type" : "string",
+    "default" : "OptiPlex 7050",
+    "description" : "The computer model the sample sees, as in wmic and systeminfo."
+  }, {
+    "path" : "environment.processors",
+    "type" : "integer",
+    "default" : 4,
+    "description" : "Logical processors, as reported by Runtime.availableProcessors, NUMBER_OF_PROCESSORS and the management beans."
+  }, {
+    "path" : "environment.memoryMegabytes",
+    "type" : "integer",
+    "default" : 16384,
+    "description" : "Installed memory in megabytes, as reported by the management beans, wmic and systeminfo."
+  }, {
+    "path" : "environment.screenWidth",
+    "type" : "integer",
+    "default" : 1920,
+    "description" : "Screen width in pixels, as reported by java.awt.Toolkit and GraphicsEnvironment."
+  }, {
+    "path" : "environment.screenHeight",
+    "type" : "integer",
+    "default" : 1080,
+    "description" : "Screen height in pixels, as reported by java.awt.Toolkit and GraphicsEnvironment."
+  }, {
+    "path" : "environment.processId",
+    "type" : "integer",
+    "default" : 6732,
+    "description" : "The process id of the sample's own Java process. Programs it starts get higher ids."
+  }, {
+    "path" : "environment.jvmArguments",
+    "type" : "list",
+    "element" : "string",
+    "default" : [ ],
+    "description" : "Options the Java process appears to have been started with, as RuntimeMXBean.getInputArguments reports. Anti-debugging checks look for -agentlib:jdwp or -javaagent here."
+  }, {
+    "path" : "environment.builtInCommands",
+    "type" : "boolean",
+    "default" : true,
+    "description" : "Answer common system commands (whoami, hostname, tasklist, wmic, systeminfo, ipconfig and others) from the pretend machine when no processes rule matches. Off means such commands print nothing."
+  }, {
     "path" : "network",
     "type" : "object",
     "description" : "The simulated network. Nothing is ever really sent."
@@ -237,12 +283,12 @@
   }, {
     "path" : "network.localAddress",
     "type" : "string",
-    "default" : "192.168.56.101",
-    "description" : "The pretend computer's own network address."
+    "default" : "192.168.1.23",
+    "description" : "The pretend computer's own network address, on a /24 network whose router is the .1 address."
   }, {
     "path" : "network.macAddress",
     "type" : "string",
-    "default" : "00:1B:44:11:3A:B7",
+    "default" : "D4:BE:D9:5E:3A:9C",
     "description" : "The pretend computer's network card address. Sandbox checks often look at it."
   }, {
     "path" : "processes",

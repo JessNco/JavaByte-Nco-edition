@@ -252,7 +252,7 @@ public final class InvocationRouter {
             vm.events.addOnce(owner, "gap", "missing-class", "class", owner);
             return new PhantomObject(owner);
         }
-        if (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(owner, desc)) {
+        if (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc)) {
             traceHostCall(owner, "<init>", desc, args);
             return vm.host.construct(owner, desc, args);
         }
@@ -377,12 +377,12 @@ public final class InvocationRouter {
             vm.events.addOnce(owner + name + desc, "policy", "phantom-call", "method", owner + '.' + name + desc);
             return neutralResult(desc);
         }
-        if (vm.policy.allows(owner, name, desc) && !touchesFileSystem(owner, desc)) {
+        if (vm.policy.allows(owner, name, desc) && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc)) {
             traceHostCall(owner, name, desc, args);
             return vm.host.invoke(owner, name, desc, receiver, args, special);
         }
         String viaReceiver = receiver == null ? null : allowedSupertype(receiver.getClass(), name, desc);
-        if (viaReceiver != null && !touchesFileSystem(viaReceiver, desc)) {
+        if (viaReceiver != null && !touchesFileSystem(viaReceiver, desc) && !passesClassLoader(viaReceiver, desc)) {
             traceHostCall(viaReceiver, name, desc, args);
             return vm.host.invoke(viaReceiver, name, desc, receiver, args, special);
         }
@@ -479,6 +479,21 @@ public final class InvocationRouter {
         String parameters = desc.substring(0, desc.indexOf(')'));
         boolean takesFile = parameters.contains("Ljava/io/File;") || parameters.contains("Ljava/nio/file/Path;");
         return takesFile && !FILE_INERT_OWNERS.contains(owner);
+    }
+
+    /** JDK classes that only store a class loader they are given, never asking it for anything. */
+    private static final java.util.Set<String> LOADER_INERT_OWNERS = java.util.Set.of("java/security/ProtectionDomain");
+
+    /**
+     * A JDK method declared to take a class loader would ask that loader for classes or
+     * resources from inside host code, where no stub sees the request. A real loader the guest
+     * holds (its own subclass of {@code ClassLoader}, say) would then fetch from its URLs or
+     * hand classes to the JDK to construct. {@code ResourceBundle.Control.newBundle} is one
+     * such method. Calls the stubs handle are unaffected, since stubs run before this check.
+     */
+    private static boolean passesClassLoader(String owner, String desc) {
+        return desc.substring(0, desc.indexOf(')')).contains("Ljava/lang/ClassLoader;")
+                && !LOADER_INERT_OWNERS.contains(owner);
     }
 
     private static boolean isMirror(Object value) {

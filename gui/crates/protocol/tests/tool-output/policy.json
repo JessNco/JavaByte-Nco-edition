@@ -233,12 +233,12 @@
     "rule" : "java/lang/ClassLoader#<init>",
     "allow" : true,
     "section" : "core language types",
-    "note" : "A real loader object is created so it can be passed around, but every loading method is a stub."
+    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs; <init> stays listed so a sample's own subclass can still extend the real class."
   }, {
     "rule" : "java/net/URLClassLoader#<init>,getURLs",
     "allow" : true,
     "section" : "core language types",
-    "note" : "A real loader object is created so it can be passed around, but every loading method is a stub."
+    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs; <init> stays listed so a sample's own subclass can still extend the real class."
   }, {
     "rule" : "java/lang/ProcessBuilder#<init>,command,directory,redirectErrorStream,redirectInput,redirectOutput,redirectError,inheritIO",
     "allow" : true,
@@ -490,20 +490,25 @@
     "section" : "collections and utilities",
     "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
   }, {
+    "rule" : "java/util/ResourceBundle$Control#newBundle,needsReload",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "These ask the loader they are given for a class or resource from inside host code."
+  }, {
     "rule" : "java/util/prefs/**",
     "allow" : false,
     "section" : "collections and utilities",
-    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+    "note" : "These ask the loader they are given for a class or resource from inside host code."
   }, {
     "rule" : "java/util/logging/**",
     "allow" : false,
     "section" : "collections and utilities",
-    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+    "note" : "These ask the loader they are given for a class or resource from inside host code."
   }, {
     "rule" : "java/util/spi/**",
     "allow" : false,
     "section" : "collections and utilities",
-    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+    "note" : "These ask the loader they are given for a class or resource from inside host code."
   }, {
     "rule" : "java/util/jar/JarFile#<init>",
     "allow" : false,
@@ -915,95 +920,120 @@
     "section" : "cryptography",
     "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
   }, {
-    "rule" : "java/security/Provider",
+    "rule" : "java/security/Provider#getName,getVersion,getVersionStr,getInfo,isConfigured,toString,hashCode,equals",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
-    "rule" : "java/security/Security#getProvider,getProviders,getAlgorithms,getProperty",
+    "rule" : "java/security/Provider#get,getOrDefault,getProperty,getService,getServices,containsKey,containsValue,contains",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
+  }, {
+    "rule" : "java/security/Provider#isEmpty,size,keySet,values,entrySet,keys,elements,propertyNames,stringPropertyNames",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
+  }, {
+    "rule" : "java/security/Provider#<init>,put,putAll,putIfAbsent,remove,clear,load,loadFromXML,setProperty",
+    "allow" : false,
+    "section" : "cryptography",
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
+  }, {
+    "rule" : "java/security/Provider#compute,computeIfAbsent,computeIfPresent,merge,replace,replaceAll,configure",
+    "allow" : false,
+    "section" : "cryptography",
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
+  }, {
+    "rule" : "java/security/Provider$Service#getType,getAlgorithm,getClassName,getAttribute,toString",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
+  }, {
+    "rule" : "java/security/Security#getAlgorithms,getProperty",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/AccessController#doPrivileged",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/PrivilegedAction",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/PrivilegedExceptionAction",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/ProtectionDomain",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/CodeSource",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/KeyStore",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/KeyStore$*",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/*Exception",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/spec/**",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/interfaces/**",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/cert/Certificate",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/cert/X509Certificate",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/cert/CertificateFactory",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "java/security/cert/*Exception",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "javax/security/auth/x500/**",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "javax/security/cert/**",
     "allow" : true,
     "section" : "cryptography",
-    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+    "note" : "Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM. Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider that might still slip through: reading it is harmless, changing it or subclassing it is not."
   }, {
     "rule" : "javax/net/ssl/TrustManager",
     "allow" : true,
@@ -1095,39 +1125,44 @@
     "section" : "network value types",
     "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
   }, {
-    "rule" : "java/net/InetAddress#getHostAddress,getHostName,getCanonicalHostName,getAddress,toString,equals,hashCode,isLoopbackAddress,isAnyLocalAddress,isSiteLocalAddress",
+    "rule" : "java/net/InetAddress#getHostAddress,getHostName,getAddress,toString,equals,hashCode,isLoopbackAddress,isAnyLocalAddress,isSiteLocalAddress",
     "allow" : true,
     "section" : "network value types",
     "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/InetAddress#getCanonicalHostName",
+    "allow" : false,
+    "section" : "network value types",
+    "note" : "Always a real reverse lookup; a stub answers from the name the simulated address carries."
   }, {
     "rule" : "java/net/Inet4Address#getHostAddress,getAddress,toString,equals,hashCode",
     "allow" : true,
     "section" : "network value types",
-    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+    "note" : "Always a real reverse lookup; a stub answers from the name the simulated address carries."
   }, {
     "rule" : "java/net/InetSocketAddress#getHostName,getHostString,getPort,getAddress,toString,equals,hashCode,isUnresolved,createUnresolved",
     "allow" : true,
     "section" : "network value types",
-    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+    "note" : "Always a real reverse lookup; a stub answers from the name the simulated address carries."
   }, {
     "rule" : "java/net/SocketAddress",
     "allow" : true,
     "section" : "network value types",
-    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+    "note" : "Always a real reverse lookup; a stub answers from the name the simulated address carries."
   }, {
     "rule" : "java/net/*Exception",
     "allow" : true,
     "section" : "network value types",
-    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+    "note" : "Always a real reverse lookup; a stub answers from the name the simulated address carries."
   }, {
     "rule" : "java/net/URL#openConnection,openStream,getContent,setURLStreamHandlerFactory",
     "allow" : false,
     "section" : "network value types",
-    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+    "note" : "Always a real reverse lookup; a stub answers from the name the simulated address carries."
   }, {
-    "rule" : "java/net/URL#equals,hashCode",
+    "rule" : "java/net/URL#equals,hashCode,sameFile",
     "allow" : false,
     "section" : "network value types",
-    "note" : "URL.equals and URL.hashCode resolve the host name through real DNS; stubs compare text instead."
+    "note" : "URL.equals, hashCode and sameFile resolve the host name through real DNS; stubs compare text instead. JDK code (a HashMap, List.contains) calls them without a stub in between, so every URL the guest builds also gets an inert handler, dev.javabyte.env.SimURLStreamHandler."
   } ]
 }

@@ -122,13 +122,53 @@ final class FileStubs {
         return arg instanceof File file ? file.getPath() : arg.toString();
     }
 
+    /**
+     * Turns the path of a {@code file:} URL or URI into a path on the virtual disk. Every stub
+     * that accepts a file URL uses this, so they all agree on what a URL names.
+     *
+     * <p>Escapes such as {@code %20} and {@code %3A} are decoded the way {@code URI} decodes
+     * them: a {@code +} stays a plus sign (only form encoding turns it into a space), and an
+     * incomplete escape is kept as written. On Windows, the slash before a drive letter is then
+     * dropped, so {@code /C:/x} and {@code /C%3A/x} both become {@code C:/x}.
+     *
+     * @param rawPath the path as it appears in the URL, escapes and all
+     * @param windows true when the guest's disk uses Windows paths
+     */
+    static String pathFromFileUrl(String rawPath, boolean windows) {
+        String path = decodePercent(rawPath);
+        return windows && path.matches("/[A-Za-z]:.*") ? path.substring(1) : path;
+    }
+
+    /** Decodes {@code %XX} escapes as UTF-8, leaving everything else, including {@code +}, as it is. */
+    private static String decodePercent(String text) {
+        if (text.indexOf('%') < 0) {
+            return text;
+        }
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            int high = c == '%' && i + 2 < text.length() ? Character.digit(text.charAt(i + 1), 16) : -1;
+            int low = high >= 0 ? Character.digit(text.charAt(i + 2), 16) : -1;
+            if (low >= 0) {
+                bytes.write(high << 4 | low);
+                i += 2;
+            } else {
+                byte[] encoded = String.valueOf(c).getBytes(StandardCharsets.UTF_8);
+                if (Character.isHighSurrogate(c) && i + 1 < text.length()) {
+                    encoded = text.substring(i, i + 2).getBytes(StandardCharsets.UTF_8);
+                    i++;
+                }
+                bytes.write(encoded, 0, encoded.length);
+            }
+        }
+        return bytes.toString(StandardCharsets.UTF_8);
+    }
+
     /** Resolves the {@code File} constructor overloads to one path. */
     private static String filePath(VirtualFileSystem fs, Object[] args) {
         if (args.length == 1) {
             if (args[0] instanceof URI uri) {
-                String path = uri.getPath();
-                // file:/C:/x has URI path "/C:/x"; drop the slash before the drive letter.
-                return fs.isWindows() && path.matches("/[A-Za-z]:.*") ? path.substring(1) : path;
+                return pathFromFileUrl(uri.getRawPath(), fs.isWindows());
             }
             return path(args[0]);
         }

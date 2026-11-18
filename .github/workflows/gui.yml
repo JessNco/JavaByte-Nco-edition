@@ -184,7 +184,7 @@ jobs:
               -PassThru -RedirectStandardError "$work/listener.err"
             # Wait up to 10 s for the listener; check.py fails the run if it never got ready.
             for ($i = 0; $i -lt 100; $i++) {
-              if (Select-String -Quiet -Pattern '"ready"' -Path "$work/network.log" -ErrorAction SilentlyContinue) { break }
+              if ((Test-Path "$work/network.log") -and (Select-String -Quiet -Pattern '"ready"' -Path "$work/network.log")) { break }
               Start-Sleep -Milliseconds 100
             }
             $env:JAVABYTE_PROBE_PORT = "8099"

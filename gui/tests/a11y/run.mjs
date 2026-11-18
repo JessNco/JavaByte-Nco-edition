@@ -155,7 +155,11 @@ await section('settings', async () => {
   // Names and values: keys with dots are one name.
   const more = page.locator('#section-environment').locator('..').getByRole('button', { name: 'More settings' });
   check((await more.getAttribute('aria-expanded')) === 'false', 'More settings starts closed and says so');
+  // The remove above re-renders the form; let it settle so the key reaches the button that stays.
+  await page.waitForTimeout(300);
   await more.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#section-environment')?.parentElement
+    ?.querySelector('[aria-expanded="true"]'), null, { timeout: 3000 }).catch(() => {});
   check((await more.getAttribute('aria-expanded')) === 'true', 'Enter opens More settings, and it says so');
   await page.locator('#field-environment-properties-new-name').fill('java.version');
   await page.locator('#field-environment-properties-new-value').fill('17');

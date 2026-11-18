@@ -70,6 +70,17 @@ class BytecodeTest {
     }
 
     /**
+     * Bootstrap methods declared with varargs, for dynamic constants as well as
+     * {@code invokedynamic}: the trailing static arguments are packed into one array, whatever
+     * their number, as the JVM's {@code invokeWithArguments} does.
+     */
+    @Test
+    void varargsBootstrapsMatchRealJvm() throws Exception {
+        List<String> output = compare("VarargsBootstraps", GeneratedClasses::varargsBootstraps, IndyTargets.class);
+        assertEquals(List.of("label:a:1:b", "one:only", "bare", "second", "first"), output);
+    }
+
+    /**
      * The emulator has no verifier, so invalid code is discovered when it runs. It must end as
      * the sample's own failure, flagged as a gap, and not as a defect of the emulator.
      */

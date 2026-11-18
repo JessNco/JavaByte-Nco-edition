@@ -1,0 +1,19 @@
+description: The sample reads JVM-made exception messages and stack traces for signs of emulation, and finds what a real Java 8 runtime would show.
+techniques: [anti-emulation, exception-message-check, stack-trace-check]
+fixture: dev.javabyte.guest.sim.EmulatorTells
+stages:
+  - name: run
+    expect:
+      outcomes: [completed]
+      stdout:
+        - '^file cast java\.io\.File cannot be cast to java\.lang\.String$'
+        - '^socket cast java\.net\.Socket cannot be cast to java\.lang\.String$'
+        - '^loader cast java\.lang\.ClassLoader cannot be cast to java\.lang\.String$'
+        - '^process cast java\.lang\.Process cannot be cast to java\.lang\.String$'
+        - '^loader text [A-Za-z$.]+@[0-9a-f]+$'
+        - '^npe message null$'
+        - '^nfe top java\.lang\.NumberFormatException\.forInputString module null$'
+      notPrinted:
+        - 'dev\.javabyte\.(env|vm|host|model|stubs|shell)'
+        - 'cast passed'
+      maxGaps: 0

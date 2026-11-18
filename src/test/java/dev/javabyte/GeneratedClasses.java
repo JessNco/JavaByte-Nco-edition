@@ -4,6 +4,7 @@ import static org.objectweb.asm.Opcodes.*;
 
 import dev.javabyte.guest.sim.IndyTargets;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
@@ -285,6 +286,34 @@ final class GeneratedClasses {
         m.visitLdcInsn(Type.getMethodType("(Ljava/lang/String;J)Ljava/lang/String;"));
         m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/invoke/MethodType", "parameterCount", "()I", false);
         print(m, "I");
+        return end(writer, m);
+    }
+
+    /**
+     * Bootstrap methods declared with varargs, for both a dynamic constant and an
+     * {@code invokedynamic}. The JVM packs the trailing static arguments into one array; a
+     * dynamic constant needs class version 55 (Java 11).
+     */
+    static byte[] varargsBootstraps(String name) {
+        String targets = Type.getInternalName(IndyTargets.class);
+        Handle joined = new Handle(H_INVOKESTATIC, targets, "joined",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;[Ljava/lang/Object;)Ljava/lang/String;",
+                false);
+        Handle lastNamed = new Handle(H_INVOKESTATIC, targets, "lastNamed",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/String;)"
+                        + "Ljava/lang/invoke/CallSite;", false);
+        ClassWriter writer = begin(name, V11);
+        MethodVisitor m = beginMain(writer);
+        m.visitLdcInsn(new ConstantDynamic("label", "Ljava/lang/String;", joined, "a", 1, "b"));
+        print(m, "Ljava/lang/String;");
+        m.visitLdcInsn(new ConstantDynamic("one", "Ljava/lang/String;", joined, "only"));
+        print(m, "Ljava/lang/String;");
+        m.visitLdcInsn(new ConstantDynamic("bare", "Ljava/lang/String;", joined));
+        print(m, "Ljava/lang/String;");
+        m.visitInvokeDynamicInsn("v", "()Ljava/lang/String;", lastNamed, "first", "second");
+        print(m, "Ljava/lang/String;");
+        m.visitInvokeDynamicInsn("u", "()Ljava/lang/String;", lastNamed, "first");
+        print(m, "Ljava/lang/String;");
         return end(writer, m);
     }
 

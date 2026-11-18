@@ -3,6 +3,7 @@ package dev.javabyte.host;
 import dev.javabyte.model.GuestMethod;
 import dev.javabyte.plugin.NativeHandler;
 import dev.javabyte.report.NativeLibraryInfo;
+import dev.javabyte.vm.Hooks;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,21 +23,18 @@ public final class NativeRegistry {
 
     /**
      * Registers a handler for native methods matching a glob over {@code owner.name} or
-     * {@code owner.name(descriptor)}, in the same form as config hooks.
+     * {@code owner.name(descriptor)}, in the same form as config hooks: {@code *} matches any
+     * run of characters and {@code ?} one character. The conversion is {@link Hooks#glob}
+     * itself, so the two can never drift apart.
      */
     public void register(String methodGlob, NativeHandler handler) {
-        StringBuilder regex = new StringBuilder();
-        for (char c : methodGlob.toCharArray()) {
-            regex.append(c == '*' ? ".*" : Pattern.quote(String.valueOf(c)));
-        }
-        handlers.add(new Registration(Pattern.compile(regex.toString()), handler));
+        handlers.add(new Registration(Hooks.glob(methodGlob), handler));
     }
 
+    /** The first registered handler whose glob matches the method, or null if none does. */
     public NativeHandler find(GuestMethod method) {
-        String shortForm = method.owner.name + '.' + method.name;
         for (Registration registration : handlers) {
-            if (registration.pattern().matcher(shortForm).matches()
-                    || registration.pattern().matcher(shortForm + method.desc).matches()) {
+            if (Hooks.matches(registration.pattern(), method.owner.name, method.name, method.desc)) {
                 return registration.handler();
             }
         }

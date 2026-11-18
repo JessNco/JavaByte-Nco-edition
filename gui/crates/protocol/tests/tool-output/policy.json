@@ -260,6 +260,16 @@
     "section" : "core language types",
     "note" : "Building a command is harmless; start() is a stub and never launches anything."
   }, {
+    "rule" : "java/lang/management/MemoryUsage",
+    "allow" : true,
+    "section" : "hardware and management",
+    "note" : "The management beans, ProcessHandle, the screen (Toolkit, GraphicsEnvironment) and Runtime.version are stubs that describe the simulated machine (dev.javabyte.env.MachineProfile); the objects they hand out are simulated too. Only the plain value classes they return are listed here. Nothing else in java/lang/management, java/awt or com/sun/management is allowed."
+  }, {
+    "rule" : "java/lang/Runtime$Version",
+    "allow" : true,
+    "section" : "hardware and management",
+    "note" : "The management beans, ProcessHandle, the screen (Toolkit, GraphicsEnvironment) and Runtime.version are stubs that describe the simulated machine (dev.javabyte.env.MachineProfile); the objects they hand out are simulated too. Only the plain value classes they return are listed here. Nothing else in java/lang/management, java/awt or com/sun/management is allowed."
+  }, {
     "rule" : "java/lang/reflect/Array",
     "allow" : true,
     "section" : "reflection and method handles",

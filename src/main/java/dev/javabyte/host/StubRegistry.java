@@ -15,7 +15,8 @@ import java.util.function.Supplier;
  *
  * <p>A stub registered on a class also applies when the call names a subclass or implementor.
  * Bytecode routinely does that ({@code myLoader.defineClass(...)} names the sample's own loader
- * class), and security depends on the stub being found regardless of which name was used.
+ * class), and security depends on the stub being found regardless of which name was used. A
+ * stub registered on {@code Object} also applies when the call names an interface.
  */
 public final class StubRegistry {
 
@@ -95,8 +96,19 @@ public final class StubRegistry {
             }
             work.addAll(java.util.List.of(current.getInterfaces()));
         }
+        // An interface has no superclass, yet it has Object's public methods (JLS 9.2), and javac
+        // names the interface when it compiles path.getClass() on a Path. Resolution looks in
+        // Object for them (JVMS 5.4.3.4), and so must stub lookup: otherwise getClass() through
+        // an interface would bypass the stub that hides emulator classes.
+        if (start.isInterface() && OBJECT_METHODS.contains(name)) {
+            return direct("java/lang/Object", name, desc);
+        }
         return null;
     }
+
+    /** The public instance methods of {@code Object}, which every interface type also has. */
+    private static final Set<String> OBJECT_METHODS =
+            Set.of("getClass", "hashCode", "equals", "toString", "notify", "notifyAll", "wait");
 
     /** Most specific registration first: exact overload, then any overload, then whole class. */
     private Stub direct(String owner, String name, String desc) {

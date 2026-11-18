@@ -343,7 +343,13 @@ final class TimeStubs {
         StubRegistry stubs = vm.stubs;
         Locale locale = region.locale;
 
-        stubs.on("java/util/TimeZone", "getDefault", ctx -> region.timeZone());
+        // As on a real JVM, the first question for the default zone also sets user.timezone.
+        stubs.on("java/util/TimeZone", "getDefault", ctx -> {
+            if (vm.env.properties.getProperty("user.timezone", "").isEmpty()) {
+                vm.env.properties.setProperty("user.timezone", region.zone.getId());
+            }
+            return region.timeZone();
+        });
         stubs.on("java/util/Locale", "getDefault", ctx -> locale);
 
         // Text and number formatting.

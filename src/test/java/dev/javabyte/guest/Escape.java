@@ -183,6 +183,15 @@ public final class Escape {
 
         // ---- reaching the emulator or changing the analysis JVM
         attempt("emulator class", () -> leak(Class.forName("dev.javabyte.vm.VirtualMachine").getName()));
+        // getClass() through an interface type compiles to invokeinterface on the interface, and
+        // must hide the emulator's own classes and proxies just as it does on a class type.
+        attempt("class of Path", () -> leak(Paths.get("x").getClass().getName()));
+        attempt("class of FileSystem", () -> leak(java.nio.file.FileSystems.getDefault().getClass().getName()));
+        attempt("class of executor", () -> leak(Executors.newFixedThreadPool(1).getClass().getName()));
+        attempt("class of future", () -> leak(Executors.newSingleThreadExecutor().submit(() -> 1).getClass().getName()));
+        attempt("class of runtime bean", () -> leak(java.lang.management.ManagementFactory.getRuntimeMXBean().getClass().getName()));
+        attempt("class of process handle", () -> leak(ProcessHandle.current().getClass().getName()));
+        attempt("class of network interface", () -> leak(java.net.NetworkInterface.getByName("lo").getClass().getName()));
         attempt("emulator library", () -> leak(Class.forName("org.objectweb.asm.ClassWriter").getName()));
         attempt("class loader of JDK object", () -> leak(String.valueOf("x".getClass().getClassLoader())));
         attempt("own loader", () -> leak(Escape.class.getClassLoader().getClass().getName()));

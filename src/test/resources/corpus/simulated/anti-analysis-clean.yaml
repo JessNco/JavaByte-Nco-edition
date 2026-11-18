@@ -1,5 +1,5 @@
-description: Environment checks find nothing suspicious on the default simulated machine, so the payload is released.
-techniques: [sandbox-detection, sleep-timing-check, debugger-check, mac-address-check, process-list-check, virtual-clock]
+description: Environment checks find nothing suspicious on the default simulated machine, so the payload is released. Its hardware, process list and network interfaces look like a desktop, and APIs reporting the same fact agree.
+techniques: [sandbox-detection, sleep-timing-check, debugger-check, mac-address-check, process-list-check, virtual-clock, management-beans, screen-size, built-in-commands]
 fixture: dev.javabyte.guest.sim.AntiAnalysis
 stages:
   - name: run
@@ -7,8 +7,9 @@ stages:
       outcomes: [completed]
       stdout: ['environment looks real']
       events:
-        - {category: process, action: exec, where: {command: 'tasklist'}}
+        - {category: process, action: exec, where: {command: 'tasklist', matchedRule: '^built-in:tasklist$'}, because: a real machine never answers tasklist with nothing}
         - {category: process, action: exec, where: {command: 'payload\.exe --go'}, because: 'a one-minute sleep must pass in virtual time, or the sleep check would trip'}
         - {category: file, action: check, where: {path: 'VBoxMouse\.sys', exists: 'false'}}
         - {category: reflect, action: forName, where: {name: 'org\.objectweb\.asm\.ClassReader', found: 'false'}, because: the emulator's own libraries must be invisible to the sample}
+      absent: [{category: policy, action: blocked, because: 'the management beans, ProcessHandle and the screen are simulated, not refused'}]
       maxGaps: 0

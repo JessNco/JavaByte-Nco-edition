@@ -31,11 +31,11 @@ mvn -q package
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar inspect sample.jar
+java -jar target/javabyte-0.2.0.jar inspect sample.jar
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run sample.jar
+java -jar target/javabyte-0.2.0.jar run sample.jar
 ```
 
 `run` prints a summary and writes everything to `javabyte-out/`:
@@ -51,11 +51,11 @@ java -jar target/javabyte-0.1.0.jar run sample.jar
 To control a run, generate a config and edit it:
 
 ```bash
-java -jar target/javabyte-0.1.0.jar init sample.jar > sample.yaml
+java -jar target/javabyte-0.2.0.jar init sample.jar > sample.yaml
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run -c sample.yaml
+java -jar target/javabyte-0.2.0.jar run -c sample.yaml
 ```
 
 ## Desktop app
@@ -233,3 +233,16 @@ The test suite is described in [docs/TESTING.md](docs/TESTING.md). In short:
 | [docs/GUI-PLAN.md](docs/GUI-PLAN.md) | The desktop app's design; each phase in [docs/gui/](docs/gui/) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |
 | [CHANGELOG.md](CHANGELOG.md) | What changed between versions |
+
+## Licence
+
+Copyright (C) 2026 The JavaByte contributors.
+
+JavaByte is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. It is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+The desktop installers bundle other software under its own licences; see
+[gui/packaging/THIRD-PARTY-NOTICES.txt](gui/packaging/THIRD-PARTY-NOTICES.txt).

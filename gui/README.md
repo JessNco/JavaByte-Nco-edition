@@ -106,7 +106,7 @@ tests drive the real tool on harmless fixtures and need it built (`mvn package` 
 repository root):
 
 ```bash
-JAVABYTE_JAR=$PWD/../target/javabyte-0.1.0.jar JAVABYTE_TEST_CLASSES=$PWD/../target/test-classes cargo test -p javabyte-gui-backend
+JAVABYTE_JAR=$PWD/../target/javabyte-0.2.0.jar JAVABYTE_TEST_CLASSES=$PWD/../target/test-classes cargo test -p javabyte-gui-backend
 ```
 
 The accessibility checks run the screens in Chromium:

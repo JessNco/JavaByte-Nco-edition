@@ -24,7 +24,7 @@ installers) and on a version tag (both editions, as a draft release).
 | `linux/javabyte-gui.desktop` | The desktop entry: `%f` and the Java MIME types put JavaByte under "Open with" for `.jar` files without making it the default |
 | `linux/apparmor-profile`, `linux/postinst`, `linux/postrm` | Ubuntu 24.04 allows user namespaces (which network isolation needs) only to programs with a profile that permits them. The `.deb` installs this profile where AppArmor 4 is present |
 | `windows/open-with.wxs` | A WiX fragment adding JavaByte to `.jar`'s "Open with" list, leaving the default program alone |
-| `THIRD-PARTY-NOTICES.txt` | The licences of what is bundled; installed beside the app |
+| `THIRD-PARTY-NOTICES.txt` | The licences of what is bundled; installed beside the app with JavaByte's own `LICENSE.txt` |
 
 To check an installed app, run it with `--self-check`: it prints what it found and whether the
 tool runs, and exits with 0 when it does.

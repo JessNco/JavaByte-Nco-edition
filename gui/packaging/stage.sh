@@ -38,6 +38,7 @@ rm -rf "$out"
 mkdir -p "$out"
 cp "$jar" "$out/javabyte.jar"
 cp "$gui/packaging/THIRD-PARTY-NOTICES.txt" "$out/"
+cp "$repo/LICENSE" "$out/LICENSE.txt"
 
 echo "jlink: $modules"
 "$java_home/bin/jlink" --add-modules "$modules" --strip-debug --no-header-files --no-man-pages \

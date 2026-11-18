@@ -21,7 +21,7 @@ you downloaded.
 On Windows, in PowerShell:
 
 ```powershell
-Get-FileHash .\JavaByte-0.1.0-windows-x86_64.msi -Algorithm SHA256
+Get-FileHash .\JavaByte-0.2.0-windows-x86_64.msi -Algorithm SHA256
 ```
 
 On Linux:
@@ -71,7 +71,7 @@ To uninstall: Settings, Apps, JavaByte, Uninstall. Your analyses stay in Documen
 Install the `.deb`. It brings in the libraries it needs:
 
 ```bash
-sudo apt install ./JavaByte-0.1.0-linux-x86_64.deb
+sudo apt install ./JavaByte-0.2.0-linux-x86_64.deb
 ```
 
 Then start JavaByte from the applications menu, or run `javabyte-gui`.
@@ -90,11 +90,11 @@ sudo apt remove java-byte
 ## Other Linux systems: the AppImage
 
 ```bash
-chmod +x JavaByte-0.1.0-linux-x86_64.AppImage
+chmod +x JavaByte-0.2.0-linux-x86_64.AppImage
 ```
 
 ```bash
-./JavaByte-0.1.0-linux-x86_64.AppImage
+./JavaByte-0.2.0-linux-x86_64.AppImage
 ```
 
 The AppImage cannot add the permission Ubuntu 24.04 asks for, so there it cannot turn off the

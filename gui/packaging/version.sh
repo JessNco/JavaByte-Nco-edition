@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prints the version, after checking that every place that states it agrees: pom.xml (the
 # tool), gui/app/tauri.conf.json (the installers) and gui/Cargo.toml (the app's crates). With an
-# argument (a tag such as v0.1.0), also checks that the tag names the same version.
+# argument (a tag such as v0.2.0), also checks that the tag names the same version.
 set -euo pipefail
 gui="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo="$(cd "$gui/.." && pwd)"

@@ -568,6 +568,8 @@ await section('windows sandbox', async () => {
   await toOverview(failing.page);
   await failing.page.getByRole('button', { name: 'Analyse', exact: true }).click();
   await failing.page.waitForSelector('#isolation-failed-heading', { timeout: 6000 });
+  // The announcement can follow the heading by a tick; wait for it as the starting check does.
+  await failing.page.waitForFunction(() => document.querySelector('#announcer')?.textContent.startsWith('Windows Sandbox could not start'), null, { timeout: 3000 }).catch(() => {});
   check((await failing.page.locator('#announcer').textContent()).startsWith('Windows Sandbox could not start'), 'a failed start is announced with its reason');
   check(!(await failing.page.getByRole('button', { name: 'View the report' }).isVisible()), 'no report is offered for a run that never began');
   await axe(failing.page, 'running, Windows Sandbox failed');

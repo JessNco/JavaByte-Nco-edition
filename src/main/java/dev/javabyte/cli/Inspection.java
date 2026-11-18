@@ -1,5 +1,6 @@
 package dev.javabyte.cli;
 
+import dev.javabyte.Emulator;
 import dev.javabyte.model.ClassRepository;
 import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestMethod;
@@ -40,56 +41,37 @@ final class Inspection {
         this.unparseable = unparseable;
     }
 
+    /**
+     * Reads a jar, class file or directory of classes without running anything, and describes
+     * it. The sample is loaded by {@link Emulator#loadSample}, the same code {@code run} uses.
+     *
+     * @throws dev.javabyte.config.ConfigLoader.ConfigException if the path does not exist or is
+     *         not a sample
+     */
     static Inspection of(Path path) throws IOException {
         if (!Files.exists(path)) {
             // A usage error (exit code 2), not an emulator failure: the caller named a wrong file.
             throw new dev.javabyte.config.ConfigLoader.ConfigException("Sample not found: " + path);
         }
         ClassRepository repository = new ClassRepository();
-        Manifest manifest = null;
-        long size = 0;
-        if (Files.isDirectory(path)) {
-            // A folder of classes, as 'run' accepts: every .class file under it, and every file
-            // as a resource, keyed by its path relative to the folder.
-            try (java.util.stream.Stream<Path> files = Files.walk(path)) {
-                for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
-                    String relative = path.relativize(file).toString().replace('\\', '/');
-                    byte[] data = Files.readAllBytes(file);
-                    size += data.length;
-                    if (relative.endsWith(".class")) {
-                        repository.addClassBytes(relative.substring(0, relative.length() - ".class".length()), data, "sample");
-                    }
-                    repository.addResource(relative, data);
-                    if (relative.equalsIgnoreCase("META-INF/MANIFEST.MF")) {
-                        manifest = new Manifest(new java.io.ByteArrayInputStream(data));
-                    }
-                }
-            }
-        } else {
-            byte[] bytes = Files.readAllBytes(path);
-            size = bytes.length;
-            if (bytes.length > 1 && bytes[0] == 'P' && bytes[1] == 'K') {
-                manifest = repository.addArchive(bytes, "sample");
-            } else if (bytes.length > 3 && (bytes[0] & 0xFF) == 0xCA && (bytes[1] & 0xFF) == 0xFE) {
-                repository.addClassFile(bytes, "sample");
-            } else {
-                throw new dev.javabyte.config.ConfigLoader.ConfigException(path + " is neither a jar/zip archive nor a class file");
-            }
-        }
+        // Loaded exactly as 'run' loads it, so that the two agree on what the sample is.
+        boolean directory = Files.isDirectory(path);
+        byte[] bytes = directory ? new byte[0] : Files.readAllBytes(path);
+        Manifest manifest = Emulator.loadSample(repository, path, bytes, "sample");
+        long size = directory ? directorySize(path) : bytes.length;
         Inspection inspection = new Inspection(path, size, repository.unparseable());
         if (manifest != null) {
             inspection.mainClass = manifest.getMainAttributes().getValue("Main-Class");
             inspection.agentClass = manifest.getMainAttributes().getValue("Premain-Class");
         }
+        // The same list the no-entry-point message of 'run' gives.
+        inspection.mainCandidates.addAll(Emulator.mainCandidates(repository));
         for (String name : new ArrayList<>(repository.classNames())) {
             GuestClass cls = repository.find(name);
             if (cls == null) {
                 continue;
             }
             inspection.classCount++;
-            if (cls.declared("main", "([Ljava/lang/String;)V") != null) {
-                inspection.mainCandidates.add(name);
-            }
             String superName = cls.node.superName == null ? "" : cls.node.superName;
             if (superName.endsWith("ClassLoader")) {
                 inspection.loaderClasses.add(name + " extends " + superName);
@@ -118,6 +100,17 @@ final class Inspection {
                 .limit(10)
                 .forEach(name -> inspection.largestResources.put(name, repository.resource(name).length));
         return inspection;
+    }
+
+    /** The total size of every regular file under a directory sample, in bytes. */
+    private static long directorySize(Path directory) throws IOException {
+        long total = 0;
+        try (java.util.stream.Stream<Path> files = Files.walk(directory)) {
+            for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+                total += Files.size(file);
+            }
+        }
+        return total;
     }
 
     Map<String, Object> toMap() {

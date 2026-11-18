@@ -51,8 +51,43 @@ public final class Main {
         }
     }
 
+    /**
+     * The command-line entry point. Before anything else it turns off host name lookups for the
+     * whole JVM (see {@link #blockHostNameLookups()}), then runs the tool and ends the JVM with
+     * its exit code.
+     */
     public static void main(String[] args) {
+        blockHostNameLookups();
         System.exit(execute(args));
+    }
+
+    /**
+     * A hosts file that cannot exist on any computer: a path below a device, which is not a
+     * directory. Nothing can create it, so it cannot be used to plant names.
+     */
+    static final String NO_HOSTS_FILE = System.getProperty("os.name", "").startsWith("Windows")
+            ? "NUL\\javabyte-no-hosts" : "/dev/null/javabyte-no-hosts";
+
+    /**
+     * Makes every host name lookup in this JVM fail, as a backstop behind the network simulator.
+     *
+     * <p>The emulator itself never needs to resolve a name: the guest's lookups are answered by
+     * {@code NetworkSimulator}, and the native bridge talks to its helper over pipes. If a defect
+     * ever let a guest lookup reach the real {@code InetAddress}, a DNS query would tell the
+     * attacker's name server that the sample was being analysed. Setting
+     * {@code jdk.net.hosts.file} makes the JDK answer names from that file instead of the
+     * system resolver, and when the file is missing every lookup fails with
+     * {@code UnknownHostException} rather than falling back to DNS (checked on JDK 17 and 21).
+     * {@code localhost}, the loopback address and address literals such as {@code 127.0.0.1}
+     * still work, since the JDK answers them without a lookup.
+     *
+     * <p>The JDK reads the property once, when {@code InetAddress} is first used, so this must
+     * run before anything touches the network classes; {@link #main} calls it first. It
+     * replaces any value given on the command line, so the backstop cannot be turned off by
+     * accident.
+     */
+    static void blockHostNameLookups() {
+        System.setProperty("jdk.net.hosts.file", NO_HOSTS_FILE);
     }
 
     /**

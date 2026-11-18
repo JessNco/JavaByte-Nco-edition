@@ -55,7 +55,7 @@ enum Layout {
 type Counts = Option<(u64, u64)>;
 
 /// The event list with its filters, layout choice, and details of the current event. `reload`
-/// /// changes when another report is opened, which starts the list again.
+/// changes when another report is opened, which starts the list again.
 #[component]
 pub fn EventsPanel(visible: Signal<bool>, reload: Signal<Option<String>>) -> impl IntoView {
     let layout = RwSignal::new(Layout::Grid);

@@ -2,6 +2,9 @@ package dev.javabyte.shell;
 
 import static org.objectweb.asm.Opcodes.*;
 
+import dev.javabyte.env.SimBaseClassLoader;
+import dev.javabyte.env.SimSecureClassLoader;
+import dev.javabyte.env.SimURLClassLoader;
 import dev.javabyte.host.HostBridge;
 import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.InstanceState;
@@ -108,7 +111,7 @@ public final class ShellFactory {
         Class<?> shell = state.type.shellClass;
         Constructor<?> constructor = findConstructor(shell, desc);
         Object[] effectiveArgs = args;
-        if (constructor == null || !Type.getInternalName(jdkBase(shell)).equals(ctorOwner)) {
+        if (constructor == null || !reportedBaseName(shell).equals(ctorOwner)) {
             // The sample's direct superclass is unavailable or blocked, so the shell extends
             // Object instead and there is nothing to pass the arguments to.
             constructor = findConstructor(shell, "()V");
@@ -202,13 +205,55 @@ public final class ShellFactory {
     }
 
     /**
+     * JDK classes that a shell never extends for real, mapped to the simulated class it extends
+     * instead.
+     *
+     * <p>A real {@code URLClassLoader} fetches from its URLs whenever JDK code asks it for a
+     * class or resource, which no stub would see; {@link SimURLClassLoader} only remembers
+     * them, and the class-loader stubs read the archives from the virtual disk or the network
+     * simulator, as for {@code new URLClassLoader(...)}.
+     *
+     * <p>A real {@code ClassLoader} or {@code SecureClassLoader} has a real parent, by default
+     * the emulator's own application loader, so JDK code calling the sample's loader directly
+     * could reach the emulator's class path and real resources. {@link SimBaseClassLoader} and
+     * {@link SimSecureClassLoader} have the bootstrap loader as their real parent and answer
+     * only from the guest's virtual world.
+     *
+     * <p>Each simulated class has a public constructor for every shape of the JDK class's
+     * constructors, so the sample's {@code super(...)} call finds its match.
+     */
+    private static final Map<String, Class<?>> SIMULATED_BASES = Map.of(
+            "java/lang/ClassLoader", SimBaseClassLoader.class,
+            "java/security/SecureClassLoader", SimSecureClassLoader.class,
+            "java/net/URLClassLoader", SimURLClassLoader.class);
+
+    /**
+     * The JDK class a shell class stands in for as its superclass: the class the sample's
+     * bytecode names, which is the shell's JDK base unless that base is simulated.
+     */
+    private static String reportedBaseName(Class<?> shell) {
+        Class<?> base = jdkBase(shell);
+        for (Map.Entry<String, Class<?>> entry : SIMULATED_BASES.entrySet()) {
+            if (entry.getValue() == base) {
+                return entry.getKey();
+            }
+        }
+        return Type.getInternalName(base);
+    }
+
+    /**
      * A JDK class can be the shell's superclass only if policy lets guest code construct it.
      * Otherwise extending it would run its constructor, and with it whatever the policy was
      * trying to keep out (opening a window, say). Such classes become "phantom" superclasses.
+     * A class listed in {@link #SIMULATED_BASES} is replaced by its simulated counterpart.
      */
     private Class<?> eligibleBase(String internalName) {
         if ("java/lang/Object".equals(internalName)) {
             return Object.class;
+        }
+        Class<?> simulated = SIMULATED_BASES.get(internalName);
+        if (simulated != null) {
+            return vm.policy.allows(internalName, "<init>", null) ? simulated : Object.class;
         }
         Class<?> cls = vm.host.findClass(internalName);
         boolean eligible = cls != null && !cls.isInterface() && !Modifier.isFinal(cls.getModifiers())
@@ -285,16 +330,12 @@ public final class ShellFactory {
 
     // ------------------------------------------------------------------ generation
 
+    /**
+     * Generates a shell that extends a JDK class (or a simulated stand-in for one): state
+     * field, constructors, a trampoline for every overridable method and field accessors.
+     */
     private byte[] generate(String name, Class<?> base, List<Class<?>> interfaces, boolean asEnum) {
-        // COMPUTE_FRAMES asks ASM to merge types at branch joins, which by default loads classes
-        // by name. The only joins here are in trampolines whose two arms leave an empty stack,
-        // so "Object" is always an adequate answer and avoids loading anything.
-        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
-            @Override
-            protected String getCommonSuperClass(String type1, String type2) {
-                return "java/lang/Object";
-            }
-        };
+        ClassWriter writer = newWriter();
         String baseName = Type.getInternalName(base);
         List<String> interfaceNames = new ArrayList<>();
         for (Class<?> iface : interfaces) {
@@ -323,17 +364,27 @@ public final class ShellFactory {
     }
 
     /**
-     * Generates a shell that extends the shell of the guest superclass. Everything the parent
-     * shell provides (state, constructors' targets, trampolines for the JDK base class) is
-     * inherited; only JDK interfaces that this guest class adds need new trampolines.
+     * The class writer for every shell. COMPUTE_FRAMES asks ASM to merge types at branch joins,
+     * which by default loads classes by name. The only joins here are in trampolines whose two
+     * arms leave an empty stack, so "Object" is always an adequate answer and avoids loading
+     * anything.
      */
-    private byte[] generateChild(String name, Class<?> parentShell, List<Class<?>> interfaces) {
-        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
+    private static ClassWriter newWriter() {
+        return new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
             @Override
             protected String getCommonSuperClass(String type1, String type2) {
                 return "java/lang/Object";
             }
         };
+    }
+
+    /**
+     * Generates a shell that extends the shell of the guest superclass. Everything the parent
+     * shell provides (state, constructors' targets, trampolines for the JDK base class) is
+     * inherited; only JDK interfaces that this guest class adds need new trampolines.
+     */
+    private byte[] generateChild(String name, Class<?> parentShell, List<Class<?>> interfaces) {
+        ClassWriter writer = newWriter();
         List<Class<?>> added = new ArrayList<>();
         for (Class<?> iface : interfaces) {
             if (!iface.isAssignableFrom(parentShell)) {

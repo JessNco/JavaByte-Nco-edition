@@ -60,6 +60,40 @@ public final class GuestClass {
     /** True once the shell factory has decided, so the decision is made only once per class. */
     public boolean shellResolved;
 
+    /** The {@link #origin} of a class object made by {@link #absentJdkClass}. */
+    public static final String ABSENT_JDK_CLASS = "absent-jdk-class";
+
+    /**
+     * A class object for a JDK class that the advertised Java has but the analysis JDK lacks,
+     * such as Java 8's {@code sun.misc.Launcher$AppClassLoader}. It answers {@code getName},
+     * {@code getSuperclass}, {@code getModifiers}, {@code getSimpleName} and the like as the
+     * real class would, and has no members of its own. It is never added to the repository,
+     * so no guest lookup by name finds it and nothing can be loaded from it; the type system
+     * hands it out only as the {@code getClass()} of an emulator object that imitates the class.
+     *
+     * @param name        internal name, for example {@code sun/misc/Launcher$AppClassLoader}
+     * @param superName   internal name of its JDK superclass, which the analysis JDK has
+     * @param outerName   for a nested class, the internal name of the class it is declared in; else null
+     * @param innerAccess for a nested class, its modifiers as the InnerClasses attribute records them
+     */
+    public static GuestClass absentJdkClass(ClassRepository repository, String name, String superName,
+            String outerName, int innerAccess) {
+        ClassNode node = new ClassNode();
+        node.visit(Opcodes.V1_8, Opcodes.ACC_SUPER, name, null, superName, null);
+        if (outerName != null) {
+            node.visitInnerClass(name, outerName, name.substring(outerName.length() + 1), innerAccess);
+        }
+        node.visitEnd();
+        org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(0);
+        node.accept(writer);
+        return new GuestClass(repository, node, writer.toByteArray(), ABSENT_JDK_CLASS);
+    }
+
+    /** True for a class object made by {@link #absentJdkClass}: a JDK class, not the sample's. */
+    public boolean isAbsentJdkClass() {
+        return ABSENT_JDK_CLASS.equals(origin);
+    }
+
     GuestClass(ClassRepository repository, ClassNode node, byte[] bytes, String origin) {
         this.repository = repository;
         this.node = node;

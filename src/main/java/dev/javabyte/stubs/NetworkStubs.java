@@ -78,20 +78,32 @@ final class NetworkStubs {
             return new PhantomObject("java/net/ServerSocket");
         });
 
+        // The machine has its network card and, like every machine, a loopback interface. Lookups
+        // search both and, as in the JDK, give null when nothing matches.
+        List<Object> interfaces = new java.util.ArrayList<>();
         stubs.onClass("java/net/NetworkInterface", ctx -> {
             if (ctx.receiver != null) {
-                // An instance call on the simulated interface this stub handed out earlier.
-                return ctx.proceed();
+                // An instance call on a simulated interface this stub handed out earlier.
+                return ctx.name.equals("getClass") ? SystemStubs.classOf(vm, ctx.receiver) : ctx.proceed();
             }
-            SimNetworkInterface nic = new SimNetworkInterface(network.macAddress(),
-                    network.localHost(vm.config.environment.hostName));
+            if (interfaces.isEmpty()) {
+                interfaces.add(new SimNetworkInterface(network.macAddress(), network.localHost(vm.config.environment.hostName)));
+                interfaces.add(new Loopback(vm.env.windows));
+            }
             switch (ctx.name) {
                 case "getNetworkInterfaces":
-                    return Collections.enumeration(List.of(nic));
+                    return Collections.enumeration(interfaces);
                 case "networkInterfaces":
-                    return Stream.of(nic);
+                    return interfaces.stream();
+                case "getByName":
+                    return interfaces.stream().filter(nic -> name(nic).equals(ctx.arg(0))).findFirst().orElse(null);
+                case "getByIndex":
+                    return interfaces.stream().filter(nic -> index(nic) == ctx.intArg(0)).findFirst().orElse(null);
+                case "getByInetAddress":
+                    return interfaces.stream().filter(nic -> Collections.list(addresses(nic)).contains(ctx.arg(0)))
+                            .findFirst().orElse(null);
                 default:
-                    return nic; // getByInetAddress, getByName, getByIndex
+                    return vm.router.blocked(ctx.owner, ctx.name, ctx.desc, "method");
             }
         });
 
@@ -106,16 +118,70 @@ final class NetworkStubs {
         stubs.on("java/net/CookieHandler", "setDefault", ctx -> null);
     }
 
+    private static String name(Object nic) {
+        return nic instanceof Loopback loopback ? loopback.getName() : ((SimNetworkInterface) nic).getName();
+    }
+
+    private static int index(Object nic) {
+        return nic instanceof Loopback loopback ? loopback.getIndex() : ((SimNetworkInterface) nic).getIndex();
+    }
+
+    private static java.util.Enumeration<InetAddress> addresses(Object nic) {
+        return nic instanceof Loopback loopback ? loopback.getInetAddresses() : ((SimNetworkInterface) nic).getInetAddresses();
+    }
+
+    /**
+     * Imitates the loopback {@code java.net.NetworkInterface}. Every machine has one, so a list
+     * of interfaces without it is a sign of a simulation. The JDK calls it {@code lo} on Windows
+     * as on Linux, with index 1 and address 127.0.0.1; only the display name differs.
+     */
+    public static final class Loopback implements dev.javabyte.host.StandIn {
+        private final boolean windows;
+
+        Loopback(boolean windows) {
+            this.windows = windows;
+        }
+
+        @Override
+        public String standsFor() {
+            return "java/net/NetworkInterface";
+        }
+
+        public byte[] getHardwareAddress() { return null; }
+        public String getName() { return "lo"; }
+        public String getDisplayName() { return windows ? "Software Loopback Interface 1" : "lo"; }
+        public boolean isUp() { return true; }
+        public boolean isLoopback() { return true; }
+        public boolean isVirtual() { return false; }
+        public boolean isPointToPoint() { return false; }
+        public boolean supportsMulticast() { return true; }
+        public int getMTU() { return windows ? -1 : 65536; }
+        public int getIndex() { return 1; }
+        public java.util.Enumeration<InetAddress> getInetAddresses() {
+            try {
+                return Collections.enumeration(List.of(InetAddress.getByAddress("localhost", new byte[] {127, 0, 0, 1})));
+            } catch (java.net.UnknownHostException impossible) {
+                throw new IllegalStateException(impossible);
+            }
+        }
+        public Stream<InetAddress> inetAddresses() { return Collections.list(getInetAddresses()).stream(); }
+        public java.util.Enumeration<Object> getSubInterfaces() { return Collections.emptyEnumeration(); }
+        public Object getParent() { return null; }
+        @Override public String toString() { return "name:lo (" + getDisplayName() + ")"; }
+    }
+
+    /**
+     * The simulated connection for a URL: HTTP and HTTPS through the network simulator, file:
+     * from the virtual disk, and jar: entries from the sample. Nothing is fetched for real.
+     */
     private static URLConnection open(VirtualMachine vm, URL url) throws IOException {
         switch (url.getProtocol()) {
             case "http", "https":
-                return new SimHttpConnection(url, vm.env.network);
+                // An http: URL gives a plain HttpURLConnection, an https: one an HttpsURLConnection.
+                return SimHttpConnection.open(url, vm.env.network);
             case "file": {
-                String path = url.getPath();
-                if (vm.env.windows && path.matches("/[A-Za-z]:.*")) {
-                    path = path.substring(1);
-                }
-                byte[] data = vm.env.files.read(java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8));
+                String path = FileStubs.pathFromFileUrl(url.getPath(), vm.env.windows);
+                byte[] data = vm.env.files.read(path);
                 if (data == null) {
                     throw new FileNotFoundException(path);
                 }

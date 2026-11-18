@@ -46,13 +46,18 @@ jobs:
       - name: Build the command-line tool
         working-directory: .
         run: mvn --batch-mode --no-transfer-progress -q package -DskipTests
+      # The jar's name comes from version.sh, which also fails here if pom.xml, tauri.conf.json
+      # and Cargo.toml disagree, so no version is written into this file.
+      - name: Find the command-line tool's jar
+        shell: bash
+        working-directory: .
+        run: echo "JAVABYTE_JAR=$GITHUB_WORKSPACE/target/javabyte-$(gui/packaging/version.sh).jar" >> "$GITHUB_ENV"
       - name: Install Trunk
         run: cargo install --locked trunk@0.22.1
       # The desktop app embeds the built screens, so its tests run after they are built
       # (step "Configuration and guard tests" below).
       - name: Unit, format and runner tests
         env:
-          JAVABYTE_JAR: ${{ github.workspace }}/target/javabyte-0.2.0.jar
           JAVABYTE_TEST_CLASSES: ${{ github.workspace }}/target/test-classes
           JAVABYTE_RUNNER_TESTS_REQUIRED: '1'
         run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
@@ -100,6 +105,9 @@ jobs:
           TAURI_CONFIG='{"app":{"security":{"csp":null},"windows":[{"label":"main","title":"JavaByte"}]}}' \
             cargo build --release -p javabyte-gui --features egress-control
           cp target/release/javabyte-gui "$RUNNER_TEMP/control"
+      # The judge must fail a run whose fake network was broken, or a leak could pass unseen.
+      - name: Egress judge tests
+        run: python3 -I tests/egress/test_check.py
       - name: Egress test (must leak nothing)
         run: sudo tests/egress/run.sh "$RUNNER_TEMP/probe"
       - name: Egress control (must leak)
@@ -129,11 +137,16 @@ jobs:
       - name: Build the command-line tool
         working-directory: .
         run: mvn --batch-mode --no-transfer-progress -q package -DskipTests
+      # The jar's name comes from version.sh, which also fails here if pom.xml, tauri.conf.json
+      # and Cargo.toml disagree, so no version is written into this file.
+      - name: Find the command-line tool's jar
+        shell: bash
+        working-directory: .
+        run: echo "JAVABYTE_JAR=$GITHUB_WORKSPACE/target/javabyte-$(gui/packaging/version.sh).jar" >> "$GITHUB_ENV"
       - name: Install Trunk
         run: cargo install --locked trunk@0.22.1
       - name: Unit, format and runner tests
         env:
-          JAVABYTE_JAR: ${{ github.workspace }}/target/javabyte-0.2.0.jar
           JAVABYTE_TEST_CLASSES: ${{ github.workspace }}/target/test-classes
           JAVABYTE_RUNNER_TESTS_REQUIRED: '1'
         run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
@@ -169,13 +182,19 @@ jobs:
             $work = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP ([IO.Path]::GetRandomFileName()))
             $listener = Start-Process python -ArgumentList "tests/egress/listener.py", "$work/network.log", "8099", "--no-dns" `
               -PassThru -RedirectStandardError "$work/listener.err"
-            Start-Sleep 3
+            # Wait up to 10 s for the listener; check.py fails the run if it never got ready.
+            for ($i = 0; $i -lt 100; $i++) {
+              if ((Test-Path "$work/network.log") -and (Select-String -Quiet -Pattern '"ready"' -Path "$work/network.log")) { break }
+              Start-Sleep -Milliseconds 100
+            }
             $env:JAVABYTE_PROBE_PORT = "8099"
             $env:JAVABYTE_PROBE_REPORT = "$work/report.json"
             $started = Get-Date
             $app = Start-Process $exe -PassThru -RedirectStandardError "$work/app.log"
             if (-not $app.WaitForExit(120000)) { $app.Kill() }
             Write-Host "App ran for $([int]((Get-Date) - $started).TotalSeconds) s, exit code $($app.ExitCode)"
+            # A listener that died during the run saw nothing after that, so check.py fails it.
+            if ($listener.HasExited) { Add-Content "$work/network.log" '{"time": 0, "kind": "listener-exited"}' }
             Stop-Process -Id $listener.Id -ErrorAction SilentlyContinue
             Write-Host "--- listener errors"; Get-Content "$work/listener.err" -ErrorAction SilentlyContinue
             Write-Host "--- app log"; Get-Content "$work/app.log" -ErrorAction SilentlyContinue

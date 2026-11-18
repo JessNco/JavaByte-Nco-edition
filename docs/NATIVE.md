@@ -68,6 +68,10 @@ turning on.
 | `native.jni-call` | A Java method called from native code |
 | `native.bridge-skipped` | A library the bridge does not support (see limits) |
 | `gap.nested-native-call`, `gap.native-bridge-*`, `gap.unsupported-jni-function` | Something the bridge could not do; results after it may differ from a real run |
+| `gap.native-bridge-callback-failed` | A JNI callback into Java failed. The helper is told, so the two sides stay in step |
+| `gap.native-bridge-stopped` | The helper was ended (the run was stopped, or it failed); later native calls are reported, not emulated |
+| `gap.jni-handler-failed` | The helper's handler for a JNI function failed; the event names the `function` |
+| `gap.array-region-size-mismatch` | A `Get<Type>ArrayRegion` answer had a different size from the region native code asked for. Only the size asked for is written to its buffer |
 
 The helper's own diagnostics are in `native-bridge.log` in the output directory.
 
@@ -100,6 +104,9 @@ except copies of strings and arrays that native code asked to read.
 - Windows API calls are simulated by Speakeasy. Files it "creates" exist only in its memory.
 - The helper is a separate process started by JavaByte with a fixed command line. The sample
   cannot influence how it is started.
+- `plugins.native-bridge.python` names a program that runs on the analysis computer, outside
+  the emulator. The desktop app never takes it from a report folder, an imported file or a
+  preset, and before a run whose settings name one it asks the person, showing the path.
 - The helper parses hostile PE files, so run it under the same isolation as JavaByte itself:
   `scripts/run-isolated.sh` covers both processes.
 
@@ -108,7 +115,11 @@ except copies of strings and arrays that native code asked to read.
 - **64-bit Windows DLLs only.** 32-bit DLLs and Linux or macOS libraries are described (tier 1)
   but not executed.
 - **One native call at a time.** If a Java method called from native code is itself native,
-  the inner call is reported and returns zero.
+  the inner call is reported and returns zero. A library loaded from Java code that native code
+  called back into is not emulated (`gap.native-bridge-load-failed`).
+- **Stopping.** If the run is stopped while native code is waiting on a Java callback, the
+  helper is ended and later native calls are reported, not emulated
+  (`gap.native-bridge-stopped`).
 - **JNI coverage.** Strings, primitive and object arrays, class and member lookup, all
   `Call<Type>Method` forms, field access, object creation, exceptions, `RegisterNatives`,
   references and `JavaVM.GetEnv` are implemented. Direct byte buffers, reflection conversion

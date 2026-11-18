@@ -11,6 +11,10 @@ to the log file given as the first argument.
 - UDP 3478: logs anything (STUN, as WebRTC would send).
 - TCP 9: the app's black-hole proxy. Requests that arrive here were caught by the proxy and
   went nowhere else; they are logged as "blackhole" and are not leaks.
+
+A listener that cannot be opened is logged as "bind-failed". Once every listener has been
+tried, a "ready" entry names the probe port and the listeners that were opened, so check.py can
+tell a clean run from one where the fake network was not all there.
 """
 import asyncio
 import json
@@ -95,11 +99,15 @@ async def blackhole(reader, writer):
 
 async def main():
     loop = asyncio.get_running_loop()
-    # A port that cannot be opened (Windows reserves some) is logged, not fatal: the others
-    # still catch what reaches them, and the log says what was not watched.
+    watched = []
+
+    # A port that cannot be opened (Windows reserves some) is logged, not fatal here: the others
+    # still catch what reaches them, and the log says what was not watched. check.py decides
+    # whether the run can still be trusted.
     async def bind(kind, port, start):
         try:
             await start()
+            watched.append({"listener": kind, "port": port})
         except OSError as error:
             log("bind-failed", listener=kind, port=port, error=str(error))
 
@@ -109,7 +117,7 @@ async def main():
     for port in sorted({80, 443, PORT, PORT + 1}):
         await bind("tcp", port, lambda p=port: asyncio.start_server(lambda r, w, q=p: tcp(r, w, q), "127.0.0.1", p))
     await bind("blackhole", 9, lambda: asyncio.start_server(blackhole, "127.0.0.1", 9))
-    log("ready")
+    log("ready", probe_port=PORT, watched=watched)
     await asyncio.Event().wait()
 
 

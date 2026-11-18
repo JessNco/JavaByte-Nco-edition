@@ -172,8 +172,9 @@ public final class ConfigLoader {
     }
 
     /**
-     * Problems in a bound config: allowed values (from {@link ConfigDoc}), and rules involving
-     * more than one value, which the structural check cannot see.
+     * Problems in a bound config: allowed values (from {@link ConfigDoc}), numbers that must be
+     * positive, addresses that must be well formed, and rules involving more than one value,
+     * which the structural check cannot see.
      */
     public static List<Problem> problems(EmulatorConfig config) {
         List<Problem> found = new ArrayList<>();
@@ -217,6 +218,21 @@ public final class ConfigLoader {
                         + "2024-03-01T09:00:00Z, found '" + config.environment.clockStart + "'"));
             }
         }
+        // The simulated hardware: a machine with no processors, memory or screen, or a process
+        // id of 0 (the System Idle Process), is impossible and would fail the run part way.
+        EmulatorConfig.Environment environment = config.environment;
+        positive(found, "environment.processors", environment.processors);
+        positive(found, "environment.memoryMegabytes", environment.memoryMegabytes);
+        positive(found, "environment.screenWidth", environment.screenWidth);
+        positive(found, "environment.screenHeight", environment.screenHeight);
+        positive(found, "environment.processId", environment.processId);
+        timeZone(found, config.environment.timeZone);
+        locale(found, config.environment.locale);
+        // Addresses and the MAC address: the same checks the network simulator makes when the
+        // run starts, so that 'validate' lists them too instead of the run stopping later.
+        if (config.network.dns != null) {
+            found.addAll(dev.javabyte.env.NetworkSimulator.configProblems(config.network));
+        }
         for (int i = 0; i < config.network.http.size(); i++) {
             pattern(found, "network.http[" + i + "].url", config.network.http.get(i).url);
         }
@@ -229,9 +245,44 @@ public final class ConfigLoader {
         return found;
     }
 
+    /** Adds a problem for {@code key} unless its value is more than zero. */
     private static void positive(List<Problem> found, String key, long value) {
         if (value <= 0) {
             found.add(new Problem(key, key + " must be more than 0, found " + value));
+        }
+    }
+
+    /**
+     * The guest's time zone must be a zone the JDK knows. A fixed offset such as +02:00 is
+     * accepted too, though a region name looks more like a real desktop.
+     */
+    private static void timeZone(List<Problem> found, String zone) {
+        String key = "environment.timeZone";
+        if (zone == null || zone.isBlank()) {
+            found.add(new Problem(key, key + " is required, for example America/New_York"));
+            return;
+        }
+        try {
+            java.time.ZoneId.of(zone);
+        } catch (java.time.DateTimeException e) {
+            found.add(new Problem(key, key + " must be a time zone such as America/New_York or Europe/London, found '" + zone + "'"));
+        }
+    }
+
+    /** The guest's locale must be a well-formed language tag with at least a language. */
+    private static void locale(List<Problem> found, String tag) {
+        String key = "environment.locale";
+        if (tag == null || tag.isBlank()) {
+            found.add(new Problem(key, key + " is required, for example en-US"));
+            return;
+        }
+        try {
+            java.util.Locale locale = new java.util.Locale.Builder().setLanguageTag(tag).build();
+            if (locale.getLanguage().isEmpty()) {
+                throw new java.util.IllformedLocaleException("no language");
+            }
+        } catch (java.util.IllformedLocaleException e) {
+            found.add(new Problem(key, key + " must be a language tag such as en-US or de-DE, found '" + tag + "'"));
         }
     }
 

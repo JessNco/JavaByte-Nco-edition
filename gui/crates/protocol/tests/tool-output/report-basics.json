@@ -1,8 +1,8 @@
 {
   "schemaVersion" : 1,
   "tool" : {
-    "version" : "0.2.0",
-    "name" : "javabyte"
+    "name" : "javabyte",
+    "version" : "0.2.0"
   },
   "sample" : {
     "path" : "<work>/basics/basics.jar",
@@ -286,7 +286,18 @@
       "files" : [ ],
       "directories" : [ ],
       "clockStart" : "2024-03-01T09:00:00Z",
-      "randomSeed" : 7
+      "timeZone" : "America/New_York",
+      "locale" : "en-US",
+      "randomSeed" : 7,
+      "manufacturer" : "Dell Inc.",
+      "model" : "OptiPlex 7050",
+      "processors" : 4,
+      "memoryMegabytes" : 16384,
+      "screenWidth" : 1920,
+      "screenHeight" : 1080,
+      "processId" : 6732,
+      "jvmArguments" : [ ],
+      "builtInCommands" : true
     },
     "network" : {
       "mode" : "respond",
@@ -294,8 +305,8 @@
       "sockets" : [ ],
       "dns" : { },
       "defaultAddress" : "203.0.113.10",
-      "localAddress" : "192.168.56.101",
-      "macAddress" : "00:1B:44:11:3A:B7"
+      "localAddress" : "192.168.1.23",
+      "macAddress" : "D4:BE:D9:5E:3A:9C"
     },
     "processes" : [ ],
     "policy" : {

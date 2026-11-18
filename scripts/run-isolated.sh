@@ -15,9 +15,18 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-jar="$(ls "$here"/target/javabyte-*.jar 2>/dev/null | grep -v original | head -n 1 || true)"
-if [[ -z "$jar" ]]; then
-    echo "error: build first with: mvn -q package" >&2
+# The jar of the version in pom.xml, never another one: target/ keeps jars of earlier versions
+# until "mvn clean", and an older engine would silently give a different analysis. The project's
+# own <version> is the first one in pom.xml, before any dependency (as gui/packaging/version.sh
+# reads it).
+version="$(sed -n 's:^  <version>\(.*\)</version>:\1:p' "$here/pom.xml" | head -n 1)"
+if [[ -z "$version" ]]; then
+    echo "error: cannot read the project version from $here/pom.xml" >&2
+    exit 2
+fi
+jar="$here/target/javabyte-$version.jar"
+if [[ ! -f "$jar" ]]; then
+    echo "error: $jar not found; build first with: mvn -q package" >&2
     exit 2
 fi
 if ! unshare --user --map-root-user --net true 2>/dev/null; then

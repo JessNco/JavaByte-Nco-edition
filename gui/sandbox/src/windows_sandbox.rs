@@ -9,12 +9,18 @@
 //! - the program's output, copied to this helper's standard output as it grows;
 //! - Stop: when this helper's input says `stop` or ends, it creates the stop file;
 //! - a heartbeat, so the analysis is ended inside if this helper is ended outside;
-//! - the program's exit code, whose arrival ends the relay.
+//! - the program's exit code, whose arrival ends the relay. If it has not arrived
+//!   [`STOP_GRACE`] after Stop (the sandbox window was closed, or the sandbox failed), the
+//!   helper gives up and tidies up, rather than wait for the app to end it from outside.
 //!
 //! The sandbox shuts itself down when the program ends. Both folders are deleted afterwards.
+//! Each run's folder has a name of its own and a lock (see [`crate::leftovers`]), so a run can
+//! never pick up an earlier run's files, and the folders a helper ended from outside left
+//! behind, with their copy of the sample, are deleted by the next run.
 
 use crate::args::Mapping;
-use crate::plan::{self, ERRORS_FILE, EXIT_FILE, HEARTBEAT_FILE, STOP_FILE, STREAM_FILE};
+use crate::leftovers::{self, LOCK_FILE, RootKind};
+use crate::plan::{self, ERRORS_FILE, EXIT_FILE, HEARTBEAT_FILE, STOP_FILE, STOP_GRACE, STREAM_FILE, StopClock};
 use std::ffi::OsString;
 use std::io::{BufRead, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -23,7 +29,6 @@ use std::time::{Duration, Instant};
 /// How long Windows Sandbox may take to start the program before the helper gives up. A cold
 /// start takes 20 to 40 seconds on most computers.
 const START_LIMIT: Duration = Duration::from_secs(180);
-
 /// Windows Sandbox's launcher, present only where the feature is enabled.
 fn launcher() -> PathBuf {
     let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Windows"));
@@ -52,19 +57,31 @@ pub fn run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) -> i32 {
     }
 }
 
+/// The whole Windows Sandbox run: clears what ended helpers left, prepares this run's own
+/// folders, starts the sandbox and relays until the program's exit code arrives. Returns the
+/// exit code, or why the run could not start or finish. The folders are deleted on every way
+/// out of this function.
 fn prepare_and_run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) -> Result<i32, String> {
     check()?;
-    let root = std::env::temp_dir().join(format!("javabyte-sandbox-{}", std::process::id()));
+    let temp = std::env::temp_dir();
+    clear_leftovers(&temp);
+    // A new folder of its own: `create_dir` fails rather than reuse one that exists.
+    let root = temp.join(format!("{}{}", leftovers::ROOT_PREFIX, leftovers::unique_suffix()));
+    std::fs::create_dir(&root).map_err(|e| format!("cannot prepare {}: {e}", root.display()))?;
+    let lock = leftovers::lock(&root.join(LOCK_FILE), true);
+    let cleanup = Cleanup { root: root.clone(), lock: lock.ok() };
+    if cleanup.lock.is_none() {
+        return Err(format!("cannot lock {}", root.display()));
+    }
     let io = root.join("io");
     let staged_dir = root.join("stage");
-    let cleanup = Cleanup(root.clone());
-    std::fs::create_dir_all(&io).and_then(|_| std::fs::create_dir_all(&staged_dir)).map_err(|e| format!("cannot prepare {}: {e}", root.display()))?;
-    for file in stage {
-        std::fs::copy(file, staged_dir.join(plan::staged_name(file))).map_err(|e| format!("cannot stage {}: {e}", file.display()))?;
+    std::fs::create_dir(&io).and_then(|_| std::fs::create_dir(&staged_dir)).map_err(|e| format!("cannot prepare {}: {e}", root.display()))?;
+    let staged: Vec<&Path> = stage.iter().map(PathBuf::as_path).collect();
+    for (file, name) in staged.iter().zip(plan::staged_names(&staged)) {
+        std::fs::copy(file, staged_dir.join(name)).map_err(|e| format!("cannot stage {}: {e}", file.display()))?;
     }
 
     // The command as it is seen inside, refusing what run.cmd could not pass through intact.
-    let staged: Vec<&Path> = stage.iter().map(PathBuf::as_path).collect();
     let mut inside = Vec::new();
     for arg in program {
         let guest = plan::to_guest(&arg.to_string_lossy(), maps, &staged);
@@ -74,6 +91,9 @@ fn prepare_and_run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) ->
         inside.push(guest);
     }
     let bridge = std::env::var("JAVABYTE_BRIDGE_PYTHON").ok().map(|p| plan::to_guest(&p, maps, &staged));
+    if let Some(bridge) = bridge.as_deref().filter(|b| plan::unsafe_for_cmd(b)) {
+        return Err(format!("the native bridge's path contains % or \", which cannot be passed into Windows Sandbox safely: {bridge}"));
+    }
     let write = |name: &str, text: String| std::fs::write(io.join(name), text).map_err(|e| format!("cannot write {name}: {e}"));
     write("run.cmd", plan::run_cmd(&inside, bridge.as_deref()))?;
     write("relay.ps1", plan::relay_ps1())?;
@@ -101,9 +121,10 @@ fn prepare_and_run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) ->
     }
 
     // Wait for the program to start (its output file appears), then copy its output until its
-    // exit code arrives.
+    // exit code arrives, or until Stop has gone unanswered for too long.
     let started = Instant::now();
     let stream = io.join(STREAM_FILE);
+    let mut stop = StopClock::default();
     while !stream.exists() {
         if started.elapsed() > START_LIMIT {
             return Err("Windows Sandbox did not start the analysis within 3 minutes. Another sandbox may be open (only one can run at a time), \
@@ -112,6 +133,9 @@ fn prepare_and_run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) ->
         }
         if io.join(EXIT_FILE).exists() {
             break;
+        }
+        if stop.overdue(io.join(STOP_FILE).exists(), Instant::now()) {
+            return Err("the analysis was stopped before Windows Sandbox had started it.".into());
         }
         heartbeat(&io);
         std::thread::sleep(Duration::from_millis(500));
@@ -125,6 +149,12 @@ fn prepare_and_run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) ->
             // The last lines, written before the exit code.
             copy_new(&stream, copied, &mut out);
             break;
+        }
+        if stop.overdue(io.join(STOP_FILE).exists(), Instant::now()) {
+            return Err(format!(
+                "the analysis did not end within {} seconds of Stop. The sandbox window may have been closed, or the sandbox may have failed.",
+                STOP_GRACE.as_secs()
+            ));
         }
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -154,11 +184,39 @@ fn copy_new(file: &Path, from: u64, out: &mut impl Write) -> u64 {
     added.len() as u64
 }
 
+/// Deletes the working folders that helpers ended from outside left in `temp`, with the copies
+/// of samples staged in them. A folder whose lock this helper can take belongs to a helper that
+/// has gone. A folder with no lock yet may be one a helper is just creating, and is left.
+/// Errors are ignored: a folder that cannot be deleted now is tried again next time.
+fn clear_leftovers(temp: &Path) {
+    let Ok(entries) = std::fs::read_dir(temp) else { return };
+    for entry in entries.flatten() {
+        let Some(kind) = entry.file_name().to_str().and_then(leftovers::root_kind) else { continue };
+        let root = entry.path();
+        let gone = match kind {
+            RootKind::Legacy => true,
+            RootKind::Current => leftovers::lock(&root.join(LOCK_FILE), false).is_ok(),
+        };
+        // The lock taken above is released here, before the folder is deleted.
+        if gone {
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+}
+
 /// Deletes the run's working and staging folders when dropped, including the staged sample.
-struct Cleanup(PathBuf);
+/// Holds the folder's lock until then, so no other helper takes the folder for a leftover.
+struct Cleanup {
+    /// The run's folder.
+    root: PathBuf,
+    /// The open lock file inside it.
+    lock: Option<std::fs::File>,
+}
 
 impl Drop for Cleanup {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        // Windows will not delete a file that is open, so the lock is closed first.
+        self.lock.take();
+        let _ = std::fs::remove_dir_all(&self.root);
     }
 }

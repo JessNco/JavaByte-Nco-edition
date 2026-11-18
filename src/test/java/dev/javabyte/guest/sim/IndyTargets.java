@@ -53,6 +53,24 @@ public final class IndyTargets {
         return site;
     }
 
+    /**
+     * A varargs bootstrap for a dynamic constant, as obfuscators use to rebuild strings: the
+     * JVM collects any number of static arguments into {@code parts}.
+     */
+    public static String joined(MethodHandles.Lookup lookup, String name, Class<?> type, Object... parts) {
+        StringBuilder out = new StringBuilder(name);
+        for (Object part : parts) {
+            out.append(':').append(part);
+        }
+        return out.toString();
+    }
+
+    /** A varargs invokedynamic bootstrap: links to the static method named by the last argument. */
+    public static CallSite lastNamed(MethodHandles.Lookup lookup, String ignored, MethodType type, String... names)
+            throws ReflectiveOperationException {
+        return new ConstantCallSite(lookup.findStatic(IndyTargets.class, names[names.length - 1], type));
+    }
+
     public static int add(int a, int b) {
         return a + b;
     }

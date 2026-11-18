@@ -1,4 +1,4 @@
-{"type":"start","streamVersion":1,"tool":{"version":"0.2.0","name":"javabyte"},"sample":{"path":"<work>/basics/basics.jar","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size":0,"mainClass":"dev.javabyte.guest.Basics"},"output":"<work>/out"}
+{"type":"start","streamVersion":1,"tool":{"name":"javabyte","version":"0.2.0"},"sample":{"path":"<work>/basics/basics.jar","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size":0,"mainClass":"dev.javabyte.guest.Basics"},"output":"<work>/out"}
 {"type":"event","seq":0,"category":"lifecycle","action":"entry","data":{"method":"dev/javabyte/guest/Basics.main([Ljava/lang/String;)V"}}
 {"type":"event","seq":1,"category":"console","action":"stdout","caller":"dev/javabyte/guest/Basics.main:113","data":{"text":"args=0 counter=42"}}
 {"type":"event","seq":2,"category":"console","action":"stdout","caller":"dev/javabyte/guest/Basics.arithmetic:126","data":{"text":"-2147483648"}}
@@ -29,5 +29,5 @@
 {"type":"entry","entry":"dev.javabyte.guest.Basics.main","outcome":"completed","instructions":222639}
 {"type":"entry","entry":"dev.javabyte.guest.Basics.main (queued tasks)","outcome":"completed","instructions":0}
 {"type":"entry","entry":"(shutdown hooks)","outcome":"completed","instructions":0}
-{"type":"progress","elapsedMs":0,"instructions":222639,"entry":"dev.javabyte.guest.Basics.main","events":27,"eventCounts":{"string":4,"console":22,"lifecycle":1}}
+{"type":"progress","elapsedMs":0,"instructions":222639,"entry":"dev.javabyte.guest.Basics.main","events":27,"eventCounts":{"lifecycle":1,"console":22,"string":4}}
 {"type":"finish","exitCode":0,"report":"<work>/out/report.json","runs":[{"entry":"dev.javabyte.guest.Basics.main","outcome":"completed","instructions":222639},{"entry":"dev.javabyte.guest.Basics.main (queued tasks)","outcome":"completed","instructions":0},{"entry":"(shutdown hooks)","outcome":"completed","instructions":0}],"summary":{"instructions":222639,"eventCounts":{"lifecycle":1,"console":22,"string":4},"eventsDropped":{},"processes":[],"httpRequests":[],"connections":[],"dnsLookups":[],"filesWritten":[],"classesDefined":[],"nativeLibraries":[],"blockedCalls":[],"gaps":0}}

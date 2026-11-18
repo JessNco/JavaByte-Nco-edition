@@ -78,14 +78,14 @@ final class Arrays {
 
     static int length(VirtualMachine vm, Object array) {
         if (array == null) {
-            throw vm.raise(new NullPointerException("Cannot read the array length because value is null"));
+            throw vm.implicitExceptions.nullPointer("Cannot read the array length because value is null");
         }
         return Array.getLength(array);
     }
 
     private static void checkAccess(VirtualMachine vm, Object array, int index) {
         if (array == null) {
-            throw vm.raise(new NullPointerException("Cannot access array because value is null"));
+            throw vm.implicitExceptions.nullPointer("Cannot access array because value is null");
         }
         int length = Array.getLength(array);
         if (index < 0 || index >= length) {

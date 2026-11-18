@@ -11,7 +11,9 @@ import java.util.List;
 
 /**
  * Simulated environment checks: the sample looks for signs of a sandbox, a debugger or an
- * analyst's tools and only releases its "payload" if it finds none.
+ * analyst's tools and only releases its "payload" if it finds none. Besides tools, it checks
+ * that the hardware looks like a desktop (processors, memory, screen, number of running
+ * programs, a loopback interface) and that APIs reporting the same fact agree.
  */
 public final class AntiAnalysis {
 
@@ -40,12 +42,17 @@ public final class AntiAnalysis {
         }
         Process tasks = Runtime.getRuntime().exec("tasklist /fo csv /nh");
         BufferedReader reader = new BufferedReader(new InputStreamReader(tasks.getInputStream()));
+        int processes = 0;
         for (String line = reader.readLine(); line != null; line = reader.readLine()) {
             String lower = line.toLowerCase();
-            if (lower.contains("wireshark") || lower.contains("procmon") || lower.contains("vboxservice")) {
+            processes += line.isEmpty() ? 0 : 1;
+            if ((lower.contains("wireshark") || lower.contains("procmon") || lower.contains("vboxservice")) && !reasons.contains("process")) {
                 reasons.add("process");
-                break;
             }
+        }
+        // Sandboxes run few programs; a desktop in use runs dozens.
+        if (processes < 40) {
+            reasons.add("few-processes");
         }
         for (String argument : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
             if (argument.contains("jdwp") || argument.startsWith("-javaagent")) {
@@ -60,6 +67,29 @@ public final class AntiAnalysis {
         }
         if (Runtime.getRuntime().availableProcessors() < 2) {
             reasons.add("cpu");
+        }
+        // The management bean must agree with Runtime, and show a desktop's worth of memory.
+        com.sun.management.OperatingSystemMXBean os =
+                (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+        if (os.getAvailableProcessors() != Runtime.getRuntime().availableProcessors()) {
+            reasons.add("cpu-mismatch");
+        }
+        if (os.getTotalMemorySize() < 4L << 30) {
+            reasons.add("ram");
+        }
+        // The process id must be the same whichever API reports it.
+        String name = ManagementFactory.getRuntimeMXBean().getName();
+        if (Long.parseLong(name.substring(0, name.indexOf('@'))) != ProcessHandle.current().pid()) {
+            reasons.add("pid-mismatch");
+        }
+        java.awt.Dimension screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
+        if (screen.width < 1024 || screen.height < 768) {
+            reasons.add("screen");
+        }
+        // Every real machine has a loopback interface besides its network card.
+        NetworkInterface loopback = NetworkInterface.getByName("lo");
+        if (loopback == null || !loopback.isLoopback() || Collections.list(NetworkInterface.getNetworkInterfaces()).size() < 2) {
+            reasons.add("loopback");
         }
         for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
             byte[] mac = nic.getHardwareAddress();

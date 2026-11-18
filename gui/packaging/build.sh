@@ -23,6 +23,7 @@ version="$(packaging/version.sh)"
 
 packaging/stage.sh "${bridge_flag[@]}"
 # Absolute paths: the Tauri CLI runs in app/.
+# The bridge overlay is merged on top of the bundle overlay (JSON Merge Patch), so it lists only the extra bridge/ resource.
 configs=(--config "$gui/packaging/tauri.bundle.conf.json")
 [[ -n "$suffix" ]] && configs+=(--config "$gui/packaging/tauri.bridge.conf.json")
 

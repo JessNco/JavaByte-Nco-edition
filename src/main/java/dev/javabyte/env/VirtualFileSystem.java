@@ -290,16 +290,53 @@ public final class VirtualFileSystem {
         return nodes.keySet().stream().anyMatch(candidate -> candidate.startsWith(prefix) && candidate.length() > prefix.length());
     }
 
+    /**
+     * Moves a file or directory, as {@code File.renameTo} and {@code Files.move} do on a real
+     * disk. A directory takes everything under it along: droppers often build a staging folder
+     * and then rename it into place, and expect its files to be there afterwards.
+     *
+     * <p>A directory cannot be moved inside itself; that fails, as it does on a real disk.
+     *
+     * @return true if something was moved
+     */
     public boolean rename(String from, String to) {
-        Node source = nodes.remove(key(from));
+        String fromKey = key(from);
+        String toKey = key(to);
+        Node source = nodes.get(fromKey);
         if (source == null) {
             return false;
         }
+        String fromPrefix = fromKey.endsWith(String.valueOf(separator)) ? fromKey : fromKey + separator;
+        if (source.directory && toKey.startsWith(fromPrefix)) {
+            events.add("file", "rename", "from", source.path, "to", absolute(to), "result", "refused: target is inside the source");
+            return false;
+        }
+        // Collected before anything changes, so that a rename onto the same key (a change of
+        // letter case on Windows) does not move entries it has just moved.
+        List<Map.Entry<String, Node>> children = new ArrayList<>();
+        if (source.directory && !toKey.equals(fromKey)) {
+            for (Map.Entry<String, Node> entry : nodes.entrySet()) {
+                if (entry.getKey().startsWith(fromPrefix) && entry.getKey().length() > fromPrefix.length()) {
+                    children.add(entry);
+                }
+            }
+        }
+        nodes.remove(fromKey);
         Node moved = new Node(absolute(to), source.directory, source.data, now);
         moved.touchedByGuest = true;
         addDirectory(parent(absolute(to)));
-        nodes.put(key(to), moved);
-        events.add("file", "rename", "from", source.path, "to", moved.path);
+        nodes.put(toKey, moved);
+        // Each child keeps its own modification time, as a real move does; only its path changes.
+        int sourceLength = source.path.length();
+        for (Map.Entry<String, Node> entry : children) {
+            Node child = entry.getValue();
+            Node relocated = new Node(moved.path + child.path.substring(sourceLength), child.directory, child.data, child.modified);
+            relocated.touchedByGuest = true;
+            nodes.remove(entry.getKey());
+            nodes.put(key(relocated.path), relocated);
+        }
+        events.add("file", "rename", "from", source.path, "to", moved.path,
+                "entriesMoved", children.isEmpty() ? null : children.size());
         return true;
     }
 

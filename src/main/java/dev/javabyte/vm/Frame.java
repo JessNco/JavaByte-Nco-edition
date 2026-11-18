@@ -19,6 +19,12 @@ public final class Frame {
     public final Object[] stack;
     /** Index of the instruction being executed; kept current so stack traces show the right line. */
     public int pc;
+    /**
+     * JDK frames to show between this frame and the frames it calls, while a call that would
+     * pass through JDK code (such as {@code Method.invoke}) is in progress; null otherwise.
+     * Set by {@link VirtualMachine#callThroughJdk}.
+     */
+    java.util.List<StackTraceElement> callingThrough;
 
     Frame(GuestMethod method) {
         this.method = method;
@@ -44,8 +50,18 @@ public final class Frame {
         }
     }
 
+    /**
+     * Source line for the current pc, or -1 when the method has no line table. Both the guest's
+     * stack traces and the report's caller locations use this, so they always agree; obfuscators
+     * derive keys from those traces.
+     */
+    public int line() {
+        return method.lines.length == 0 ? -1 : method.lines[Math.min(pc, method.lines.length - 1)];
+    }
+
+    /** Where this frame is, as {@code owner.name:line}, for the report's caller locations. */
     public String location() {
-        int line = method.lines.length == 0 ? -1 : method.lines[Math.min(pc, method.lines.length - 1)];
+        int line = line();
         return method.owner.name + '.' + method.name + (line >= 0 ? ":" + line : "");
     }
 }

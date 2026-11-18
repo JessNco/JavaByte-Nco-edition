@@ -1,0 +1,23 @@
+description: 'The time zone and locale are the simulated en-US desktop''s, never the analysis computer''s, and every date source (Year.now, chronologies, calendars, Date) follows environment.clockStart.'
+techniques: [anti-emulation, time-zone-check, locale-check, time-bomb, virtual-clock]
+fixture: dev.javabyte.guest.sim.Timing
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [region]}]
+      environment: {clockStart: '2001-02-03T04:05:06Z'}
+    expect:
+      outcomes: [completed]
+      stdout:
+        - '^zone America/New_York America/New_York property America/New_York$'
+        - '^locale en_US language en country US$'
+        - '^format 1,234\.50$'
+        - '^date Fri Feb 02 23:05:0\d EST 2001$'
+        - '^built Fri Feb 02 23:05:0\d EST 2001$'
+        - '^pattern 2001-02-02 23:05 EST$'
+        - '^year 2001 month 2001-02 local 2001-02-02$'
+        - '^hijrah agrees true$'
+        - '^chronology agrees true$'
+        - '^calendars 2001 2001 America/New_York$'
+        - '^epoch hour 19$'
+      maxGaps: 0

@@ -1,0 +1,11 @@
+description: 'Parallel APIs beyond parallelStream (StreamSupport, CompletionStage async methods, ConcurrentHashMap bulk operations, Arrays.parallelPrefix) give the right answer without any real thread.'
+techniques: [anti-emulation, parallelism, completable-future]
+fixture: dev.javabyte.guest.sim.Timing
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [parallel]}]
+    expect:
+      outcomes: [completed]
+      stdout: ['^stream sum 55$', '^stage STAGE$', '^map seen 100 reduced 4950$', '^prefix last 100$']
+      maxGaps: 0

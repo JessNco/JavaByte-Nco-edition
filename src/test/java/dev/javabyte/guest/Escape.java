@@ -157,6 +157,25 @@ public final class Escape {
             }
             new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray())).readObject();
         });
+        attempt("URL in HashSet", () -> new java.util.HashSet<Object>().add(new URL("http://javabyte-set.invalid/")));
+        attempt("URL in List.contains", () -> List.of(new URL("http://javabyte-list.invalid/"))
+                .contains(new URL("http://javabyte-other.invalid/")));
+        attempt("URL.sameFile", () -> new URL("http://javabyte-same1.invalid/").sameFile(new URL("http://javabyte-same2.invalid/")));
+        attempt("URI.toURL in HashMap", () -> new HashMap<Object, Object>().put(java.net.URI.create("http://javabyte-uri.invalid/").toURL(), 1));
+        attempt("getCanonicalHostName", () -> leakIfNotAddress(java.net.InetAddress.getByAddress(
+                new byte[] {(byte) 203, 0, 113, 10}).getCanonicalHostName()));
+        attempt("ResourceBundle.Control.newBundle", () -> {
+            URLClassLoader remote = new URLClassLoader(new URL[] {new URL("http://127.0.0.1:" + port + "/cp/")});
+            java.util.ResourceBundle.Control control = java.util.ResourceBundle.Control.getControl(
+                    java.util.ResourceBundle.Control.FORMAT_DEFAULT);
+            control.newBundle("beacon.ViaControl", Locale.ROOT, "java.properties", remote, false);
+            control.newBundle("beacon.ViaControlClass", Locale.ROOT, "java.class", remote, false);
+        });
+        attempt("URLClassLoader.getResource", () -> new URLClassLoader(new URL[] {
+            new URL("http://127.0.0.1:" + port + "/cp/")}).getResource("beacon.txt"));
+        attempt("MethodType with loader", () -> MethodType.fromMethodDescriptorString("(Lbeacon/Remote;)V",
+                new URLClassLoader(new URL[] {new URL("http://127.0.0.1:" + port + "/cp/")})));
+
 
         // ---- starting real threads
         Runnable touch = () -> {
@@ -183,6 +202,15 @@ public final class Escape {
 
         // ---- reaching the emulator or changing the analysis JVM
         attempt("emulator class", () -> leak(Class.forName("dev.javabyte.vm.VirtualMachine").getName()));
+        // getClass() through an interface type compiles to invokeinterface on the interface, and
+        // must hide the emulator's own classes and proxies just as it does on a class type.
+        attempt("class of Path", () -> leak(Paths.get("x").getClass().getName()));
+        attempt("class of FileSystem", () -> leak(java.nio.file.FileSystems.getDefault().getClass().getName()));
+        attempt("class of executor", () -> leak(Executors.newFixedThreadPool(1).getClass().getName()));
+        attempt("class of future", () -> leak(Executors.newSingleThreadExecutor().submit(() -> 1).getClass().getName()));
+        attempt("class of runtime bean", () -> leak(java.lang.management.ManagementFactory.getRuntimeMXBean().getClass().getName()));
+        attempt("class of process handle", () -> leak(ProcessHandle.current().getClass().getName()));
+        attempt("class of network interface", () -> leak(java.net.NetworkInterface.getByName("lo").getClass().getName()));
         attempt("emulator library", () -> leak(Class.forName("org.objectweb.asm.ClassWriter").getName()));
         attempt("class loader of JDK object", () -> leak(String.valueOf("x".getClass().getClassLoader())));
         attempt("own loader", () -> leak(Escape.class.getClassLoader().getClass().getName()));
@@ -194,6 +222,29 @@ public final class Escape {
         attempt("real property", () -> System.setProperty("javabyte.escape", "set"));
         attempt("default locale", () -> Locale.setDefault(Locale.forLanguageTag("x-escape")));
         attempt("security provider", () -> java.security.Security.setProperty("javabyte.escape", "set"));
+        // A provider entry names a class the JDK loads and constructs: here a real Timer thread.
+        attempt("Provider.put", () -> {
+            java.security.Security.getProvider("SUN").put("MessageDigest.JBESCAPE1", "java.util.Timer");
+            java.security.MessageDigest.getInstance("JBESCAPE1");
+        });
+        attempt("Map.put on a provider", () -> {
+            @SuppressWarnings("unchecked")
+            java.util.Map<Object, Object> table = (java.util.Map<Object, Object>) (Object) java.security.Security.getProvider("SUN");
+            table.put("MessageDigest.JBESCAPE2", "java.util.Timer");
+            java.security.MessageDigest.getInstance("JBESCAPE2");
+        });
+        attempt("provider of an engine", () -> {
+            java.security.Provider provider = java.security.MessageDigest.getInstance("SHA-256").getProvider();
+            provider.put("MessageDigest.JBESCAPE3", "java.util.Timer");
+            java.security.MessageDigest.getInstance("JBESCAPE3", provider);
+        });
+        attempt("own provider", () -> {
+            java.security.Provider own = new java.security.Provider("JBESCAPE", "1.0", "escape") {
+                private static final long serialVersionUID = 1L;
+            };
+            own.put("MessageDigest.JBESCAPE4", "java.util.Timer");
+            java.security.MessageDigest.getInstance("JBESCAPE4", own);
+        });
         attempt("setAccessible", () -> {
             java.lang.reflect.Field value = String.class.getDeclaredField("value");
             value.setAccessible(true);
@@ -212,6 +263,13 @@ public final class Escape {
     private static void write(java.io.OutputStream out) throws java.io.IOException {
         out.write("escaped".getBytes(StandardCharsets.UTF_8));
         out.close();
+    }
+
+    /** A reverse lookup that reached a real name server would answer with a name, not the address. */
+    private static void leakIfNotAddress(String name) {
+        if (!name.equals("203.0.113.10")) {
+            leak(name);
+        }
     }
 
     /** Prints whatever a route managed to read; the test searches the report for the token. */

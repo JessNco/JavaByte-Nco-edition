@@ -10,14 +10,21 @@ are simulated and reported.
 Protocol: one JSON object per line. JavaByte sends requests on stdin and reads stdout.
 
     request   {"op": "load", "path": ...}            -> {"result": {"exports": {...}}}
-              {"op": "call", "address": n, "args": [{"t": "I", "v": 1}, ...], "ret": "I"}
+              {"op": "call", "address": n, "self": handle, "args": [{"t": "I", "v": 1}, ...], "ret": "I"}
                                                       -> {"result": {"v": ...}}
-              {"op": "shutdown"}
+              {"op": "shutdown"}                      (optional; no reply, the helper exits)
+    error     {"error": text}                         (helper -> JavaByte, instead of a result)
     callback  {"callback": name, ...}                 (helper -> JavaByte, which answers {"v": ...})
     event     {"event": {...}}                        (helper -> JavaByte, no answer)
 
+"self" is the handle of the receiver for an instance method, or of the class for a static one,
+as JNI passes it. Any request may get {"error": text} instead of its result; JavaByte then
+treats the bridge as unavailable for that request. JavaByte does not currently send "shutdown":
+it ends the helper process when the run is over.
+
 While a request is being served the helper may send any number of callbacks and events before
-the final result. Diagnostics go to stderr, never stdout.
+the final result. JavaByte answers every callback before it sends anything else, and never sends
+a new request while one is being served. Diagnostics go to stderr, never stdout.
 
 Requires:  pip install speakeasy-emulator   (on Python 3.12+ also: pip install "setuptools<81")
 """
@@ -123,7 +130,6 @@ def parse_signature(signature):
 class Bridge:
     def __init__(self):
         self.se = speakeasy.Speakeasy()
-        self.modules = []
         self.method_ids = {}       # id -> (class handle, name, signature, is_static)
         self.field_ids = {}        # id -> (class handle, name, signature, is_static)
         self.next_id = 0x10000
@@ -145,18 +151,15 @@ class Bridge:
             raise SystemExit(0)  # JavaByte went away
         reply = json.loads(line)
         if "op" in reply:
-            # JavaByte is asking for another native call while this one is still running (the
-            # Java method we called back into is itself native). The CPU emulator cannot be
-            # re-entered, so decline; JavaByte reports the inner call as not emulated.
-            self.send({"error": "nested native call is not supported"})
-            return self.callback_wait()
+            # JavaByte never sends a request while a callback is unanswered: it declines a
+            # nested native call itself, and refuses to load a library from inside one. A
+            # request here therefore means the two sides are out of step, and every later
+            # reply would be paired with the wrong question. Say so and exit; JavaByte then
+            # reports the bridge as unavailable instead of acting on mismatched answers.
+            log("protocol out of step: got a request while waiting for a callback answer:", line.strip())
+            self.send({"error": "protocol out of step: request received while waiting for a callback answer"})
+            raise SystemExit(1)
         return reply.get("v", 0)
-
-    def callback_wait(self):
-        line = sys.stdin.readline()
-        if not line:
-            raise SystemExit(0)
-        return json.loads(line).get("v", 0)
 
     def event(self, category, action, **data):
         self.send({"event": {"category": category, "action": action, "data": data}})
@@ -264,6 +267,15 @@ class Bridge:
 
     # ------------------------------------------------------------------ JNI dispatch
 
+    @staticmethod
+    def function_name(index):
+        """The name of the JNIEnv or JavaVM function in a trap slot, for logs and reports."""
+        if index < len(JNI_FUNCTIONS):
+            return JNI_FUNCTIONS[index]
+        if index - len(JNI_FUNCTIONS) < len(VM_FUNCTIONS):
+            return "JavaVM." + VM_FUNCTIONS[index - len(JNI_FUNCTIONS)]
+        return "slot %d" % index
+
     def _on_trap(self, emu, address, size, ctx):
         index = address - self.trap
         try:
@@ -275,8 +287,9 @@ class Bridge:
             raise
         except Exception as error:
             # A failure here must not take the helper down mid-call: report and return zero.
-            log("JNI handler failed:", JNI_FUNCTIONS[index] if index < len(JNI_FUNCTIONS) else index, repr(error))
-            self.event("gap", "jni-handler-failed", function=str(index), error=repr(error))
+            name = self.function_name(index)
+            log("JNI handler failed:", name, repr(error))
+            self.event("gap", "jni-handler-failed", function=name, error=repr(error))
             self.set_result(0)
         return True
 
@@ -317,8 +330,21 @@ class Bridge:
             return self._unpin_array(a(2), a(3) & 0xFFFFFFFF)
         if 199 <= index <= 206:      # Get<Type>ArrayRegion(env, array, start, length, buffer)
             letter = ARRAY_TYPES[index - 199]
-            data = base64.b64decode(cb("arrayGet", h=a(1), start=a(2) & 0xFFFFFFFF, length=a(3) & 0xFFFFFFFF))
-            self.se.mem_write(a(4), data)
+            length = a(3) & 0xFFFFFFFF
+            reply = cb("arrayGet", h=a(1), start=a(2) & 0xFFFFFFFF, length=length)
+            if not isinstance(reply, str):
+                # JavaByte raised a Java exception (a bad range, say): as JNI specifies, the
+                # buffer is left untouched and the exception is pending.
+                return self.set_result(0)
+            data = base64.b64decode(reply)
+            expected = length * ELEMENT_SIZE[letter]
+            if len(data) != expected:
+                # The buffer holds exactly length elements; writing more or less would corrupt
+                # the native code's memory or leave stale bytes in it.
+                self.event("gap", "array-region-size-mismatch", function=name, expected=expected, received=len(data))
+                data = data[:expected].ljust(expected, b"\0")
+            if data:
+                self.se.mem_write(a(4), data)
             return self.set_result(0)
         if 207 <= index <= 214:      # Set<Type>ArrayRegion(env, array, start, length, buffer)
             letter = ARRAY_TYPES[index - 207]
@@ -475,7 +501,6 @@ class Bridge:
             # structures can only be placed in it from this point on.
             self._build_tables()
             self.tables_built = True
-        self.modules.append(module)
         self.se.run_module(module, all_entrypoints=False)  # runs DllMain only
         exports = {export.name: export.address for export in module.get_exports() if export.name}
         if "JNI_OnLoad" in exports:

@@ -84,13 +84,22 @@ class EscapeTest {
             for (String line : Fixtures.stdout(report)) {
                 if (line.startsWith("LEAK")) {
                     String seen = line.replace("dev.javabyte.guest.", "");
-                    assertFalse(seen.contains("dev.javabyte") || seen.contains("objectweb") || seen.contains("Sim"),
+                    assertFalse(seen.contains("dev.javabyte") || seen.contains("objectweb") || seen.contains("Sim")
+                                    || seen.contains("$Proxy") || seen.contains("jdk.proxy"),
                             "the guest saw emulator internals: " + line);
                 }
             }
             for (Thread thread : Thread.getAllStackTraces().keySet()) {
                 assertFalse(thread.getName().startsWith("escape-") && !thread.getName().equals("escape-test-acceptor")
                         && thread.isAlive(), "a guest thread is really running: " + thread.getName());
+                // A Timer constructed by the JDK from a provider entry the guest wrote.
+                assertFalse(thread.getName().startsWith("Timer-") && thread.isAlive(),
+                        "a provider entry made the JDK start a real thread: " + thread.getName());
+            }
+            for (String key : List.of("MessageDigest.JBESCAPE1", "MessageDigest.JBESCAPE2", "MessageDigest.JBESCAPE3")) {
+                for (java.security.Provider provider : java.security.Security.getProviders()) {
+                    assertNull(provider.get(key), "the guest changed the JVM's " + provider.getName() + " provider");
+                }
             }
             // The attempts must have been seen, not silently dropped.
             assertTrue(Fixtures.events(report, "process", "exec").size() >= 7, diagnostics);

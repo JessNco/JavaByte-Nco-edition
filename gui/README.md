@@ -3,16 +3,22 @@
 A graphical interface for JavaByte, for people who prefer not to use a command line. The design
 is in [docs/GUI-PLAN.md](../docs/GUI-PLAN.md).
 
-**Status: phase 5 of 6.** The app opens a sample (or an earlier report, including one made on the
-command line), shows what it is, lets people change every setting, runs the analysis, and shows
-the whole report: summary, indicators, events, limits and gaps, saved files (viewed as text, hex
-or bytecode, kept as password zips), the settings used, and a comparison of any two analyses.
-It is packaged as installers for Windows and Linux that bring their own Java, and on Linux it
-runs analyses with no network. The accessibility audit comes next (phase 6). What each phase
-built and how it is tested: [phase 2](../docs/gui/PHASE2.md),
+**Status: phases 0 to 5 built; phase 6 (the accessibility audit) has its automated checks,
+fixes and statement, and waits for the manual run with NVDA and Orca.** The app opens a sample
+(or an earlier report, including one made on the command line), shows what it is, lets people
+change every setting, runs the analysis, and shows the whole report: summary, indicators,
+events, limits and gaps, saved files (viewed as text, hex or bytecode, kept as password zips),
+the settings used, and a comparison of any two analyses. A Tools screen shows the host policy
+and every option with its default, with a search. It is packaged as installers for Windows and
+Linux that bring their own Java. On Linux each run starts in its own user, network and mount
+namespace: it has no network interface, and the folders where desktop services keep their Unix
+sockets (D-Bus, systemd-resolved, nscd, Avahi, CUPS, X11, Wayland, Docker) are hidden from it.
+On Windows the optional sandbox add-on runs each analysis with no network
+([docs/gui/WINDOWS-SANDBOX.md](../docs/gui/WINDOWS-SANDBOX.md)).
+What each phase built and how it is tested: [phase 2](../docs/gui/PHASE2.md),
 [phase 3](../docs/gui/PHASE3-PLAN.md), [phase 4](../docs/gui/PHASE4-PLAN.md),
-[phase 5](../docs/gui/PHASE5-PLAN.md); the phase 0 accessibility trial is in
-[docs/gui/PHASE0-TESTING.md](../docs/gui/PHASE0-TESTING.md).
+[phase 5](../docs/gui/PHASE5-PLAN.md), [phase 6](../docs/gui/PHASE6-AUDIT.md); the phase 0
+accessibility trial is in [docs/gui/PHASE0-TESTING.md](../docs/gui/PHASE0-TESTING.md).
 
 All text the app shows is in [`locales/en/`](locales/en/), with a short writing guide.
 
@@ -27,8 +33,8 @@ on the path, and the tool's jar from `JAVABYTE_JAR`, a `javabyte.jar` next to th
 
 | Folder | What | Built with |
 | --- | --- | --- |
-| `crates/protocol` | Data types shared by screens and backend: the tool's stream and report (`stream`, `report`), sample facts (`inspect`), event views, limits and comparisons; safe display of untrusted text (`display`); the text resources (`i18n`); the settings form's layout (`form`) and the schema it is checked against (`schema`, `validate`) | Rust |
-| `crates/backend` | Starting and watching the command-line tool (`runner`); the bundled parts and the app's preferences (`setup`); runs without network on Linux (`isolation`); one window's sample, settings, run, report and recent list (`session/`); settings as YAML edited in place, and the matching command line (`config/`); saved files, pages and password zips (`artifacts`); event storage, filtering and paging (`events`); report reading (`report`); the pretend run and made-up events for browser tests (`simulation`, `synthetic`) | Rust, no UI code |
+| `crates/protocol` | Data types shared by screens and backend: the tool's stream and report (`stream`, `report`), sample facts (`inspect`), event views, limits and comparisons; safe display of untrusted text (`display`); the text resources (`i18n`); the settings form's layout (`form`) and the schema it is checked against (`schema`, `validate`); the Tools screen's data, policy listing and search (`tools`); the preference changes the screens may ask for, how each is applied, and the rules for asking before a run, shared by the app's commands and the screens' browser stand-in (`preferences`) | Rust |
+| `crates/backend` | Starting and watching the command-line tool (`runner`); the bundled parts and the app's preferences (`setup`); runs with no network and hidden host service sockets on Linux (`isolation`); one window's sample, settings, run, report and recent list (`session/`); settings as YAML edited in place, and the matching command line (`config/`); saved files, pages and password zips (`artifacts`); event storage, filtering and paging (`events`); report reading (`report`); the pretend run and made-up events for browser tests (`simulation`, `synthetic`) | Rust, no UI code |
 | `ui` | The screens (`screens/`, with the settings editor in `screens/settings/`), the event grid and table (`events/`), and the bridge to the app or, in a plain browser, to the pretend backend (`bridge.rs`) | Rust (Leptos), compiled to WebAssembly with Trunk |
 | `locales` | Every word the app shows, per language | Fluent |
 | `app` | The desktop window, its network guard (`guard.rs`) and the commands the screens may call (`main.rs`) | Rust (Tauri 2) |
@@ -107,7 +113,7 @@ tests drive the real tool on harmless fixtures and need it built (`mvn package` 
 repository root):
 
 ```bash
-JAVABYTE_JAR=$PWD/../target/javabyte-0.2.0.jar JAVABYTE_TEST_CLASSES=$PWD/../target/test-classes cargo test -p javabyte-gui-backend
+JAVABYTE_JAR=$PWD/../target/javabyte-$(packaging/version.sh).jar JAVABYTE_TEST_CLASSES=$PWD/../target/test-classes cargo test -p javabyte-gui-backend
 ```
 
 The accessibility checks run the screens in Chromium:
@@ -158,6 +164,14 @@ sudo tests/egress/run.sh /tmp/probe
 
 ```bash
 sudo tests/egress/run.sh /tmp/control expect-leaks
+```
+
+The run fails, rather than passes, if the fake network is broken: the listener never got ready,
+could not open a port a leak would reach, or stopped before the app did. `check.py` judges
+that; its own tests need no root and no app:
+
+```bash
+python3 -I tests/egress/test_check.py
 ```
 
 Rebuild without features afterwards: the probe builds must never be given to anyone.

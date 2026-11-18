@@ -2,7 +2,7 @@
 
 use crate::app::flow;
 use crate::bridge;
-use crate::settings::{edit, replace_text, settings};
+use crate::settings::{SettingsTab, edit, replace_text, settings};
 use crate::util::{Disclosure, announcer, copied_message, copy_text, focus_id, open_disclosures_around};
 use javabyte_gui_backend::config::ConfigPath;
 use javabyte_gui_protocol::form::{self};
@@ -266,7 +266,7 @@ pub(super) fn apply_builtin(id: &'static str, follow: &javabyte_gui_protocol::vi
     match result {
         Ok(()) => {
             s.undo.set(Some(before));
-            s.tab.set(0);
+            s.tab.set(SettingsTab::Forms);
             if let Some(open) = open {
                 s.editing.set(Some(open));
             }

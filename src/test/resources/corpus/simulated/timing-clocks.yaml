@@ -1,0 +1,12 @@
+description: 'Timing checks see one consistent clock: currentTimeMillis and nanoTime agree, a busy loop takes a believable time, nanoTime starts at a machine uptime, and a busy-wait for 30 s still ends.'
+techniques: [anti-emulation, timing-check, virtual-clock, busy-wait]
+fixture: dev.javabyte.guest.sim.Timing
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [clocks]}]
+      environment: {clockStart: '2024-03-01T09:00:00Z'}
+    expect:
+      outcomes: [completed]
+      stdout: ['^nano origin over an hour: true$', '^clocks agree: true$', '^busy loop took a plausible time: true$', '^busy wait finished$']
+      maxGaps: 0

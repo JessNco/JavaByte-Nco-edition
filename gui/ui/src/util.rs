@@ -46,7 +46,7 @@ impl Announcer {
     }
 
     /// Says a message politely. The region is emptied first, so saying the same thing twice is
-    /// /// still announced.
+    /// still announced.
     pub fn say(&self, message: impl Into<String>) {
         let message = message.into();
         let text = self.0;
@@ -136,5 +136,81 @@ pub fn open_disclosures_around(element: &web_sys::Element) {
                 toggle.click();
             }
         node = parent.parent_element();
+    }
+}
+
+/// One screen's tabs, as an enum. Each value's stem names its tab's element ids
+/// (`<prefix>-tab-<stem>` and `<prefix>-panel-<stem>`), so a panel follows its tab by name
+/// rather than by a position that must be kept in step with a list by hand.
+pub trait Tab: Copy + PartialEq + Send + Sync + 'static {
+    /// Every tab, in the order the tab list shows them.
+    const ALL: &'static [Self];
+    /// The tab's stem, as used in its element ids and its label's message id.
+    fn stem(self) -> &'static str;
+}
+
+/// Where a key press in a tab list moves the selection, as a position among `len` tabs: the
+/// arrow keys move one tab with wraparound, Home and End go to the ends. None for any other key,
+/// which the tab list leaves alone.
+pub fn next_tab_index(current: usize, len: usize, key: &str) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    match key {
+        "ArrowRight" => Some((current + 1) % len),
+        "ArrowLeft" => Some((current + len - 1) % len),
+        "Home" => Some(0),
+        "End" => Some(len - 1),
+        _ => None,
+    }
+}
+
+/// A tab list in the WAI-ARIA tabs pattern with automatic activation, as tested in phase 0:
+/// one button per tab with `role="tab"`, `aria-controls` and `aria-selected`, a roving
+/// `tabindex`, and the arrow, Home and End keys moving both selection and focus. `prefix` starts
+/// every id; `label` gives each tab's text, and is called reactively so it may change.
+///
+/// Shared by the Report, Tools and Settings screens so the keyboard behaviour lives in one place.
+pub fn tab_list<T: Tab>(prefix: &'static str, aria_label: String, active: RwSignal<T>, label: impl Fn(T) -> String + Copy + Send + Sync + 'static) -> impl IntoView {
+    let on_key = move |ev: web_sys::KeyboardEvent| {
+        let current = T::ALL.iter().position(|t| *t == active.get_untracked()).unwrap_or(0);
+        let Some(next) = next_tab_index(current, T::ALL.len(), &ev.key()) else { return };
+        ev.prevent_default();
+        let tab = T::ALL[next];
+        active.set(tab);
+        focus_id(format!("{prefix}-tab-{}", tab.stem()));
+    };
+    view! {
+        <div role="tablist" aria-label=aria_label class="tablist" on:keydown=on_key>
+            {T::ALL.iter().map(|&tab| view! {
+                <button
+                    type="button"
+                    role="tab"
+                    id=format!("{prefix}-tab-{}", tab.stem())
+                    aria-controls=format!("{prefix}-panel-{}", tab.stem())
+                    aria-selected=move || (active.get() == tab).to_string()
+                    tabindex=move || if active.get() == tab { "0" } else { "-1" }
+                    on:click=move |_| active.set(tab)
+                >
+                    {move || label(tab)}
+                </button>
+            }).collect_view()}
+        </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_tab_index;
+
+    #[test]
+    fn tab_keys_wrap_and_reach_the_ends() {
+        assert_eq!(next_tab_index(0, 6, "ArrowRight"), Some(1));
+        assert_eq!(next_tab_index(5, 6, "ArrowRight"), Some(0));
+        assert_eq!(next_tab_index(0, 6, "ArrowLeft"), Some(5));
+        assert_eq!(next_tab_index(3, 6, "Home"), Some(0));
+        assert_eq!(next_tab_index(3, 6, "End"), Some(5));
+        assert_eq!(next_tab_index(3, 6, "Enter"), None);
+        assert_eq!(next_tab_index(0, 0, "ArrowRight"), None);
     }
 }

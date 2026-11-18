@@ -10,11 +10,10 @@ use leptos::task::spawn_local;
 
 /// Import, export and the command line.
 #[component]
-pub(super) fn Share(status: RwSignal<String>) -> impl IntoView {
+pub(super) fn Share() -> impl IntoView {
     let s = settings();
     let flow = flow();
     let copied = RwSignal::new(String::new());
-    let _ = status;
     view! {
         <h3 id="share-heading">{t!("settings-share-heading")}</h3>
         <div class="buttons">

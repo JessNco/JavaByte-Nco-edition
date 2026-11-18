@@ -1,7 +1,7 @@
 //! Reports: the one open now, opening others (from the recent list or from disk), comparing
 //! two, running again with a report's settings, and the files a run saved.
 
-use super::{OpenReport, Session, timestamp, with_sample};
+use super::{OpenReport, Session, timestamp, with_sample, without_host_programs};
 use crate::config::{self, ConfigDoc, ConfigPath};
 use crate::events::EventStore;
 use crate::report::ReportEventsSource;
@@ -59,14 +59,18 @@ impl Session {
     }
 
     /// The open report's sample, chosen again with the run's settings, for **Run again with
-    /// changes**. The sample must still be where it was.
+    /// changes**. The sample must still be where it was, on this computer. The report may
+    /// come from someone else, so settings that name a program to start are left out
+    /// ([`without_host_programs`]).
     pub fn run_again(&mut self) -> Result<Overview, String> {
         let open = self.report.as_ref().ok_or_else(|| t!("error-no-report"))?;
-        let sample_path = open.sample_path.clone();
+        let moved = || t!("error-sample-moved", path = open.view.sample_path.clone());
+        // No local path: the report names a sample on another computer.
+        let sample_path = open.sample_path.clone().ok_or_else(|| t!("error-sample-remote", path = open.view.sample_path.clone()))?;
         let text = open.view.config_text.clone().unwrap_or_else(|| config::render_document(&open.view.config));
-        let sample = Session::choose(&sample_path).map_err(|_| t!("error-sample-moved", path = sample_path.display().to_string()))?;
+        let sample = Session::choose(&sample_path).map_err(|_| moved())?;
         let overview = self.inspect(sample.clone())?;
-        let mut doc = ConfigDoc::new(with_sample(&text, Some(&sample)));
+        let mut doc = ConfigDoc::new(without_host_programs(&with_sample(&text, Some(&sample))));
         // The run's own folder is set per run by the app; a copied one would mislead.
         let _ = doc.remove(&ConfigPath::parse("output.directory"));
         let _ = doc.remove(&ConfigPath::parse("output.console"));
@@ -108,10 +112,15 @@ impl Session {
         self.launcher()?.disasm(&path)
     }
 
-    /// Where a copy may be saved: never next to the sample.
+    /// Where a copy may be saved: never next to the sample. When the report's sample is not
+    /// on this computer there is no folder of it here to keep away from, and its path is not
+    /// looked at.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn check_save_destination(&self, destination: &Path) -> Result<(), String> {
-        crate::artifacts::check_destination(destination, &self.open_report()?.sample_path)
+        match &self.open_report()?.sample_path {
+            Some(sample) => crate::artifacts::check_destination(destination, sample),
+            None => Ok(()),
+        }
     }
 
     /// Saves the chosen files in a password zip.
@@ -151,7 +160,8 @@ pub(super) fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport
         events: EventStore::new(Box::new(events)),
         folder: output.to_path_buf(),
         artifacts: report.artifacts.clone(),
-        sample_path: PathBuf::from(&report.sample.path),
+        // The report may have come from someone else: a path on another computer is never used.
+        sample_path: Some(PathBuf::from(&report.sample.path)).filter(|p| super::is_local_path(p)),
     })
 }
 
@@ -165,4 +175,47 @@ pub(super) fn read_report(folder: &Path) -> Result<(Report, String), String> {
 /// The file name in a path written on any system (`C:\a\b.jar` or `/a/b.jar`).
 pub(super) fn file_name_of(path: &str) -> String {
     path.rsplit(['/', '\\']).find(|p| !p.is_empty()).unwrap_or(path).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A report folder someone sent, whose `report.json` puts the sample on another computer.
+    fn report_folder_with_sample(name: &str, sample: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("javabyte-remote-report-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut report: serde_json::Value = serde_json::from_str(include_str!("../../../protocol/tests/tool-output/report-basics.json")).unwrap();
+        report["sample"]["path"] = serde_json::Value::String(sample.into());
+        std::fs::write(folder.join("report.json"), report.to_string()).unwrap();
+        folder
+    }
+
+    /// A sample path on another computer is kept for display only: saving a copy and running
+    /// again never look at it.
+    #[test]
+    fn a_reports_sample_on_another_computer_is_never_looked_at() {
+        let remote = r"\\attacker.example\share\x.jar";
+        let folder = report_folder_with_sample("unc", remote);
+        let dir = folder.join("app");
+        let mut session = Session::new(Err("no engine".into()), dir.join("runs"), dir.join("recent.json"));
+        let view = session.open_report_at(&folder).unwrap();
+        assert_eq!(view.sample_path, remote, "the report still says where the sample was");
+        assert_eq!(session.open_report().unwrap().sample_path, None);
+        assert!(session.check_save_destination(&std::env::temp_dir().join("copy.zip")).is_ok());
+        let refused = session.run_again().unwrap_err();
+        assert_eq!(refused, t!("error-sample-remote", path = remote));
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    /// A local sample path is kept, so copies are still kept away from it.
+    #[test]
+    fn a_reports_local_sample_is_kept() {
+        let folder = report_folder_with_sample("local", "/samples/x.jar");
+        let dir = folder.join("app");
+        let mut session = Session::new(Err("no engine".into()), dir.join("runs"), dir.join("recent.json"));
+        session.open_report_at(&folder).unwrap();
+        assert_eq!(session.open_report().unwrap().sample_path.as_deref(), Some(Path::new("/samples/x.jar")));
+        let _ = std::fs::remove_dir_all(folder);
+    }
 }

@@ -41,7 +41,8 @@ pub enum RunIsolation {
     /// Not isolated: the tool's own simulation of the network is the only layer.
     #[default]
     None,
-    /// Linux: a new user and network namespace (`crate::isolation`).
+    /// Linux: a new user, network and mount namespace, with host service sockets hidden
+    /// (`crate::isolation`).
     Namespace,
     /// Windows: an AppContainer with no capabilities, through the sandbox add-on at this path.
     AppContainer(PathBuf),
@@ -191,13 +192,7 @@ impl Launcher {
         if let Some(python) = &self.bridge_python {
             command.env("JAVABYTE_BRIDGE_PYTHON", python);
         }
-        #[cfg(windows)]
-        {
-            // No console window flashing up behind the app for each run.
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            command.creation_flags(CREATE_NO_WINDOW);
-        }
+        no_console(command);
     }
 
     /// Runs a short command that prints one JSON document, and reads it.
@@ -284,13 +279,16 @@ impl Launcher {
             args.push("-s".as_ref());
             args.push(override_.as_ref());
         }
-        let mut command = self.run_command(request, &args);
-        let mut child = command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string()))?;
+        let command = self.run_command(request, &args);
+        Run::spawn(command).map_err(|e| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string()))
+    }
+}
+
+impl Run {
+    /// Starts `command` with its three standard streams piped, and the threads that read its
+    /// output. Separate from [`Launcher::start`] so the ending can be tested with any program.
+    fn spawn(mut command: Command) -> std::io::Result<Run> {
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
 
         // One thread per output pipe, so a full pipe can never stall the tool.
         let (sender, records) = channel();
@@ -306,17 +304,70 @@ impl Launcher {
                 }
             }
         });
-        let stderr_text = Arc::new(Mutex::new(String::new()));
+        let stderr_bytes = Arc::new(Mutex::new(Vec::new()));
         let stderr = child.stderr.take().expect("stderr was piped");
-        let collected = Arc::clone(&stderr_text);
+        let collected = Arc::clone(&stderr_bytes);
+        // Dropped by the thread when it reaches the end of stderr, which tells `ending` that
+        // the text is complete.
+        let (stderr_sender, stderr_done) = channel::<()>();
         thread::spawn(move || {
-            let mut text = String::new();
-            let _ = BufReader::new(stderr).take(1 << 20).read_to_string(&mut text);
-            *collected.lock().expect("stderr lock") = text;
+            collect_bytes(stderr, STDERR_LIMIT, &collected);
+            drop(stderr_sender);
         });
 
         let stdin = child.stdin.take();
-        Ok(Run { child, stdin, records, stderr: stderr_text, tally: Tally::default(), stream_ended: false, ended: None })
+        Ok(Run { child, stdin, records, stderr: stderr_bytes, stderr_done, tally: Tally::default(), stream_ended: false, ended: None })
+    }
+}
+
+/// Starts `command` without a console window on Windows, so none flashes up behind the app
+/// for each run or check. Does nothing on other systems. Every process the backend starts goes
+/// through here, so the flag is written once.
+pub(crate) fn no_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// Windows' `CREATE_NO_WINDOW` process creation flag.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
+/// The most of the tool's error output kept for a run: enough for any real error, and a limit
+/// on what a run that floods stderr can make the app hold.
+const STDERR_LIMIT: u64 = 1 << 20;
+
+/// How long, once the process has gone, the app waits for the reader threads to deliver the
+/// last of its output. They normally finish at once; the limit is for a process that left a
+/// child of its own holding the pipes open.
+const DRAIN_LIMIT: Duration = Duration::from_secs(2);
+
+/// How long a run that is being ended is given to exit by itself, once it has been asked to
+/// stop and its input has been closed, before its process is ended. The sandbox add-on uses
+/// this time to remove its grants, delete its container and delete the staged sample.
+const EXIT_GRACE: Duration = Duration::from_secs(2);
+
+/// Reads `source` to its end, appending the first `limit` bytes to `into` as they arrive and
+/// dropping the rest. Appending as it goes means that if the reader is still blocked when the
+/// run is summarised, everything that came before is kept. Reading on past the limit means a
+/// process that floods its error output never blocks on a full pipe.
+fn collect_bytes(mut source: impl Read, limit: u64, into: &Mutex<Vec<u8>>) {
+    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+    let mut buffer = [0u8; 4096];
+    loop {
+        match source.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                if let Ok(mut into) = into.lock() {
+                    let room = limit.saturating_sub(into.len());
+                    into.extend_from_slice(&buffer[..read.min(room)]);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => break,
+        }
     }
 }
 
@@ -325,7 +376,10 @@ pub struct Run {
     child: Child,
     stdin: Option<ChildStdin>,
     records: Receiver<Result<StreamRecord, String>>,
-    stderr: Arc<Mutex<String>>,
+    /// The tool's error output so far, filled by its reader thread.
+    stderr: Arc<Mutex<Vec<u8>>>,
+    /// Disconnects when the stderr reader thread has read to the end, so the text is complete.
+    stderr_done: Receiver<()>,
     tally: Tally,
     stream_ended: bool,
     ended: Option<Ended>,
@@ -447,27 +501,38 @@ impl Run {
         }
         self.poll();
         let Ok(Some(status)) = self.child.try_wait() else { return None };
-        // The process has gone; the reader thread may still be delivering its last lines.
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !self.stream_ended && Instant::now() < deadline {
-            let _ = self.next(Duration::from_millis(20));
-        }
+        self.drain_remaining();
         let ended = self.ending(status.code(), false);
         self.ended = Some(ended.clone());
         Some(ended)
     }
 
-    /// How the run ended, for people.
+    /// After the process has gone, takes the last records its reader thread is still
+    /// delivering, for up to [`DRAIN_LIMIT`].
+    fn drain_remaining(&mut self) {
+        let deadline = Instant::now() + DRAIN_LIMIT;
+        while !self.stream_ended && Instant::now() < deadline {
+            let _ = self.next(Duration::from_millis(20));
+        }
+    }
+
+    /// How the run ended, for people. Called once the process has gone: first waits, for up to
+    /// [`DRAIN_LIMIT`], for the stderr reader to reach the end, so the error output (such as
+    /// the sandbox add-on's reason for an isolation failure) is complete. The wait is bounded
+    /// because a process the tool started may still hold stderr open.
     fn ending(&mut self, exit_code: Option<i32>, forced: bool) -> Ended {
-        let stderr = self.stderr.lock().map(|s| s.clone()).unwrap_or_default();
+        let _ = self.stderr_done.recv_timeout(DRAIN_LIMIT);
+        let stderr = self.stderr.lock().map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
         let summary = summarise(exit_code, forced, &self.tally);
         Ended { exit_code, forced, tally: self.tally.clone(), stderr, summary }
     }
 
-    /// Ends the process now, for when it ignored a stop request.
+    /// Ends the process, for when it ignored a stop request. Takes the records it wrote
+    /// before it was ended, as `try_end` does. The process is first given a last chance to
+    /// exit by itself ([`Run::end_process`]).
     pub fn force_end(&mut self) -> Ended {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.end_process();
+        self.drain_remaining();
         let ended = self.ending(None, true);
         self.ended = Some(ended.clone());
         ended
@@ -496,26 +561,41 @@ impl Run {
             }
             let _ = self.next(Duration::from_millis(50));
         };
-        // The reader thread may still be delivering the last lines.
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !self.stream_ended && Instant::now() < deadline {
-            let _ = self.next(Duration::from_millis(50));
-        }
+        self.drain_remaining();
         let exit_code = if forced { None } else { status.and_then(|s| s.code()) };
-        thread::sleep(Duration::from_millis(20));
-        let stderr = self.stderr.lock().map(|s| s.clone()).unwrap_or_default();
-        let summary = summarise(exit_code, forced, &self.tally);
-        Ended { exit_code, forced, tally: std::mem::take(&mut self.tally), stderr, summary }
+        self.ending(exit_code, forced)
+    }
+}
+
+impl Run {
+    /// Ends the process if it is still running. It is asked to stop and its input is closed,
+    /// then given [`EXIT_GRACE`] to exit by itself, and only then ended. The grace lets the
+    /// sandbox add-on undo what it set up (its grants, its container, the staged sample)
+    /// rather than leave that to its next start.
+    fn end_process(&mut self) {
+        if !matches!(self.child.try_wait(), Ok(None)) {
+            return;
+        }
+        let _ = self.stop();
+        // The end of input also asks the tool and the add-on to stop.
+        self.stdin = None;
+        let deadline = Instant::now() + EXIT_GRACE;
+        while Instant::now() < deadline {
+            if !matches!(self.child.try_wait(), Ok(None)) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
 impl Drop for Run {
+    /// Ends the process, gracefully if it allows (see [`Run::end_process`]): a run must never
+    /// outlive the window that started it.
     fn drop(&mut self) {
-        // A run must never outlive the window that started it.
-        if let Ok(None) = self.child.try_wait() {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-        }
+        self.end_process();
     }
 }
 
@@ -542,6 +622,112 @@ fn last_lines(text: &str, count: usize) -> String {
     let java_notice = "Picked up JAVA_TOOL_OPTIONS"; // not-ui-text: matches Java's own output
     let lines: Vec<_> = text.lines().filter(|l| !l.starts_with(java_notice)).collect();
     lines[lines.len().saturating_sub(count)..].join(" / ")
+}
+
+#[cfg(all(test, unix))]
+mod ending_tests {
+    use super::*;
+
+    /// Waits, as the Running screen does, until `try_end` says the run is over.
+    fn end_by_polling(run: &mut Run) -> Ended {
+        let started = Instant::now();
+        loop {
+            if let Some(ended) = run.try_end() {
+                return ended;
+            }
+            assert!(started.elapsed() < Duration::from_secs(20), "the run did not end");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn shell(script: &str) -> Run {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", script]);
+        Run::spawn(command).unwrap()
+    }
+
+    /// A process that writes its reason and exits at once, as the sandbox add-on does when
+    /// isolation fails: the reason must be in the ending, every time.
+    #[test]
+    fn the_ending_has_all_of_stderr_even_after_a_fast_exit() {
+        for _ in 0..20 {
+            let ended = end_by_polling(&mut shell("echo 'javabyte-sandbox: AppContainer refused' >&2; exit 70"));
+            assert_eq!(ended.exit_code, Some(70));
+            assert_eq!(ended.stderr.trim(), "javabyte-sandbox: AppContainer refused");
+        }
+    }
+
+    /// A process that leaves a child of its own holding stderr open: the ending still comes,
+    /// within the drain limit, and keeps what was written before.
+    #[test]
+    fn a_child_holding_stderr_open_does_not_hold_up_the_ending() {
+        let started = Instant::now();
+        let ended = end_by_polling(&mut shell("echo before >&2; (sleep 6 >/dev/null &); exit 3"));
+        assert!(started.elapsed() < Duration::from_secs(5), "took {:?}", started.elapsed());
+        assert_eq!(ended.exit_code, Some(3));
+        assert_eq!(ended.stderr.trim(), "before");
+    }
+
+    /// `force_end` keeps the error output written before the process was ended.
+    #[test]
+    fn a_forced_ending_keeps_what_came_before() {
+        let mut run = shell("echo stuck >&2; exec sleep 30");
+        thread::sleep(Duration::from_millis(300));
+        let ended = run.force_end();
+        assert!(ended.forced);
+        assert_eq!(ended.stderr.trim(), "stuck");
+        assert_eq!(run.try_end().map(|e| e.forced), Some(true), "the ending is kept");
+    }
+
+    /// `collect_bytes` keeps no more than its limit, and reads on to the end so the writer
+    /// never blocks.
+    #[test]
+    fn stderr_is_kept_up_to_its_limit() {
+        let into = Mutex::new(Vec::new());
+        let mut source = std::io::Cursor::new(vec![b'x'; 10_000]);
+        collect_bytes(&mut source, 5000, &into);
+        assert_eq!(into.lock().unwrap().len(), 5000);
+        assert_eq!(source.position(), 10_000, "the excess is read and dropped");
+    }
+
+    /// A process that writes more than the limit to stderr still ends: the reader keeps the
+    /// pipe empty.
+    #[test]
+    fn a_flood_of_stderr_does_not_block_the_process() {
+        let ended = end_by_polling(&mut shell("head -c 3000000 /dev/zero | tr '\\0' x >&2; exit 4"));
+        assert_eq!(ended.exit_code, Some(4));
+        assert_eq!(ended.stderr.len() as u64, STDERR_LIMIT);
+    }
+
+    /// A process that stops when its input ends is given the chance to: `force_end` and
+    /// dropping the run close its input and wait before ending it.
+    #[test]
+    fn ending_a_run_lets_it_exit_by_itself_first() {
+        let mut run = shell("cat >/dev/null; echo tidied >&2; exit 5");
+        thread::sleep(Duration::from_millis(200));
+        let ended = run.force_end();
+        assert!(ended.forced);
+        assert_eq!(ended.stderr.trim(), "tidied");
+
+        let marker = std::env::temp_dir().join(format!("javabyte-drop-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let run = shell(&format!("cat >/dev/null; touch '{}'", marker.display()));
+        thread::sleep(Duration::from_millis(200));
+        drop(run);
+        assert!(marker.exists(), "the process tidied up before it was ended");
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    /// A process that ignores both stop and the end of its input is still ended, soon after
+    /// the grace.
+    #[test]
+    fn a_run_that_ignores_stop_is_ended_after_the_grace() {
+        let mut run = shell("exec sleep 30 </dev/null");
+        let started = Instant::now();
+        let ended = run.force_end();
+        assert!(ended.forced);
+        assert!(started.elapsed() < EXIT_GRACE + DRAIN_LIMIT + Duration::from_secs(2), "took {:?}", started.elapsed());
+    }
 }
 
 #[cfg(test)]

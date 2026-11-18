@@ -85,6 +85,27 @@ misled.
    not be isolated from the network" is read in full, with focus on Cancel. Escape cancels and
    focus returns to Analyse.
 
+Steps 4 to 6 are for Windows only, with the sandbox add-on installed and Windows Sandbox chosen
+in Preferences ([WINDOWS-SANDBOX.md](WINDOWS-SANDBOX.md); Windows 11 Pro with the "Windows
+Sandbox" feature on). CI cannot run Windows Sandbox, so these steps are its only check. Mark
+them N/A for Orca.
+
+4. Analyse a harmless fixture. "Starting Windows Sandbox (usually 20 to 40 seconds). …" is
+   announced once, in full, and is not repeated while it starts. It is also shown as text on
+   the Running screen and can be read in browse mode. When Windows Sandbox opens its own
+   window, Alt+Tab back to JavaByte returns focus to the Running screen, not to nothing. Once
+   the analysis runs, progress and the end are announced as in steps 1 and 2.
+5. Analyse again and press Stop (then, on a third try, Control+Period) while the starting text
+   is shown. "Stopping. What was found so far is kept." is announced, then "Analysis
+   finished. …", once. The Windows Sandbox window closes, and
+   the outcome says whether there is a report.
+6. Make Windows Sandbox fail to start (turn virtualisation or the feature off, as in
+   "Checking Windows Sandbox by hand" in WINDOWS-SANDBOX.md) and analyse. The reason ("Windows
+   Sandbox could not start: …") is announced once. "The analysis did not start" can be reached
+   as a heading, and its reason and the question about an AppContainer are read in full. Tab
+   reaches "Analyse in an AppContainer instead". Nothing runs until it is pressed; pressing it
+   starts the analysis and moves focus to the Running heading, which is read.
+
 ### E. Report
 
 1. The tabs are read with their names; the summary is plain words.
@@ -112,6 +133,16 @@ misled.
 2. Preferences: every choice is a labelled control; changes are announced ("Analyses will be
    saved in the chosen folder."). Choosing a folder or a Java uses the system's picker by
    keyboard.
+3. Windows with the sandbox add-on, "Turn off the network for each analysis" ticked: "How to
+   isolate each analysis" is read as a group with that name. Arrow keys move between
+   "AppContainer: …" and "Windows Sandbox: …", and choosing one is announced ("Analyses will
+   run in an AppContainer." or "Analyses will run in Windows Sandbox."). Where Windows Sandbox
+   cannot be used, its choice is read as unavailable together with why ("Windows Sandbox cannot
+   be used here: …"). Unticking the box hides the group and focus stays on the box. Mark N/A
+   for Orca.
+4. Windows without the add-on: the Network isolation section says, in words, that Windows needs
+   the sandbox add-on or a virtual machine to turn off the network, and where to get the
+   add-on. Mark N/A for Orca.
 
 ### G. Vision, without a screen reader
 
@@ -143,6 +174,11 @@ reader and JavaByte.
 | A1 | | | |
 | A2 | | | |
 | … | | | |
+| D4 | | N/A (Windows only) | Windows Sandbox chosen; note the Windows edition |
+| D5 | | N/A (Windows only) | |
+| D6 | | N/A (Windows only) | How the start was made to fail |
+| F3 | | N/A (Windows only) | Note whether Windows Sandbox was available |
+| F4 | | N/A (Windows only) | Without the add-on |
 
 Each failure becomes an issue on GitHub labelled `accessibility`, quoting the step and what was
 heard or seen. Phase 6 is done when the table has no open failure at level AA.

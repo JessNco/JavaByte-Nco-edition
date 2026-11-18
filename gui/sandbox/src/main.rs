@@ -11,6 +11,9 @@
 mod args;
 // Used by the Windows-only modules; elsewhere only its tests run.
 #[cfg_attr(not(windows), allow(dead_code))]
+mod leftovers;
+// Used by the Windows-only modules; elsewhere only its tests run.
+#[cfg_attr(not(windows), allow(dead_code))]
 mod plan;
 #[cfg(windows)]
 mod appcontainer;

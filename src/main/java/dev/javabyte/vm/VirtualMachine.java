@@ -56,6 +56,8 @@ public final class VirtualMachine {
     public final GuestEnvironment env;
 
     final Interpreter interpreter;
+    /** Wording of the exceptions the JVM throws by itself, matched to the advertised Java version. */
+    final ImplicitExceptions implicitExceptions = new ImplicitExceptions(this);
 
     private long instructions;
     /** Why the run must end at the next checkpoint; null while it may continue. */
@@ -135,13 +137,9 @@ public final class VirtualMachine {
         return instructions;
     }
 
-    /** Asks the emulator thread to stop at its next budget check. Safe to call from any thread. */
-    public void cancel() {
-        cancel(EmulationAbort.Reason.TIMEOUT);
-    }
-
     /**
-     * Asks the emulator thread to stop at its next budget check for the given reason. The first
+     * Asks the emulator thread to stop at its next budget check for the given reason. Safe to
+     * call from any thread. The first
      * reason wins: a stop requested by a person is not relabelled as a timeout afterwards.
      */
     public void cancel(EmulationAbort.Reason reason) {
@@ -206,20 +204,66 @@ public final class VirtualMachine {
     }
 
     /**
+     * The JDK frames that Java 8's {@code Method.invoke} puts between the caller and the method
+     * it invokes, innermost first. Stack-walking string decryptors index into traces taken
+     * inside reflectively called methods, so these frames must be there.
+     */
+    public static final List<StackTraceElement> METHOD_INVOKE_FRAMES = List.of(
+            new StackTraceElement("sun.reflect.NativeMethodAccessorImpl", "invoke0", null, -2),
+            new StackTraceElement("sun.reflect.NativeMethodAccessorImpl", "invoke", "NativeMethodAccessorImpl.java", 62),
+            new StackTraceElement("sun.reflect.DelegatingMethodAccessorImpl", "invoke", "DelegatingMethodAccessorImpl.java", 43),
+            new StackTraceElement("java.lang.reflect.Method", "invoke", "Method.java", 498));
+
+    /** The JDK frames that Java 8's {@code Constructor.newInstance} adds; see {@link #METHOD_INVOKE_FRAMES}. */
+    public static final List<StackTraceElement> CONSTRUCTOR_NEW_INSTANCE_FRAMES = List.of(
+            new StackTraceElement("sun.reflect.NativeConstructorAccessorImpl", "newInstance0", null, -2),
+            new StackTraceElement("sun.reflect.NativeConstructorAccessorImpl", "newInstance",
+                    "NativeConstructorAccessorImpl.java", 62),
+            new StackTraceElement("sun.reflect.DelegatingConstructorAccessorImpl", "newInstance",
+                    "DelegatingConstructorAccessorImpl.java", 45),
+            new StackTraceElement("java.lang.reflect.Constructor", "newInstance", "Constructor.java", 423));
+
+    /**
+     * Runs a call that, on a real JVM, would pass through JDK code (reflection, for example),
+     * so that stack traces taken during it show that code's frames between the current guest
+     * frame and whatever the call runs. Stubs for {@code Method.invoke} and
+     * {@code Constructor.newInstance} use it with the frames above.
+     *
+     * @param jdkFrames the frames to show, innermost first
+     */
+    public <T> T callThroughJdk(List<StackTraceElement> jdkFrames, java.util.function.Supplier<T> call) {
+        List<Frame> stack = frames();
+        if (stack.isEmpty()) {
+            return call.get();
+        }
+        Frame caller = stack.get(stack.size() - 1);
+        List<StackTraceElement> previous = caller.callingThrough;
+        caller.callingThrough = jdkFrames;
+        try {
+            return call.get();
+        } finally {
+            caller.callingThrough = previous;
+        }
+    }
+
+    /**
      * The guest call stack in the form the sample would get from {@code getStackTrace()}.
      *
      * <p>This matters beyond diagnostics: several obfuscators derive string-decryption keys
-     * from the calling class and method names found in a stack trace.
+     * from the calling class and method names found in a stack trace, and some index into it,
+     * so the JDK frames recorded by {@link #callThroughJdk} are included too.
      */
     public StackTraceElement[] guestStackTrace() {
-        StackTraceElement[] trace = new StackTraceElement[frames().size()];
-        for (int i = 0; i < trace.length; i++) {
-            Frame frame = frames().get(frames().size() - 1 - i);
+        List<StackTraceElement> trace = new ArrayList<>(frames().size());
+        for (int i = frames().size() - 1; i >= 0; i--) {
+            Frame frame = frames().get(i);
+            if (frame.callingThrough != null) {
+                trace.addAll(frame.callingThrough);
+            }
             GuestMethod method = frame.method;
-            int line = method.lines.length == 0 ? -1 : method.lines[Math.min(frame.pc, method.lines.length - 1)];
-            trace[i] = new StackTraceElement(method.owner.dottedName(), method.name, method.owner.node.sourceFile, line);
+            trace.add(new StackTraceElement(method.owner.dottedName(), method.name, method.owner.node.sourceFile, frame.line()));
         }
-        return trace;
+        return trace.toArray(StackTraceElement[]::new);
     }
 
     // ------------------------------------------------------------------ exceptions
@@ -233,14 +277,46 @@ public final class VirtualMachine {
     /**
      * Prepares an exception that came out of real JDK code. If it originated in guest code and
      * merely passed through the JDK, its trace is already a guest trace and is left alone.
+     *
+     * <p>Otherwise the JDK frames where it was thrown are kept on top of the guest trace, as a
+     * real JVM shows them: {@code Integer.parseInt("zz")} fails in
+     * {@code NumberFormatException.forInputString}, not in the sample's own method, and samples
+     * that index into the trace rely on that.
      */
     public GuestThrow raiseKeepingTrace(Throwable throwable) {
         StackTraceElement[] trace = throwable.getStackTrace();
         boolean alreadyGuest = trace.length > 0 && classes.contains(trace[0].getClassName().replace('.', '/'));
         if (!alreadyGuest) {
-            stampTrace(throwable);
+            List<StackTraceElement> combined = leadingJdkFrames(trace);
+            combined.addAll(java.util.Arrays.asList(guestStackTrace()));
+            throwable.setStackTrace(combined.toArray(StackTraceElement[]::new));
         }
         return new GuestThrow(throwable);
+    }
+
+    /**
+     * The frames at the top of a host exception's trace that belong to the JDK library code
+     * that threw it. The walk stops at the first frame of the emulator, of the reflection or
+     * method-handle machinery it calls the JDK through, or of the sample: below that point the
+     * guest trace takes over.
+     *
+     * <p>Each frame is copied without its module and loader names. A Java 8 trace has neither,
+     * and they would name the analysis host's real JDK version. Frames of {@code jdk.internal}
+     * packages, which Java 8 lacks, are left out for the same reason.
+     */
+    private List<StackTraceElement> leadingJdkFrames(StackTraceElement[] trace) {
+        List<StackTraceElement> kept = new ArrayList<>();
+        for (StackTraceElement frame : trace) {
+            String cls = frame.getClassName();
+            if (cls.startsWith("dev.javabyte.") || cls.startsWith("jdk.internal.reflect.") || cls.startsWith("sun.reflect.")
+                    || cls.startsWith("java.lang.invoke.") || classes.contains(cls.replace('.', '/'))) {
+                break;
+            }
+            if (!cls.startsWith("jdk.internal.")) {
+                kept.add(new StackTraceElement(cls, frame.getMethodName(), frame.getFileName(), frame.getLineNumber()));
+            }
+        }
+        return kept;
     }
 
     /**

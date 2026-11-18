@@ -57,14 +57,27 @@ java/lang/Thread#<init>,getName,setName,isDaemon,setDaemon,getPriority,setPriori
 java/lang/Thread#getThreadGroup,getUncaughtExceptionHandler,setUncaughtExceptionHandler,toString,hashCode,equals
 java/lang/Thread$UncaughtExceptionHandler
 java/lang/ThreadGroup#<init>,getName
-# A real loader object is created so it can be passed around, but every loading method is a stub.
+# Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by
+# the router, because it would ask the loader for classes from inside host code. new
+# URLClassLoader(...) is a stub that returns a loader which only remembers its URLs. <init> stays
+# listed so that a sample's own subclass can be built, but on a simulated base, never on the real
+# class: its real parent is the bootstrap loader and it answers JDK code only from the sample.
 java/lang/ClassLoader#<init>
+java/security/SecureClassLoader#<init>
 java/net/URLClassLoader#<init>,getURLs
 # Building a command is harmless; start() is a stub and never launches anything.
 java/lang/ProcessBuilder#<init>,command,directory,redirectErrorStream,redirectInput,redirectOutput,redirectError,inheritIO
 java/lang/ProcessBuilder$Redirect
 java/lang/ProcessBuilder$Redirect$Type
 java/lang/Process
+
+# ---------------------------------------------------------------- hardware and management
+# The management beans, ProcessHandle, the screen (Toolkit, GraphicsEnvironment) and
+# Runtime.version are stubs that describe the simulated machine (dev.javabyte.env.MachineProfile);
+# the objects they hand out are simulated too. Only the plain value classes they return are
+# listed here. Nothing else in java/lang/management, java/awt or com/sun/management is allowed.
+java/lang/management/MemoryUsage
+java/lang/Runtime$Version
 
 # ---------------------------------------------------------------- reflection and method handles
 # Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed
@@ -119,6 +132,8 @@ java/util/stream/**
 !java/util/ServiceLoader$*
 # Bundle lookup searches the class path; a stub serves bundles from the sample instead.
 !java/util/ResourceBundle#getBundle,clearCache
+# These ask the loader they are given for a class or resource from inside host code.
+!java/util/ResourceBundle$Control#newBundle,needsReload
 !java/util/prefs/**
 !java/util/logging/**
 !java/util/spi/**
@@ -218,8 +233,17 @@ java/security/Signature
 java/security/AlgorithmParameters
 java/security/AlgorithmParameterGenerator
 java/security/Principal
-java/security/Provider
-java/security/Security#getProvider,getProviders,getAlgorithms,getProperty
+# Providers are tables of class names that the JDK loads and constructs, shared by the whole JVM.
+# Every route to one (Security.getProvider, getProviders, and getProvider on each engine class) is
+# a stub returning a private copy, dev.javabyte.env.SimProvider. These lines cover a real provider
+# that might still slip through: reading it is harmless, changing it or subclassing it is not.
+java/security/Provider#getName,getVersion,getVersionStr,getInfo,isConfigured,toString,hashCode,equals
+java/security/Provider#get,getOrDefault,getProperty,getService,getServices,containsKey,containsValue,contains
+java/security/Provider#isEmpty,size,keySet,values,entrySet,keys,elements,propertyNames,stringPropertyNames
+!java/security/Provider#<init>,put,putAll,putIfAbsent,remove,clear,load,loadFromXML,setProperty
+!java/security/Provider#compute,computeIfAbsent,computeIfPresent,merge,replace,replaceAll,configure
+java/security/Provider$Service#getType,getAlgorithm,getClassName,getAttribute,toString
+java/security/Security#getAlgorithms,getProperty
 java/security/AccessController#doPrivileged
 java/security/PrivilegedAction
 java/security/PrivilegedExceptionAction
@@ -259,11 +283,15 @@ java/net/URLDecoder
 java/net/IDN
 java/net/Proxy
 java/net/Proxy$Type
-java/net/InetAddress#getHostAddress,getHostName,getCanonicalHostName,getAddress,toString,equals,hashCode,isLoopbackAddress,isAnyLocalAddress,isSiteLocalAddress
+java/net/InetAddress#getHostAddress,getHostName,getAddress,toString,equals,hashCode,isLoopbackAddress,isAnyLocalAddress,isSiteLocalAddress
+# Always a real reverse lookup; a stub answers from the name the simulated address carries.
+!java/net/InetAddress#getCanonicalHostName
 java/net/Inet4Address#getHostAddress,getAddress,toString,equals,hashCode
 java/net/InetSocketAddress#getHostName,getHostString,getPort,getAddress,toString,equals,hashCode,isUnresolved,createUnresolved
 java/net/SocketAddress
 java/net/*Exception
 !java/net/URL#openConnection,openStream,getContent,setURLStreamHandlerFactory
-# URL.equals and URL.hashCode resolve the host name through real DNS; stubs compare text instead.
-!java/net/URL#equals,hashCode
+# URL.equals, hashCode and sameFile resolve the host name through real DNS; stubs compare text
+# instead. JDK code (a HashMap, List.contains) calls them without a stub in between, so every URL
+# the guest builds also gets an inert handler, dev.javabyte.env.SimURLStreamHandler.
+!java/net/URL#equals,hashCode,sameFile

@@ -29,7 +29,8 @@ import org.objectweb.asm.util.Printer;
  * host stack depth, is handled by running on a thread with a very large stack.
  *
  * <p>Nothing here touches the outside world. Every call leaves through
- * {@link InvocationRouter}, which is where policy is enforced.
+ * {@link InvocationRouter} and every field access to a JDK class through {@link Fields}; those
+ * two are where policy is enforced.
  */
 public final class Interpreter {
 
@@ -423,7 +424,7 @@ public final class Interpreter {
                         case ATHROW: {
                             Object thrown = stack[--sp];
                             if (thrown == null) {
-                                throw vm.raise(new NullPointerException("Cannot throw exception because value is null"));
+                                throw vm.implicitExceptions.nullPointer("Cannot throw exception because value is null");
                             }
                             throw new GuestThrow(thrown);
                         }
@@ -431,8 +432,7 @@ public final class Interpreter {
                             String type = ((TypeInsnNode) insn).desc;
                             Object value = stack[sp - 1];
                             if (value != null && !vm.types.isInstance(value, type)) {
-                                throw vm.raise(new ClassCastException("class " + vm.types.nameOf(value)
-                                        + " cannot be cast to class " + type.replace('/', '.')));
+                                throw vm.implicitExceptions.classCast(value, type);
                             }
                             break;
                         }
@@ -444,7 +444,7 @@ public final class Interpreter {
                         case MONITORENTER: case MONITOREXIT: {
                             Object lock = stack[--sp];
                             if (lock == null) {
-                                throw vm.raise(new NullPointerException("Cannot enter synchronized block because value is null"));
+                                throw vm.implicitExceptions.nullPointer("Cannot enter synchronized block because value is null");
                             }
                             if (op == MONITORENTER) {
                                 vm.scheduler.monitorEnter(lock);
@@ -459,45 +459,16 @@ public final class Interpreter {
                     }
                     pc++;
                 }
-            } catch (GuestThrow thrown) {
-                int handler = findHandler(method, frame.pc, thrown.value);
-                if (handler < 0) {
-                    throw thrown;
-                }
-                // Entering a handler discards the operand stack and leaves only the exception on it.
-                stack[0] = thrown.value;
-                sp = 1;
-                pc = handler;
             } catch (RuntimeException failure) {
-                GuestThrow thrown = invalidBytecode(frame, pc, failure);
-                int handler = findHandler(method, frame.pc, thrown.value);
-                if (handler < 0) {
-                    throw thrown;
-                }
+                // A guest exception, or a host failure that turns out to be invalid bytecode.
+                GuestThrow thrown = failure instanceof GuestThrow guest ? guest : invalidBytecode(frame, pc, failure);
+                pc = enterHandler(method, frame.pc, thrown);
                 stack[0] = thrown.value;
                 sp = 1;
-                pc = handler;
             }
         }
     }
 
-    /**
-     * Decides whether a host exception inside the interpreter loop was caused by bytecode that
-     * a JVM would have refused to load, and if so turns it into the {@code VerifyError} the
-     * sample would have received.
-     *
-     * <p>There is deliberately no verifier pass: samples run code that standard verifiers
-     * reject yet HotSpot accepts (old class versions, {@code -noverify} launchers), and a
-     * second, stricter judge would stop analysis of exactly the samples worth analysing.
-     * Instead the interpreter runs unchecked and its own type and bounds failures are read as
-     * the verdict. Those surface as a small set of exception types raised by the emulator's own
-     * code or by the reflection it uses to reach the JDK (wrong argument types); anything else
-     * is still an emulator defect and is rethrown unchanged.
-     *
-     * <p>The risk is that a real interpreter bug is reported as invalid bytecode. Two things
-     * keep that visible: the {@code gap.invalid-bytecode} event carries the host exception, and
-     * the differential tests require valid programs to finish with no gap events at all.
-     */
     /** Packages whose frames may sit between a type or bounds failure and the interpreter loop. */
     private static final String[] CORE_FRAME_PREFIXES = {
         "dev.javabyte.", "java.lang.reflect.", "jdk.internal.reflect.", "java.lang.invoke.",
@@ -534,6 +505,38 @@ public final class Interpreter {
         return true;
     }
 
+    /**
+     * Finds the handler for an exception about to leave the current instruction, or rethrows
+     * it to the caller's frame when this method has none. The caller then puts the exception
+     * on the operand stack alone: entering a handler discards whatever else was there.
+     *
+     * @return the pc of the handler
+     */
+    private int enterHandler(GuestMethod method, int pc, GuestThrow thrown) {
+        int handler = findHandler(method, pc, thrown.value);
+        if (handler < 0) {
+            throw thrown;
+        }
+        return handler;
+    }
+
+    /**
+     * Decides whether a host exception inside the interpreter loop was caused by bytecode that
+     * a JVM would have refused to load, and if so turns it into the {@code VerifyError} the
+     * sample would have received.
+     *
+     * <p>There is deliberately no verifier pass: samples run code that standard verifiers
+     * reject yet HotSpot accepts (old class versions, {@code -noverify} launchers), and a
+     * second, stricter judge would stop analysis of exactly the samples worth analysing.
+     * Instead the interpreter runs unchecked and its own type and bounds failures are read as
+     * the verdict. Those surface as a small set of exception types raised by the emulator's own
+     * code or by the reflection it uses to reach the JDK (wrong argument types); anything else
+     * is still an emulator defect and is rethrown unchanged.
+     *
+     * <p>The risk is that a real interpreter bug is reported as invalid bytecode. Two things
+     * keep that visible: the {@code gap.invalid-bytecode} event carries the host exception, and
+     * the differential tests require valid programs to finish with no gap events at all.
+     */
     private GuestThrow invalidBytecode(Frame frame, int pc, RuntimeException failure) {
         boolean typeOrBounds = failure instanceof ClassCastException || failure instanceof NullPointerException
                 || failure instanceof IndexOutOfBoundsException || failure instanceof NegativeArraySizeException
@@ -546,9 +549,9 @@ public final class Interpreter {
         GuestMethod method = frame.method;
         int opcode = pc >= 0 && pc < method.code.length ? method.code[pc].getOpcode() : -1;
         String where = method.id + " instruction " + pc
-                + (opcode >= 0 ? " (" + org.objectweb.asm.util.Printer.OPCODES[opcode] + ")" : " (outside the method)");
+                + (opcode >= 0 ? " (" + Printer.OPCODES[opcode] + ")" : " (outside the method)");
         vm.events.addOnce("invalid:" + method.id, "gap", "invalid-bytecode", "method", method.id, "instruction", pc,
-                "opcode", opcode >= 0 ? org.objectweb.asm.util.Printer.OPCODES[opcode] : null, "hostFailure", failure.toString());
+                "opcode", opcode >= 0 ? Printer.OPCODES[opcode] : null, "hostFailure", failure.toString());
         return vm.raise(new VerifyError("Bad bytecode in " + where));
     }
 

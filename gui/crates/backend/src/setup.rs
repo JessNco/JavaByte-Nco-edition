@@ -8,6 +8,7 @@
 //! runtime/          a jlink Java runtime (bin/java or bin\java.exe)
 //! javabyte.jar      the tool
 //! bridge/python/    a standalone Python with speakeasy-emulator (bridge installers only)
+//! sandbox/          javabyte-sandbox.exe, the Windows sandbox add-on's helper (when installed)
 //! ```
 //!
 //! A developer build has none of these and falls back to `JAVABYTE_JAR`, a jar next to the
@@ -188,11 +189,7 @@ impl Setup {
 fn windows_isolation(helper: &Path) -> Isolation {
     let mut command = Command::new(helper);
     command.arg("check").stdin(Stdio::null()).stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
+    crate::runner::no_console(&mut command);
     let answer: Option<serde_json::Value> = command.output().ok().and_then(|o| serde_json::from_slice(&o.stdout).ok());
     let Some(answer) = answer else {
         return Isolation { supported: true, problem: Some(t!("isolation-addon-check-failed")), ..Isolation::default() };
@@ -211,11 +208,7 @@ fn windows_isolation(helper: &Path) -> Isolation {
 pub fn java_version(java: &Path) -> Option<String> {
     let mut command = Command::new(java);
     command.arg("-version").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
+    crate::runner::no_console(&mut command);
     let output = command.output().ok().filter(|o| o.status.success())?;
     parse_java_version(&String::from_utf8_lossy(&output.stderr))
 }

@@ -21,7 +21,10 @@ public final class SerializationGuard {
 
     private SerializationGuard() {}
 
-    /** Classes that are pure data. Arrays and primitives are always allowed. */
+    /**
+     * Classes that are pure data. Primitive arrays are always allowed; other arrays are allowed
+     * only when their element type is.
+     */
     private static final Set<String> SAFE_CLASSES = Set.of(
             "java.lang.String", "java.lang.Number", "java.lang.Integer", "java.lang.Long", "java.lang.Short",
             "java.lang.Byte", "java.lang.Double", "java.lang.Float", "java.lang.Boolean", "java.lang.Character",

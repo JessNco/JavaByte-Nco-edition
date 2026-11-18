@@ -1,0 +1,21 @@
+description: 'Delayed tasks, parkNanos, future timeouts, timed joins, timed waits and latches all take their full time in virtual time, and a notify or count-down still ends a wait early.'
+techniques: [anti-emulation, sleep-timing-check, scheduled-executor, timed-wait, virtual-clock]
+fixture: dev.javabyte.guest.sim.Timing
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [timed-waits]}]
+      environment: {clockStart: '2024-03-01T09:00:00Z'}
+    expect:
+      outcomes: [completed]
+      stdout:
+        - '^schedule waited a minute: true$'
+        - '^parkNanos waited a minute: true$'
+        - '^future timed out after a minute: true$'
+        - '^executor future timed out after a second: true$'
+        - '^join gave up after 30 s: true$'
+        - '^notify ended the wait early: true$'
+        - '^unnotified wait lasted its timeout: true$'
+        - '^latch counted down early: true$'
+      notPrinted: ['future completed', 'late task finished']
+      maxGaps: 0

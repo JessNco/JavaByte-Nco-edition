@@ -5,7 +5,8 @@
 // What this covers: axe-core rules (WCAG 2.0-2.2 A and AA) on every screen, in every theme and
 // at large text; focus and titles when moving between screens; keyboard operation of tabs,
 // choices and the grid; reflow at 320 px; announcements during a run; hostile text shown as
-// text; Preferences and the isolation question; the Tools screen.
+// text; Preferences, the isolation question and the question before starting a program; the
+// Tools screen.
 //
 // The harness (server, browser, the walk through every screen) is in lib.mjs. The WCAG 2.2
 // criteria axe does not test are in criteria.mjs. What only a person can judge, with NVDA, Orca
@@ -567,6 +568,8 @@ await section('windows sandbox', async () => {
   await toOverview(failing.page);
   await failing.page.getByRole('button', { name: 'Analyse', exact: true }).click();
   await failing.page.waitForSelector('#isolation-failed-heading', { timeout: 6000 });
+  // The announcement can follow the heading by a tick; wait for it as the starting check does.
+  await failing.page.waitForFunction(() => document.querySelector('#announcer')?.textContent.startsWith('Windows Sandbox could not start'), null, { timeout: 3000 }).catch(() => {});
   check((await failing.page.locator('#announcer').textContent()).startsWith('Windows Sandbox could not start'), 'a failed start is announced with its reason');
   check(!(await failing.page.getByRole('button', { name: 'View the report' }).isVisible()), 'no report is offered for a run that never began');
   await axe(failing.page, 'running, Windows Sandbox failed');
@@ -575,6 +578,35 @@ await section('windows sandbox', async () => {
   await failing.page.waitForTimeout(2000);
   check(!(await failing.page.locator('#isolation-failed-heading').isVisible()), 'and the AppContainer run goes ahead');
   await failing.context.close();
+});
+
+// 10b. Settings that start a program on this computer (plugins.native-bridge.python): the run
+// waits for the person's agreement, which names the program; Cancel is the safe choice.
+await section('program question', async () => {
+  const { page, context, errors } = await open();
+  await toOverview(page);
+  await toSettings(page);
+  await page.getByRole('tab', { name: 'YAML' }).click();
+  const area = page.locator('#settings-yaml');
+  await area.fill((await area.inputValue()) + 'plugins:\n  native-bridge:\n    python: /opt/venv/bin/python3\n');
+  await page.waitForTimeout(1500);
+  await page.getByRole('button', { name: 'Analyse with these settings' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'These settings start a program on this computer' });
+  await dialog.waitFor({ timeout: 5000 });
+  check(await dialog.isVisible(), 'Analyse asks first when the settings start a program');
+  check((await page.locator('#program-reason').textContent()).includes('/opt/venv/bin/python3'), 'the question names the program');
+  check(await focusIs(page, 'program-cancel'), 'focus starts on Cancel, the safe choice');
+  check((await dialog.getAttribute('aria-describedby')) === 'program-reason', 'the dialog is described by the program it names');
+  await axe(page, 'program question');
+  await page.keyboard.press('Escape');
+  check(!(await dialog.isVisible()), 'Escape closes the question');
+  check(await page.locator('#running-heading').isHidden(), 'nothing ran');
+  await page.getByRole('button', { name: 'Analyse with these settings' }).click();
+  await dialog.waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: 'Start it and analyse' }).click();
+  check(await focusIs(page, 'running-heading', 5000), 'agreeing starts the analysis');
+  check(errors.length === 0, `page errors: ${errors.join('; ')}`);
+  await context.close();
 });
 
 // 11. Chromium's accessibility tree for the grid, as assistive technology receives it.

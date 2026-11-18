@@ -28,7 +28,7 @@ of reported behaviour do need stated expectations; those are written as data, no
 mvn verify
 ```
 
-That runs everything that needs no malware and no Python: about 90 tests in under a minute.
+That runs everything that needs no malware and no Python: about 200 tests in a couple of minutes.
 It also writes a coverage report to `target/site/jacoco/index.html`.
 
 | To run | Command |
@@ -37,6 +37,7 @@ It also writes a coverage report to `target/site/jacoco/index.html`.
 | A longer fuzz hunt | `mvn verify -Dtest=FuzzTest -Djavabyte.fuzz.iterations=3000 -Djavabyte.fuzz.seed=77` |
 | The native bridge tests | `JAVABYTE_BRIDGE_PYTHON=/path/to/venv/bin/python mvn verify` (see [NATIVE.md](NATIVE.md)) |
 | The real-malware tests | `JAVABYTE_SAMPLES=samples mvn verify -Dtest=RealCorpusTest` (see [below](#real-malware)) |
+| That `scripts/run-isolated.sh` runs the jar of the version in `pom.xml` | `scripts/test-run-isolated.sh` (no Java, no namespace; CI runs it) |
 
 Tests that lack what they need are reported as *skipped*, never as passed.
 
@@ -51,14 +52,29 @@ and CI fails if the committed copy drifts from what the tool produces.
 | Test class | Tests | What it proves |
 | --- | --- | --- |
 | `DifferentialTest` | 5 | Language features, the JDK boundary, threads, stack-trace-keyed decryption, and reflection, method handles, proxies and executors print exactly what a real JVM prints, with no gap events |
-| `BytecodeTest` | 5 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`; and that unverifiable code becomes a `VerifyError` |
-| `SimulatedCorpusTest` | 35 | 18 malware scenarios and 16 limit and limitation scenarios (below) |
-| `LoaderTest` | 7 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |
+| `BytecodeTest` | 6 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`; and that unverifiable code becomes a `VerifyError` |
+| `SimulatedCorpusTest` | 44 | Malware, limit and limitation scenarios (below) |
+| `LoaderTest` | 9 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |
 | `BehaviourTest` | 7 | `defineClass` routes, lazy loading through the sample's loader, hooks, file fixtures |
-| `ContractTest` | 15 | Config loading, overrides and every validation error; each command and exit code; report fields; that identical runs give identical reports |
-| `FuzzTest` | 4 | 750 mutated samples by default: corrupted class files, invalid instruction streams, damaged archives. None may end as `internal-error`, throw, or overrun its limits |
+| `ContractTest` | 19 | Config loading, overrides and every validation error; each command and exit code, `disasm`, `validate` and `schema` included; report fields; that identical runs give identical reports |
+| `StreamingTest` | 7 | The `--events jsonl` stream matches the report; `--progress`; a stop sent on `--control stdin`, and the end of that input, end the run and keep the report; a stop through `RunControl`; unknown stream options are usage errors; the trace survives a killed process |
+| `ContractSamplesTest` | 2 | Real tool output is written to `gui/crates/protocol/tests/tool-output/`, where the desktop app's Rust tests read it (see above) |
+| `report/ArtifactsTest` | 1 | Saved artifact paths use `/` on every system, so reports read the same elsewhere |
+| `FuzzTest` | 5 | About 1,350 mutated inputs by default: corrupted class files, invalid instruction streams, damaged archives, and corrupted class files given to the disassembler. None may end as `internal-error`, throw, or overrun its limits |
 | `EscapeTest` | 1 | About eighty escape attempts leave no file, process, thread or connection on the real machine |
-| `SafetyTest` | 7 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
+| `HostCallbackTest` | 8 | Runs the `HostCallbacks` fixture against a local listener. It checks URLs in collections, providers and loaders handed to JDK code, reverse lookups and the loader hierarchy for Java 8 and 17 profiles. Its provider-route test scans `java.base` for allow-listed methods returning a `Provider` and fails on any that has no stub |
+| `LoaderShellTest` | 8 | A sample's own subclass of `URLClassLoader` is built on the simulated loader, so neither the guest nor JDK code can make it fetch from its URL; direct subclasses of `ClassLoader` and `SecureClassLoader` (the `OwnLoader` fixture) still define and load classes from bytes, while JDK code calling them, on a host or an emulator thread, sees no class or resource of the emulator's own class path; the application loader is a `URLClassLoader` with the sample's class path on the Java 8 profile and not one on Java 17 (the `SystemLoaderPath` fixture); the text of built-in loaders, concatenated dates and threads, and reflective stacks |
+| `MachineProfileTest` | 13 | The `Recon` fixture asks what anti-analysis code asks (management beans, `ProcessHandle`, the screen, network interfaces, recon commands, the disk); each answer looks like a real Windows desktop, and answers to the same question through different APIs agree |
+| `TimeTest` | 9 | The virtual clock on its own, validation of `timeZone` and `locale`, and that the host's own zone and locale never reach the report |
+| `WiringTest` | 8 | Parts built separately work together: process input reporting, the connection type for each URL scheme, config checks shared with the network simulator, and values the simulated machine gives in more than one place |
+| `vm/VmInternalsTest` | 8 | Component checks of hooks, traces, class naming and exception wording, without running guest code |
+| `vm/GuestTextTest` | 4 | Text the guest can read never names the emulator: class names of simulated objects, stand-in identity hashes, and what a JDK thread meets when it calls a guest lambda |
+| `env/NetworkSimulatorTest`, `env/SimHttpConnectionTest`, `env/SimProcessTest`, `env/VirtualFileSystemTest` | 15 | Address checks before the run; the connection class for `http:` and `https:`; standard input written to a launched process reaches the report; renaming a directory moves its contents |
+| `stubs/FileUrlPathTest` | 3 | The one conversion from a `file:` URL to a virtual path |
+| `nativebridge/NativeBridgeProtocolTest` | 6 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
+| `cli/InspectionTest` | 2 | `inspect` reads a sample with the same code as `run`, so the two agree |
+| `cli/HostLookupBackstopTest` | 2 | In a separate JVM: once the backstop is set, no host name reaches the system resolver, while `localhost` and address literals still work |
+| `SafetyTest` | 12 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
 | `NativeTest` | 5 | Native library description, plugin handlers, load failures |
 | `NativeBridgeTest` | 3 | A test DLL runs in the CPU emulator and calls back into Java. Needs `JAVABYTE_BRIDGE_PYTHON` |
 | `RealCorpusTest` | 10 | Nine MalwareBazaar samples behave as recorded. Needs `JAVABYTE_SAMPLES` |
@@ -117,7 +133,14 @@ wrong.
 | Scenario | Technique |
 | --- | --- |
 | `persistence-windows`, `persistence-linux` | Run keys, scheduled tasks, startup folder; cron, autostart entries, shell profiles |
-| `anti-analysis-clean`, `-detected-user`, `-detected-tools`, `-hook-bypass` | Sandbox checks by user name, process list, MAC address, debugger and sleep timing; a config hook that defeats them |
+| `anti-analysis-clean`, `-detected-user`, `-detected-tools`, `-hook-bypass` | Sandbox checks by user name, process list, MAC address, debugger and sleep timing; a config hook that defeats them. On the default machine the hardware, process list, network interfaces and built-in commands look like a desktop |
+| `anti-analysis-detected-debugger` | Debugger and CPU checks on the detected path: `jvmArguments` with a debugger agent and a single processor |
+| `anti-analysis-detected-hardware` | Memory and screen checks on the detected path, through the management bean and `java.awt.Toolkit` |
+| `emulator-tells` | JVM-made exception messages, stack traces and the application loader's class read as a real Java 8 runtime's |
+| `timing-clocks`, `timing-timed-waits` | One consistent virtual clock; delayed tasks, `parkNanos`, future timeouts, timed joins and waits take their full virtual time, and a notify still ends a wait early |
+| `timing-region-default`, `timing-region-configured` | The time zone and locale are the simulated desktop's, or those set in the config, never the analysis computer's; every date source follows `clockStart` |
+| `timing-threads` | Thread checks see a real Java 8 JVM: main has id 1, and the thread list holds the JVM's system threads but no debugger thread |
+| `timing-parallel` | Parallel APIs beyond `parallelStream` give the right answer without any real thread |
 | `http-rat`, `http-rat-offline`, `http-rat-idle` | Command loop over HTTP driven by rules; no network; no commands |
 | `socket-rat`, `socket-rat-tls`, `socket-rat-reconnect` | Binary protocol over a socket; TLS; reconnect loop |
 | `stealer` | Credential file theft, in-memory zip, AES-GCM, HTTPS upload |
@@ -251,8 +274,9 @@ stated per event (under 10 µs for both together), which is what scales with use
 - **Linux samples** are covered by simulated scenarios only; no real Linux-specific sample is
   in the corpus.
 - **Performance** has no test. A change that halves interpreter speed would pass.
-- **Timing inside a millisecond** is not controlled: the virtual clock advances a millisecond
-  each time it is read, so the count of clock reads affects the values a sample sees.
+- **Timing inside a millisecond** is approximate: the virtual clock charges 1 ns per
+  instruction and 1 µs per read (more in a tight polling loop), so the count of clock reads and
+  instructions affects the values a sample sees.
 
 ## Adding tests
 
@@ -263,7 +287,11 @@ stated per event (under 10 µs for both together), which is what scales with use
 | How a behaviour is reported | A fixture in `guest/sim/` and a scenario in `corpus/simulated/` |
 | A new limit, or a limitation lifted or added | A scenario in `corpus/limits/` and a row in the tables above |
 | A config key, command, exit code or report field | A case in `ContractTest` |
+| The event stream, progress or stopping a run | A case in `StreamingTest` |
 | A new way out of the sandbox | An attempt in the `Escape` fixture |
+| JDK code acting on an object the sample built | A case in the `HostCallbacks` fixture and `HostCallbackTest` |
+| A fact about the simulated machine | A question in the `Recon` fixture and a check in `MachineProfileTest` |
+| Time, the time zone or the locale | A case in the `Timing` fixture and a `timing-*` scenario |
 | A new simulated class | A completeness assertion in `SafetyTest` |
 | A sample that showed a bug | A scenario in `corpus/real/`, after reducing the bug to a fixture if you can |
 

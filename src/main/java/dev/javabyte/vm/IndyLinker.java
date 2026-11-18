@@ -1,6 +1,7 @@
 package dev.javabyte.vm;
 
 import dev.javabyte.model.FieldRef;
+import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestLambda;
 import dev.javabyte.model.GuestMethod;
 import dev.javabyte.model.InstanceState;
@@ -47,7 +48,8 @@ public final class IndyLinker {
     static {
         try {
             TRAMPOLINE = MethodHandles.lookup().findStatic(IndyLinker.class, "trampoline",
-                    MethodType.methodType(Object.class, Handle.class, Type[].class, Type.class, Object[].class));
+                    MethodType.methodType(Object.class, IndyLinker.class, Handle.class, Type[].class, Type.class,
+                            Object[].class));
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -55,13 +57,48 @@ public final class IndyLinker {
 
     private final VirtualMachine vm;
 
+    /**
+     * Guest lambdas and method handles that a thread other than the emulator's tried to call,
+     * waiting to be reported. The event log belongs to the emulator thread, so the other
+     * thread only queues what it tried, and {@link #reportForeignCalls} records it.
+     */
+    private final java.util.concurrent.ConcurrentLinkedQueue<String> foreignCalls =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+
     IndyLinker(VirtualMachine vm) {
         this.vm = vm;
+    }
+
+    /**
+     * Records, as {@code gap.foreign-thread-call} events, the guest code that real JDK threads
+     * tried to run since the last report. Runs on the emulator thread: whenever an
+     * {@code invokedynamic} executes or a guest lambda or handle is called from the host, and
+     * whenever the end of a run calls it.
+     */
+    public void reportForeignCalls() {
+        for (String target; (target = foreignCalls.poll()) != null; ) {
+            vm.events.addOnce("foreign-thread:" + target, "gap", "foreign-thread-call", "target", target,
+                    "result", "IllegalStateException in the calling JDK thread");
+        }
+    }
+
+    /**
+     * Refuses a call into guest code from a thread that is not running the emulator, such as a
+     * real ForkJoin worker that allow-listed JDK code started. Guest bytecode never runs
+     * there. The call is queued for {@link #reportForeignCalls}, and the exception carries no
+     * message: a message naming the emulator would reach any guest code that catches it.
+     */
+    private IllegalStateException refuseForeignCall(String target) {
+        foreignCalls.add(target);
+        return new IllegalStateException();
     }
 
     // ------------------------------------------------------------------ invokedynamic
 
     Object invoke(GuestMethod caller, int pc, InvokeDynamicInsnNode indy, Object[] args) {
+        if (!foreignCalls.isEmpty()) {
+            reportForeignCalls();
+        }
         Linked linked = (Linked) caller.aux[pc];
         if (linked == null) {
             // Linking happens once per call site, as on a real JVM; bootstrap methods with
@@ -101,26 +138,7 @@ public final class IndyLinker {
      */
     private Linked linkGuestBootstrap(GuestMethod caller, InvokeDynamicInsnNode indy) {
         Handle bootstrap = indy.bsm;
-        List<Object> bootstrapArgs = new ArrayList<>();
-        bootstrapArgs.add(new Mirrors.LookupMirror(caller.owner.name));
-        bootstrapArgs.add(indy.name);
-        bootstrapArgs.add(methodType(indy.desc));
-        for (Object constant : indy.bsmArgs) {
-            bootstrapArgs.add(constant instanceof String || constant instanceof Number
-                    ? constant : loadConstant(caller, constant));
-        }
-        Type[] declared = Type.getArgumentTypes(bootstrap.getDesc());
-        Object[] finalArgs = bootstrapArgs.toArray();
-        if (declared.length > 0 && declared[declared.length - 1].getSort() == Type.ARRAY
-                && declared.length != finalArgs.length) {
-            // A varargs bootstrap: the trailing static arguments are collected into one array.
-            Object[] packed = new Object[declared.length];
-            System.arraycopy(finalArgs, 0, packed, 0, declared.length - 1);
-            Object[] rest = new Object[finalArgs.length - (declared.length - 1)];
-            System.arraycopy(finalArgs, declared.length - 1, rest, 0, rest.length);
-            packed[declared.length - 1] = rest;
-            finalArgs = packed;
-        }
+        Object[] finalArgs = bootstrapArguments(caller, bootstrap, methodType(indy.desc), indy.name, indy.bsmArgs);
         Object site = vm.router.invokeStatic(bootstrap.getOwner(), bootstrap.getName(), bootstrap.getDesc(), finalArgs);
         vm.events.addOnce(caller.id + indy.name + indy.desc + System.identityHashCode(indy), "reflect", "indy-linked",
                 "bootstrap", bootstrap.getOwner() + '.' + bootstrap.getName(), "site", indy.name + indy.desc);
@@ -135,7 +153,75 @@ public final class IndyLinker {
         throw vm.raise(new BootstrapMethodError("bootstrap returned " + vm.types.nameOf(site)));
     }
 
-    /** Implements {@code StringConcatFactory}: {@code "a" + b + c} compiled for Java 9 and later. */
+    /**
+     * Builds the argument list for a sample's bootstrap method, for both {@code invokedynamic}
+     * and dynamic constants: a lookup for the caller, the name, the type (a method type or a
+     * class mirror), then the resolved static arguments.
+     *
+     * <p>The JVM calls a bootstrap method with {@code invokeWithArguments}, which collects the
+     * trailing arguments of a varargs method into an array. That is done here too, so a
+     * bootstrap declared as {@code (Lookup, String, Class, Object...)} links whatever the
+     * number of static arguments. Both callers share this method so that the two kinds of
+     * bootstrap cannot drift apart again.
+     */
+    private Object[] bootstrapArguments(GuestMethod caller, Handle bootstrap, Object typeArg, String name, Object[] staticArgs) {
+        Object[] args = new Object[3 + staticArgs.length];
+        args[0] = new Mirrors.LookupMirror(caller.owner.name);
+        args[1] = name;
+        args[2] = typeArg;
+        for (int i = 0; i < staticArgs.length; i++) {
+            Object argument = staticArgs[i];
+            args[3 + i] = argument instanceof String || argument instanceof Number ? argument : loadConstant(caller, argument);
+        }
+        Type[] declared = Type.getArgumentTypes(bootstrap.getDesc());
+        if (declared.length == 0 || declared[declared.length - 1].getSort() != Type.ARRAY) {
+            return args;
+        }
+        int fixed = declared.length - 1;
+        Boolean varargs = isVarargs(bootstrap);
+        boolean lastIsArray = args.length == declared.length && (args[fixed] == null || args[fixed].getClass().isArray());
+        // When the flag cannot be read, a count mismatch is the only sign of varargs.
+        boolean pack = varargs == null ? args.length != declared.length || !lastIsArray : varargs && !lastIsArray;
+        if (!pack || args.length < fixed) {
+            return args;
+        }
+        Object rest = java.lang.reflect.Array.newInstance(varargsElement(declared[fixed]), args.length - fixed);
+        for (int i = fixed; i < args.length; i++) {
+            java.lang.reflect.Array.set(rest, i - fixed, args[i]);
+        }
+        Object[] packed = new Object[declared.length];
+        System.arraycopy(args, 0, packed, 0, fixed);
+        packed[fixed] = rest;
+        return packed;
+    }
+
+    /**
+     * Whether a bootstrap method carries {@code ACC_VARARGS}, or null when its class is not
+     * interpreted and the flag cannot be read.
+     */
+    private Boolean isVarargs(Handle bootstrap) {
+        GuestClass owner = vm.classes.find(bootstrap.getOwner());
+        GuestMethod method = owner == null ? null : owner.findStatic(bootstrap.getName(), bootstrap.getDesc());
+        return method == null ? null : (method.node.access & Opcodes.ACC_VARARGS) != 0;
+    }
+
+    /**
+     * Element class for a packed varargs array. Arrays of guest and mirrored types are
+     * {@code Object[]} here, as everywhere else in the interpreter.
+     */
+    private Class<?> varargsElement(Type arrayType) {
+        Type element = Type.getType(arrayType.getDescriptor().substring(1));
+        return switch (element.getSort()) {
+            case Type.OBJECT -> vm.types.hostClassOrObject(element.getInternalName());
+            case Type.ARRAY -> vm.types.hostClassOrObject(element.getDescriptor());
+            default -> vm.types.primitiveClass(element);
+        };
+    }
+
+    /**
+     * Implements {@code StringConcatFactory}: {@code "a" + b + c} compiled for Java 9 and later.
+     * Each argument becomes the same text that {@code StringBuilder.append} would give it.
+     */
     private Linked linkStringConcat(InvokeDynamicInsnNode indy) {
         Type[] types = Type.getArgumentTypes(indy.desc);
         // \1 marks an argument and \2 a constant; without a recipe, arguments are just joined.
@@ -149,7 +235,7 @@ public final class IndyLinker {
             for (int i = 0; i < recipe.length(); i++) {
                 char c = recipe.charAt(i);
                 if (c == '\u0001') {
-                    text.append(Values.box(args[nextArg], types[nextArg]));
+                    text.append(concatText(args[nextArg], types[nextArg]));
                     nextArg++;
                 } else if (c == '\u0002') {
                     text.append(constants[nextConstant++]);
@@ -159,6 +245,21 @@ public final class IndyLinker {
             }
             return text.toString();
         };
+    }
+
+    /**
+     * One concatenated value as text. A host {@code Date} or {@code Thread} would print the
+     * host's own time zone or thread naming through its real {@code toString()}, so those go
+     * through the router, where the time and thread stubs answer with the guest's. Anything
+     * else is appended as it is, exactly as before.
+     */
+    private Object concatText(Object value, Type type) {
+        Object boxed = Values.box(value, type);
+        String owner = boxed instanceof java.util.Date ? "java/util/Date" : boxed instanceof Thread ? "java/lang/Thread" : null;
+        if (owner == null) {
+            return boxed;
+        }
+        return vm.router.invokeVirtual(owner, "toString", "()Ljava/lang/String;", boxed, new Object[0]);
     }
 
     /** Implements the compiler-generated {@code toString}/{@code hashCode}/{@code equals} of records. */
@@ -224,14 +325,15 @@ public final class IndyLinker {
         if (hostInterface == null || !hostInterface.isInterface()) {
             return lambda;
         }
-        return Proxy.newProxyInstance(vm.shells.loader(), new Class<?>[] {hostInterface}, new LambdaHandler(lambda));
+        return Proxy.newProxyInstance(vm.shells.loader(), new Class<?>[] {hostInterface}, new LambdaHandler(lambda, this));
     }
 
     /** Handler of the JDK proxy that represents a guest lambda to real JDK code. */
-    private record LambdaHandler(GuestLambda lambda) implements InvocationHandler {
+    private record LambdaHandler(GuestLambda lambda, IndyLinker linker) implements InvocationHandler {
+        /** Runs the guest lambda for a call that real JDK code made on the proxy. */
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            return invokeLambdaFromHost(lambda, proxy, method, args);
+            return linker.invokeLambdaFromHost(lambda, proxy, method, args);
         }
     }
 
@@ -244,7 +346,12 @@ public final class IndyLinker {
         return null;
     }
 
-    private static Object invokeLambdaFromHost(GuestLambda lambda, Object proxy, Method method, Object[] args)
+    /**
+     * Runs a guest lambda that real JDK code called through its proxy. {@code Object}'s methods
+     * and interface default methods are answered directly; anything else is interpreted, on
+     * the emulator thread only.
+     */
+    private Object invokeLambdaFromHost(GuestLambda lambda, Object proxy, Method method, Object[] args)
             throws Throwable {
         if (method.getDeclaringClass() == Object.class) {
             switch (method.getName()) {
@@ -256,10 +363,11 @@ public final class IndyLinker {
         if (method.isDefault()) {
             return InvocationHandler.invokeDefault(proxy, method, args);
         }
-        VirtualMachine vm = VirtualMachine.current();
-        if (vm == null) {
-            throw new IllegalStateException("Guest lambda invoked outside the emulator thread: " + lambda);
+        if (VirtualMachine.current() != vm) {
+            throw refuseForeignCall(lambda.interfaceName() + '.' + method.getName() + " (lambda "
+                    + lambda.implementation().getOwner() + '.' + lambda.implementation().getName() + ')');
         }
+        reportForeignCalls();
         Handle implementation = lambda.implementation();
         Type[] parameterTypes = handleParameterTypes(implementation);
         Object[] hostArgs = args == null ? new Object[0] : args;
@@ -323,17 +431,24 @@ public final class IndyLinker {
             erasedParameters[i] = erase(parameterTypes[i]);
         }
         MethodType type = MethodType.methodType(erase(returnType), erasedParameters);
-        return MethodHandles.insertArguments(TRAMPOLINE, 0, handle, parameterTypes, returnType)
+        return MethodHandles.insertArguments(TRAMPOLINE, 0, this, handle, parameterTypes, returnType)
                 .asCollector(Object[].class, parameterTypes.length)
                 .asType(type);
     }
 
-    /** Target of every guest-visible method handle. Public only so the handle can be bound. */
-    public static Object trampoline(Handle handle, Type[] parameterTypes, Type returnType, Object[] hostArgs) {
-        VirtualMachine vm = VirtualMachine.current();
-        if (vm == null) {
-            throw new IllegalStateException("Guest method handle invoked outside the emulator thread");
+    /**
+     * Target of every guest-visible method handle. Public only so the handle can be bound.
+     *
+     * @param linker the linker of the machine that made the handle; calls from any thread but
+     *               that machine's are refused
+     */
+    public static Object trampoline(IndyLinker linker, Handle handle, Type[] parameterTypes, Type returnType,
+            Object[] hostArgs) {
+        VirtualMachine vm = linker.vm;
+        if (VirtualMachine.current() != vm) {
+            throw linker.refuseForeignCall("method handle " + handle.getOwner() + '.' + handle.getName() + handle.getDesc());
         }
+        linker.reportForeignCalls();
         Object[] args = new Object[hostArgs.length];
         for (int i = 0; i < args.length; i++) {
             args[i] = Values.unbox(hostArgs[i], parameterTypes[i]);
@@ -402,15 +517,12 @@ public final class IndyLinker {
         }
         if (constant instanceof ConstantDynamic dynamic && vm.classes.contains(dynamic.getBootstrapMethod().getOwner())) {
             Handle bootstrap = dynamic.getBootstrapMethod();
-            Object[] args = new Object[3 + dynamic.getBootstrapMethodArgumentCount()];
-            args[0] = new Mirrors.LookupMirror(caller.owner.name);
-            args[1] = dynamic.getName();
-            args[2] = vm.types.classMirror(Type.getType(dynamic.getDescriptor()));
-            for (int i = 3; i < args.length; i++) {
-                Object argument = dynamic.getBootstrapMethodArgument(i - 3);
-                args[i] = argument instanceof String || argument instanceof Number
-                        ? argument : loadConstant(caller, argument);
+            Object[] staticArgs = new Object[dynamic.getBootstrapMethodArgumentCount()];
+            for (int i = 0; i < staticArgs.length; i++) {
+                staticArgs[i] = dynamic.getBootstrapMethodArgument(i);
             }
+            Object[] args = bootstrapArguments(caller, bootstrap, vm.types.classMirror(Type.getType(dynamic.getDescriptor())),
+                    dynamic.getName(), staticArgs);
             return vm.router.invokeStatic(bootstrap.getOwner(), bootstrap.getName(), bootstrap.getDesc(), args);
         }
         return vm.router.gap("unsupported constant " + constant, "()Ljava/lang/Object;");

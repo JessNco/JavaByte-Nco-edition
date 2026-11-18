@@ -51,6 +51,14 @@ Reflection (`Method.invoke`, `Constructor.newInstance`, `Field.get`), method han
 all re-enter the router. A reflective `Runtime.exec` meets the same stub as a direct one; this is
 covered by a test.
 
+Guest code reaches the JDK through two entry points only: `InvocationRouter` (`hostCall` for
+methods, `constructHost` for constructors) and `Fields` (fields of JDK classes). Static JDK
+field reads are policy-checked, static writes are never performed, and instance fields are
+reached only on host objects the guest obtained through checked calls, and only when public.
+The router also refuses any allow-listed JDK method or constructor whose parameters include a
+`ClassLoader` (such as `ResourceBundle.Control.newBundle`), because the JDK code would then ask
+that loader for classes or resources where no stub sees it.
+
 ### Values
 
 Inside the interpreter every `boolean`, `byte`, `char`, `short` and `int` is an `Integer`, as on
@@ -95,7 +103,8 @@ call returns.
 
 Where possible a simulated object is a real subclass of the JDK type, with every method
 overridden: `SimFile extends File`, `SimSocket extends Socket`, `SimHttpConnection extends
-HttpsURLConnection`, `SimProcess extends Process`. Only the points where such an object comes
+HttpsURLConnection` (with `SimHttpConnection.Plain extends HttpURLConnection` for `http:` URLs),
+`SimProcess extends Process`. Only the points where such an object comes
 into being (constructors, `URL.openConnection`, `Runtime.exec`) need a stub. After that, ordinary
 virtual dispatch keeps the guest inside the simulation, and guest casts work.
 
@@ -113,13 +122,37 @@ is reachable however the sample asks for it later.
 
 All ways of creating a class from bytes end in `VirtualMachine.defineClass`:
 `ClassLoader.defineClass` (every overload), `Unsafe.defineClass`, `Unsafe.defineAnonymousClass`,
-`MethodHandles.Lookup.defineClass` and `defineHiddenClass`. The bytes are saved, recorded with
-their hash, parsed and then interpreted like any other class.
+`MethodHandles.Lookup.defineClass`, `defineHiddenClass` and `defineHiddenClassWithClassData`.
+The bytes are saved, recorded with their hash, parsed and then interpreted like any other class.
 
 Implicit loading is reproduced as well. On a real JVM, when a class defined by a custom loader
 first refers to another class, the JVM asks that loader for it. Loaders that decrypt classes on
 demand rely on this, so an unknown class name is offered to the sample's loaders (through their
 own `loadClass`) before it is declared missing.
+
+`new URLClassLoader(...)` gives the guest a `SimURLClassLoader`, which only remembers its URLs;
+the class-loader stubs read the archives it names from the virtual disk or the network
+simulator. A sample's own subclass of `URLClassLoader` gets a shell built on
+`SimURLClassLoader` instead of the real class, so JDK code that asks it for a class or resource
+cannot reach a real URL either. In the same way a direct subclass of `ClassLoader` or
+`SecureClassLoader` gets a shell built on `SimBaseClassLoader` or `SimSecureClassLoader`.
+A real base would have a real parent, the emulator's own application loader, so JDK code calling
+the sample's loader directly could reach the emulator's class path. The simulated bases have the
+bootstrap loader as their real parent and answer JDK code only from the guest's world: JDK
+classes, the sample's own `findClass`, and the sample's resources on URLs that cannot be opened.
+`getParent()` still reports the parent the sample passed.
+
+The built-in loaders look like those of the advertised Java. On Java 8 the application and
+extension loaders are `URLClassLoader`s, so `SimClassLoader` and `SimPlatformClassLoader`
+extend `SimURLClassLoader`: `getURLs()` lists the sample's class path (or the usual extension
+jars), and `addURL` by reflection is recorded as `class.url-loader-add` and only remembered.
+`getClass()` returns a modelled class object for `sun.misc.Launcher$AppClassLoader` (or
+`$ExtClassLoader`), which the analysis JDK lacks, with the real name and superclass. On Java 9
+and later the type system answers casts and `instanceof` from the imitated
+`jdk.internal.loader` class instead, so casting the application loader to `URLClassLoader`
+fails with the JDK's own message. The modelled class has no members of its own and cannot be
+found with `Class.forName`, and its `getDeclaringClass()` is null rather than
+`sun.misc.Launcher`.
 
 ## Threads
 
@@ -149,7 +182,11 @@ Consequences that had to be built:
   ended and reported, which is the emulator's rendering of a thread that would hang forever.
 - **Class initialisation** by one thread makes other threads wait, as the JVM requires.
 
-Sleeping advances a virtual clock instantly, and a per-thread sleep budget ends beacon loops.
+Sleeping and timed waits advance a virtual clock instead of real time; executed instructions
+also cost virtual time (1 ns each), so `currentTimeMillis` and `nanoTime` always agree. Waiting
+threads wake in deadline order, and a per-thread sleep budget ends beacon loops. The guest's
+time zone and locale come from the config (`environment.timeZone` and `environment.locale`),
+never from the analysis computer.
 
 An earlier version ran each thread to completion on one stack. It was simpler, but any program
 in which a thread waited for another could hang or see wrong results, so it was replaced.
@@ -197,11 +234,38 @@ What the design guarantees, assuming the allow-list is sound:
   loaders are visible as "host classes".
 - Java deserialization is restricted by a JVM-wide filter to value types and keys, because
   deserializing attacker-controlled data could otherwise reach gadget classes.
+- No host name is ever looked up for real. The guest's lookups are answered by the network
+  simulator, and as a backstop the command-line tool sets `jdk.net.hosts.file` to a file that
+  cannot exist before anything uses the network classes, so any lookup a stub missed fails
+  with `UnknownHostException` instead of sending a DNS query. `localhost`, loopback and address
+  literals still work, since the JDK answers them without a lookup.
+
+Objects the guest builds can reach the outside world through JDK code that runs on its behalf,
+where no stub sees the call. These are made inert at creation:
+
+- every URL gets `dev.javabyte.env.SimURLStreamHandler`, whose `hashCode`, `equals` and
+  `sameFile` never resolve a host name, and which refuses to open a connection;
+- every security provider the guest can reach is a private copy (`SimProvider`), whose services
+  always come from the real provider;
+- `new URLClassLoader` yields `SimURLClassLoader`, which only remembers its URLs, and
+  `new SecureClassLoader` yields `SimSecureClassLoader`;
+- a sample's own subclass of `ClassLoader`, `SecureClassLoader` or `URLClassLoader` is built on
+  `SimBaseClassLoader`, `SimSecureClassLoader` or `SimURLClassLoader`, whose real parent is the
+  bootstrap loader and which never look anything up on the emulator's class path, disk or
+  network;
+- the built-in application and platform loaders (`SimClassLoader`, `SimPlatformClassLoader`)
+  are simulated `URLClassLoader`s that never load anything.
+
+In addition, the router refuses any allow-listed JDK method whose parameters include a
+`ClassLoader`, and `SafetyTest` checks that the simulated loaders override every public lookup
+method and the protected ones `ClassLoader` itself calls.
 
 These properties are tested from the outside. `EscapeTest` runs a fixture that tries about
 eighty escape routes and then inspects the real machine: a canary file must not exist, a secret
 file's contents must not appear anywhere in the report, a real listening socket must have
-received no connection, and JVM-wide settings must be unchanged.
+received no connection, and JVM-wide settings must be unchanged. `HostCallbackTest` does the
+same for objects handed to JDK code: URLs in collections, providers, loaders and reverse
+lookups.
 
 What it does not guarantee:
 

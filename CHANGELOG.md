@@ -6,6 +6,8 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- JavaByte is free software under the GNU General Public License, version 3 or later (LICENSE).
+  The installers carry the licence beside the app, and Preferences says so.
 - Desktop app, phase 5: installers. MSI and portable zip for Windows, .deb and AppImage for
   Linux, each with its own Java runtime, in a standard edition and one with the native bridge.
   On Linux each analysis runs with no network (the .deb adds the AppArmor permission Ubuntu

@@ -49,7 +49,8 @@
   "bundle": {
     "active": false,
     "publisher": "JavaByte",
-    "copyright": "JavaByte contributors",
+    "copyright": "Copyright (C) 2026 The JavaByte contributors",
+    "license": "GPL-3.0-or-later",
     "category": "DeveloperTool",
     "shortDescription": "Analyse Java malware safely, by emulating it",
     "longDescription": "JavaByte reads a Java program (.jar) and imitates what it would do, without running it, then shows everything it tried: processes, files, network, hidden code and decrypted strings.",

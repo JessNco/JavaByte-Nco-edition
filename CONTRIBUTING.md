@@ -3,6 +3,14 @@
 This guide is for whoever changes JavaByte next, a person or an AI agent. Read
 [docs/DESIGN.md](docs/DESIGN.md) first for how the pieces fit.
 
+## Licence of contributions
+
+JavaByte is licensed under the GNU General Public License, version 3 or later
+([LICENSE](LICENSE)). By contributing you agree that your contribution is licensed the same way.
+New dependencies must have a licence compatible with GPL-3.0-or-later (MIT, BSD, Apache 2.0 and
+LGPL all are). Software only bundled with the installers is listed in
+`gui/packaging/THIRD-PARTY-NOTICES.txt` with its own licence.
+
 ## Building and testing
 
 ```bash

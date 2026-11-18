@@ -1,3 +1,7 @@
+JavaByte itself is Copyright (C) 2026 The JavaByte contributors, and is free software under the
+GNU General Public License, version 3 or (at your option) any later version. The full text is
+in LICENSE, beside this file. Its source is at https://github.com/JessNco/JavaByte-Nco-edition.
+
 JavaByte bundles the following software. Each keeps its own licence.
 
 Java runtime (runtime/)

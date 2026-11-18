@@ -4,7 +4,8 @@
     "resources": {
       "../target/bundle-input/javabyte.jar": "javabyte.jar",
       "../target/bundle-input/runtime/": "runtime/",
-      "../target/bundle-input/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
+      "../target/bundle-input/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt",
+      "../target/bundle-input/LICENSE.txt": "LICENSE.txt"
     },
     "linux": {
       "deb": {

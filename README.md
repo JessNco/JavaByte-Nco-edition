@@ -233,3 +233,16 @@ The test suite is described in [docs/TESTING.md](docs/TESTING.md). In short:
 | [docs/GUI-PLAN.md](docs/GUI-PLAN.md) | The desktop app's design; each phase in [docs/gui/](docs/gui/) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |
 | [CHANGELOG.md](CHANGELOG.md) | What changed between versions |
+
+## Licence
+
+Copyright (C) 2026 The JavaByte contributors.
+
+JavaByte is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. It is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+The desktop installers bundle other software under its own licences; see
+[gui/packaging/THIRD-PARTY-NOTICES.txt](gui/packaging/THIRD-PARTY-NOTICES.txt).

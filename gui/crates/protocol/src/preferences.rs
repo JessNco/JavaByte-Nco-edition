@@ -1,4 +1,4 @@
-//! The preference changes the screens may ask the backend for, and the rule for when a run
+//! The preference changes the screens may ask the backend for, and the rules for when a run
 //! needs the person's agreement first.
 //!
 //! Both the desktop app's commands and the screens' browser stand-in use these, so the wire
@@ -38,6 +38,21 @@ impl PreferenceChange {
             Self::DefaultOutputFolder => preferences.output_folder = None,
         }
     }
+}
+
+/// What the person must agree to before the next run starts, as the app's `run_question`
+/// command answers. The screens ask about each one that is set, in turn, and start the run only
+/// if the person agrees to all of them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunQuestions {
+    /// The run cannot be isolated from the network: why, from [`run_question`].
+    pub isolation: Option<String>,
+    /// The settings tell the tool to start this program on this computer
+    /// (`plugins.native-bridge.python`). The run starts only if the person agrees to it, and
+    /// the app is told this very path when it starts the run, so settings changed in between
+    /// are asked about again.
+    pub program: Option<String>,
 }
 
 /// Whether starting a run needs the person's agreement first, and why. It does when this
@@ -82,6 +97,15 @@ mod tests {
         assert_eq!(after(PreferenceChange::Strongest(true)), AppPreferences { strongest_isolation: true, ..start.clone() });
         assert_eq!(after(PreferenceChange::BundledJava), AppPreferences { java: None, ..start.clone() });
         assert_eq!(after(PreferenceChange::DefaultOutputFolder), AppPreferences { output_folder: None, ..start.clone() });
+    }
+
+    #[test]
+    fn questions_keep_their_wire_format() {
+        let questions = RunQuestions { isolation: Some("no namespaces".into()), program: Some("/usr/bin/python3".into()) };
+        let json = r#"{"isolation":"no namespaces","program":"/usr/bin/python3"}"#;
+        assert_eq!(serde_json::to_string(&questions).unwrap(), json);
+        assert_eq!(serde_json::from_str::<RunQuestions>(json).unwrap(), questions);
+        assert_eq!(serde_json::to_string(&RunQuestions::default()).unwrap(), r#"{"isolation":null,"program":null}"#);
     }
 
     #[test]

@@ -76,3 +76,12 @@ prefs-isolation-windows-sandbox = Windows Sandbox: strongest isolation, a fresh 
 prefs-isolation-windows-sandbox-unavailable = Windows Sandbox cannot be used here: { $detail }
 prefs-isolation-appcontainer-on = Analyses will run in an AppContainer.
 prefs-isolation-windows-sandbox-on = Analyses will run in Windows Sandbox.
+
+## The question before a run whose settings start a program on this computer. $path is the
+## program, as the settings name it (plugins.native-bridge.python).
+
+program-question-title = These settings start a program on this computer
+program-question-reason = The settings tell the native bridge to start { $path }.
+program-question-outside = That program runs outside JavaByte's emulator, with your own permissions: JavaByte does not imitate what it does. Analyse only if you set this yourself and trust the program. Settings from reports, imported files and presets never carry this setting.
+program-question-cancel = Cancel
+program-question-run = Start it and analyse

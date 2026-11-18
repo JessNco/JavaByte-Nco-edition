@@ -26,7 +26,7 @@ scenario format, and which kind of test to add for which kind of change. The sho
 | --- | --- |
 | Interpreter, router, type handling | `DifferentialTest`, `BytecodeTest`, `FuzzTest` |
 | A stub or a simulated class | `SimulatedCorpusTest`, `SafetyTest`, `EscapeTest` |
-| Config, command line, report | `ContractTest` |
+| Config, command line, report | `ContractTest`, `StreamingTest` |
 | Anything, before a release | Everything, plus `RealCorpusTest` with the samples and `NativeBridgeTest` with the bridge |
 
 The quickest way to find an interpreter bug is to add code to a fixture in

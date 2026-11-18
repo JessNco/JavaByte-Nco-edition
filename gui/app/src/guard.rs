@@ -140,6 +140,31 @@ mod tests {
         vec![("tauri.conf.json", base), ("with the bundle overlay", with_bundle), ("with the bundle and bridge overlays", with_bridge)]
     }
 
+    /// The bridge overlay is a merge patch that adds only the `bridge/` resource, so the
+    /// "with native bridge" edition must still bundle everything the plain edition does.
+    #[test]
+    fn the_bridge_edition_bundles_everything_the_plain_one_does() {
+        let configurations = shipped_configurations();
+        let resources = |name: &str| -> Vec<String> {
+            let (_, config) = configurations.iter().find(|(n, _)| *n == name).expect("a shipped configuration");
+            let resources = config["bundle"]["resources"].as_object().unwrap_or_else(|| panic!("{name}: resources must be a map of source to destination"));
+            resources.keys().cloned().collect()
+        };
+        let plain = resources("with the bundle overlay");
+        let bridge = resources("with the bundle and bridge overlays");
+        for standard in ["javabyte.jar", "runtime/", "THIRD-PARTY-NOTICES.txt", "LICENSE.txt"] {
+            let source = format!("../target/bundle-input/{standard}");
+            assert!(plain.contains(&source), "the bundle overlay lacks {source}");
+            assert!(bridge.contains(&source), "the bridge edition lacks {source}");
+        }
+        let mut expected = plain.clone();
+        expected.push("../target/bundle-input/bridge/".into());
+        expected.sort();
+        let mut bridge = bridge;
+        bridge.sort();
+        assert_eq!(bridge, expected, "the bridge overlay must add the bridge/ resource and nothing else");
+    }
+
     /// The network containment lives partly in configuration, where a one-word edit could
     /// undo it without any code changing. This test fails if any part is loosened, in the base
     /// configuration or by a packaging overlay merged into it for the installers. Changing it

@@ -9,6 +9,7 @@ use crate::app::{Screen, flow, show};
 use crate::bridge;
 use crate::util::{announcer, focus_id};
 use javabyte_gui_backend::config::{ConfigDoc, ConfigPath, EditError, Shell, SyntaxProblem};
+use javabyte_gui_protocol::preferences::RunQuestions;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::validate::Validation;
@@ -275,18 +276,29 @@ pub fn analyse(busy: RwSignal<bool>, on_error: impl Fn(String) + 'static) {
         // The backend has the text already; send it again in case a change is still on its way.
         let _ = bridge::set_settings_text(&s.text.get_untracked()).await;
         match bridge::run_question().await {
-            // The run cannot be isolated from the network: it starts only if the person agrees.
-            Some(reason) => crate::isolation::ask(reason, move || spawn_local(begin(true, on_error))),
-            None => begin(false, on_error).await,
+            RunQuestions { isolation: None, program: None } => begin(false, None, on_error).await,
+            RunQuestions { isolation, program } => {
+                // The run cannot be isolated from the network: it starts only if the person agrees.
+                let then_isolation = move |program: Option<String>| match isolation {
+                    Some(reason) => crate::isolation::ask(reason, move || spawn_local(begin(true, program, on_error))),
+                    None => spawn_local(begin(false, program, on_error)),
+                };
+                match program {
+                    // The settings start a program on this computer: asked first, by name.
+                    Some(path) => crate::isolation::ask_program(path.clone(), move || then_isolation(Some(path))),
+                    None => then_isolation(None),
+                }
+            }
         }
         busy.set(false);
     });
 }
 
-/// Starts the run and shows the Running screen.
-async fn begin(without_isolation: bool, on_error: impl Fn(String) + 'static) {
+/// Starts the run and shows the Running screen. `program` is the program on this computer
+/// the person agreed the run may start, if its settings name one.
+async fn begin(without_isolation: bool, program: Option<String>, on_error: impl Fn(String) + 'static) {
     let flow = flow();
-    match bridge::start_run(without_isolation).await {
+    match bridge::start_run(without_isolation, program.as_deref()).await {
         Ok(()) => {
             flow.run_started.set(true);
             flow.report.set(None);

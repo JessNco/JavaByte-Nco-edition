@@ -25,7 +25,7 @@ use std::time::{Duration, Instant, SystemTime};
 mod reports;
 mod settings;
 
-pub use settings::{Checker, with_sample, without_host_programs};
+pub use settings::{Checker, host_program, with_sample, without_host_programs};
 use reports::open_report;
 
 /// Categories whose events are shown live while a run goes on.
@@ -61,6 +61,9 @@ struct Active {
     stop_requested: Option<Instant>,
     notable: VecDeque<EventRow>,
     ended: Option<Ended>,
+    /// The program on this computer the person agreed the run may start (see
+    /// [`Session::program_question`]), kept for starting it again without Windows Sandbox.
+    agreed_program: Option<String>,
 }
 
 struct OpenReport {
@@ -104,10 +107,13 @@ impl Session {
     }
 
     /// Checks a path someone picked or dropped. A path on another computer is refused before
-    /// anything looks at it (see [`is_local_path`]).
+    /// anything looks at it (see [`is_local_path`]), with a message that says so.
     pub fn choose(path: &Path) -> Result<SampleChoice, String> {
-        if !is_local_path(path) || !path.exists() {
-            return Err(javabyte_gui_protocol::t!("error-not-found", path = path.display().to_string()));
+        if !is_local_path(path) {
+            return Err(t!("error-sample-remote", path = path.display().to_string()));
+        }
+        if !path.exists() {
+            return Err(t!("error-not-found", path = path.display().to_string()));
         }
         let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
         Ok(SampleChoice { path: path.display().to_string(), name })
@@ -125,22 +131,43 @@ impl Session {
         Ok(views::overview(sample, inspection))
     }
 
-    /// Starts an analysis of the chosen sample with its settings. Refused while another runs.
-    pub fn start(&mut self) -> Result<(), String> {
-        self.start_with(false)
+    /// The program on this computer that the chosen sample's settings tell the tool to start
+    /// (`plugins.native-bridge.python`), if any. Such a program runs outside the emulator, with
+    /// the person's own rights, so a run with it starts only once they have agreed to it by
+    /// name ([`Session::start`]).
+    pub fn program_question(&self) -> Option<String> {
+        self.settings.as_ref().and_then(|(_, doc)| host_program(doc.text()))
+    }
+
+    /// Starts an analysis of the chosen sample with its settings. Refused while another runs,
+    /// when the settings cannot be read, and when they name a program to start
+    /// ([`Session::program_question`]) that `agreed_program` does not name exactly.
+    pub fn start(&mut self, agreed_program: Option<&str>) -> Result<(), String> {
+        self.start_with(false, agreed_program.map(str::to_string))
     }
 
     /// Starts the analysis again in an AppContainer, after Windows Sandbox could not start and
-    /// the person agreed to the lighter isolation for this run.
+    /// the person agreed to the lighter isolation for this run. A program the person agreed
+    /// to for the run that could not start is still agreed to, if the settings still name it.
     pub fn start_without_sandbox(&mut self) -> Result<(), String> {
-        self.start_with(true)
+        let agreed = self.active.as_ref().and_then(|a| a.agreed_program.clone());
+        self.start_with(true, agreed)
     }
 
-    fn start_with(&mut self, without_sandbox: bool) -> Result<(), String> {
+    /// Starts a run, after the checks [`Session::start`] describes.
+    fn start_with(&mut self, without_sandbox: bool, agreed_program: Option<String>) -> Result<(), String> {
         if self.active.as_ref().is_some_and(|a| a.ended.is_none()) {
             return Err(t!("error-already-running"));
         }
         let (sample, doc) = self.settings.clone().ok_or_else(|| t!("error-no-sample"))?;
+        // Unreadable settings could hide a program to start from the check below.
+        if doc.to_json().is_none() {
+            return Err(t!("error-settings-unreadable"));
+        }
+        let program = host_program(doc.text());
+        if program.is_some() && program != agreed_program {
+            return Err(t!("error-program-unconfirmed", path = program.unwrap_or_default()));
+        }
         let output = self.runs_root.join(format!("{} {}", timestamp(SystemTime::now(), true), safe_name(&sample.name)));
         std::fs::create_dir_all(&output).map_err(|e| t!("error-results-folder", detail = e.to_string()))?;
         // Saved beside the report, so the run can be repeated with `javabyte run -c`.
@@ -164,6 +191,7 @@ impl Session {
             stop_requested: None,
             notable: VecDeque::new(),
             ended: None,
+            agreed_program: program,
         });
         Ok(())
     }
@@ -417,10 +445,44 @@ mod tests {
         assert_eq!(session.engine().problem.as_deref(), Some("Java was not found."));
         let sample = SampleChoice { path: "x".into(), name: "x".into() };
         assert_eq!(session.inspect(sample.clone()).unwrap_err(), "Java was not found.");
-        assert!(session.start().is_err(), "no sample chosen");
+        assert!(session.start(None).is_err(), "no sample chosen");
         assert_eq!(session.status().state, RunState::Idle);
         assert!(session.report().is_err());
         assert!(session.recent().is_empty());
         assert_eq!(session.events_page(&PageRequest::default()).total, 0);
+    }
+
+    /// A path on another computer is refused as such, not as a missing file.
+    #[test]
+    fn a_remote_sample_is_refused_by_name() {
+        let remote = r"\\attacker.example\share\x.jar";
+        assert_eq!(Session::choose(Path::new(remote)).unwrap_err(), t!("error-sample-remote", path = remote));
+        let missing = std::env::temp_dir().join("javabyte-no-such-sample.jar");
+        assert_eq!(Session::choose(&missing).unwrap_err(), t!("error-not-found", path = missing.display().to_string()));
+    }
+
+    /// Settings that name a program to start are run only once the person has agreed to that
+    /// very program; unreadable settings are not run at all.
+    #[test]
+    fn a_program_the_settings_name_needs_agreement_by_name() {
+        let dir = std::env::temp_dir().join(format!("javabyte-session-program-{}", std::process::id()));
+        let mut session = Session::new(Err("no engine".into()), dir.join("runs"), dir.join("recent.json"));
+        let sample = SampleChoice { path: "/samples/x.jar".into(), name: "x.jar".into() };
+        let python = "/home/someone/venv/bin/python";
+        session.settings = Some((sample.clone(), ConfigDoc::new(format!("plugins:\n  native-bridge:\n    python: {python}\n"))));
+        assert_eq!(session.program_question().as_deref(), Some(python));
+        let refused = t!("error-program-unconfirmed", path = python);
+        assert_eq!(session.start(None).unwrap_err(), refused);
+        assert_eq!(session.start(Some("/usr/bin/python3")).unwrap_err(), refused);
+        // Agreed: the checks pass, and the run fails only for want of an engine.
+        assert_eq!(session.start(Some(python)).unwrap_err(), "no engine");
+
+        session.settings = Some((sample.clone(), ConfigDoc::new("limits: [unclosed\n")));
+        assert_eq!(session.start(None).unwrap_err(), t!("error-settings-unreadable"));
+
+        session.settings = Some((sample, ConfigDoc::new("limits:\n  maxSleeps: 3\n")));
+        assert_eq!(session.program_question(), None);
+        assert_eq!(session.start(None).unwrap_err(), "no engine");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

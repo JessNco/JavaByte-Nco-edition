@@ -193,6 +193,18 @@ pub fn without_host_programs(text: &str) -> String {
     doc.text().to_string()
 }
 
+/// The program on this computer that settings tell the tool to start ([`HOST_PROGRAMS`]), as
+/// the settings name it, or `None` if they name none. A value that is not text is given as the
+/// settings spell it, so the person still sees what is there. Settings that cannot be read
+/// give `None`: the session refuses to start a run with them at all.
+pub fn host_program(text: &str) -> Option<String> {
+    let doc = ConfigDoc::new(text);
+    HOST_PROGRAMS.iter().find_map(|(plugin, setting)| {
+        let value = doc.get(&ConfigPath::parse(plugin).key(*setting))?;
+        Some(value.as_str().map_or_else(|| value.to_string(), str::to_string))
+    })
+}
+
 /// A preset name that is also a safe file name: letters, digits, spaces, dash, underscore,
 /// up to 60 characters. `None` if nothing is left.
 pub(super) fn preset_name(name: &str) -> Option<String> {
@@ -204,6 +216,18 @@ pub(super) fn preset_name(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Python the native bridge is told to start is found wherever the YAML puts it.
+    #[test]
+    fn the_program_settings_name_is_found() {
+        assert_eq!(host_program("limits:\n  maxSleeps: 3\n"), None);
+        assert_eq!(host_program("plugins:\n  native-bridge: {}\n"), None);
+        assert_eq!(host_program("plugins:\n  native-bridge:\n    python: /opt/py/bin/python3\n"), Some("/opt/py/bin/python3".into()));
+        assert_eq!(host_program("plugins: {native-bridge: {python: 'C:\\Py\\python.exe'}}\n"), Some("C:\\Py\\python.exe".into()));
+        assert_eq!(host_program("plugins:\n  native-bridge:\n    python: 3\n"), Some("3".into()));
+        // Taken out, nothing is left to ask about.
+        assert_eq!(host_program(&without_host_programs("plugins:\n  native-bridge:\n    python: /x\n")), None);
+    }
 
     #[test]
     fn settings_take_the_chosen_sample() {

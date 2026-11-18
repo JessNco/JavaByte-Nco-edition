@@ -29,20 +29,34 @@ javabyte-sandbox windows-sandbox [--map HOST=GUEST[:rw]]... [--stage FILE]... --
 
 - **`check`** prints JSON: whether AppContainer works here (by starting a harmless process in
   one) and whether Windows Sandbox is present, each with a reason when not.
-- **`appcontainer`** starts the program in the AppContainer `JavaByte.Analysis`, which has no
-  capabilities: no network, no access to the user's files. The files the analysis needs are
-  granted for the run only (`--read` for the sample, `--write` for the run's folder) and the
-  grants are removed afterwards. The Java runtime and the add-on are under Program Files, which
+- **`appcontainer`** starts the program in an AppContainer of its own,
+  `JavaByte.Analysis.<unique>`, which has no capabilities and is deleted when the run ends: no
+  network, no access to the user's files. The files the analysis needs are granted for the run
+  only (`--read` for the sample, `--write` for the run's folder) and the grants are removed
+  afterwards. The write grant can create, change and delete files but not change their access
+  lists. Afterwards, any entry under the run's folder that still names the container, or every
+  container, is removed. Each run writes its container and grants to a journal in
+  `%LOCALAPPDATA%\JavaByte\sandbox` before it makes them, and holds it locked. If the app has to
+  end the helper, the next `check` or run undoes whatever an unlocked journal lists. If the job
+  object cannot be set up, or the program put in it, the program is ended before it runs and the
+  helper exits with code 70. The Java runtime and the add-on are under Program Files, which
   Windows already lets every AppContainer read. A job object ends the whole process tree when
   the run ends, and limits it to a few processes (Java, and the native bridge's Python).
 - **`windows-sandbox`** writes a `.wsb` file with networking off, the folders mapped (`--map`;
-  read-only unless `:rw`) and the sample copied into a folder of its own (`--stage`), and starts
-  Windows Sandbox. Inside, a script runs the program with its output going to a file, which the
-  helper copies to its own output as it grows. Stop is relayed through a file: when the helper's
-  input says `stop` or ends, it creates the file, and a small loop inside the sandbox turns that
-  into `stop` on the program's input. The sandbox shuts itself down when the program ends, and
-  the helper exits with the program's exit code. If Windows Sandbox cannot start, the helper
-  exits with code 70 and says why on its error output.
+  read-only unless `:rw`) and the sample copied into a folder of its own (`--stage`) under a
+  safe name: characters other than ASCII letters, digits, space and `. - _ ( ) [ ] + ,` become
+  `_`, so no name a sample's author chooses can break the script. It then starts Windows
+  Sandbox. Inside, a script runs the program with its output going to a file, which the helper
+  copies to its own output as it grows. Stop is relayed through a file: when the helper's input
+  says `stop` or ends, it creates the file, and a small loop inside the sandbox turns that into
+  `stop` on the program's input. The sandbox shuts itself down when the program ends, and the
+  helper exits with the program's exit code. If the exit code has not arrived 10 seconds after
+  Stop, the helper gives up, deletes its folders and exits with code 70. Each run's folder in
+  `TEMP` has a unique name and a lock, and the next run deletes folders left by a helper that
+  was ended. If Windows Sandbox cannot start, the helper exits with code 70 and says why on its
+  error output. An argument (or the native bridge's path) that still holds `%`, `"` or a line
+  break once mapped folders are replaced by their sandbox paths cannot be passed safely to the
+  script inside the sandbox, so such a run is refused rather than started.
 
 Paths in the arguments, and `JAVABYTE_BRIDGE_PYTHON`, are rewritten from the host's to the
 sandbox's, so the app builds one command line for every way of running.
@@ -76,3 +90,14 @@ Windows Sandbox in Preferences, analyse a harmless fixture. The Running screen s
 starting stage; the analysis completes; Stop during start-up and during the run both end it
 with a report. Then turn virtualisation off (or the feature) and analyse again: the app explains
 and offers AppContainer.
+
+### Checking the clean-up by hand
+
+On Windows, run an AppContainer analysis and end `javabyte-sandbox.exe` from Task Manager part
+way through. Then run `javabyte-sandbox check`. The journal in `%LOCALAPPDATA%\JavaByte\sandbox`
+should be gone, `icacls <run folder>` should no longer list the `S-1-15-2-…` container SID, and
+`%LOCALAPPDATA%\Packages\JavaByte.Analysis.*` should be gone. Repeat with Windows Sandbox and
+check that no `%TEMP%\javabyte-sandbox-*` folder is left.
+
+If the Windows Sandbox window is closed without pressing Stop, the helper waits until the app's
+own run limit ends it; the next run then tidies up.

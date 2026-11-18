@@ -120,6 +120,21 @@ Useful single events:
 - With the native bridge: `native.api` (Windows API calls made by native code),
   `native.register-natives` (methods bound at load time), `native.jni-call` (Java called from
   native code).
+- `process.exec`: `command`, `argv`, `directory`, `pid`, `matchedRule`. `matchedRule` is the
+  pattern of the `processes` rule used, `built-in:<program>` when a common system command
+  (whoami, tasklist, systeminfo and others) was answered from the simulated machine, or
+  `none (empty output, exit 0)`.
+- `process.stdin`: `command`, `size`, `preview`, `file` (under `processes/`): what the sample
+  wrote to a launched process's standard input, often the real commands sent to a shell.
+- `file.rename`: `from`, `to`, and `entriesMoved` when a directory with contents was renamed.
+- `net.dns-reverse`: `address`, `result`. A reverse lookup (`getCanonicalHostName`), answered
+  by the simulation.
+- `crypto.provider-change`: `provider`, `operation`, `key`. The sample tried to change a
+  security provider; it changed only its own private copy.
+- `class.url-loader`: `urls`. The sample made a `URLClassLoader`; `class.url-loader-add`
+  (`url`) when it added a URL later.
+- `policy.blocked` with `kind: url-open-by-jdk`: JDK code tried to open a URL on the sample's
+  behalf. Nothing was fetched.
 
 ## Exit codes
 
@@ -139,6 +154,12 @@ limit reached.
   extracted incorrectly.
 - `gap.unparseable-class` with "archive ... damaged" means only part of the archive could be
   read; classes after the damage are missing.
+- Native bridge gaps: `gap.native-bridge-load-failed` (a library could not be loaded, including
+  one loaded from Java code that native code called back into),
+  `gap.native-bridge-callback-failed` (a JNI callback into Java failed; the bridge stays in
+  step), `gap.native-bridge-stopped` (the helper was ended; later native calls are reported, not
+  run), `gap.jni-handler-failed` (names the JNI `function`) and
+  `gap.array-region-size-mismatch`.
 - To allow a JDK member, add a rule under `policy.allow`. Only do so for members with no effect
   outside the process; the rule syntax and the test for inclusion are at the top of
   `javabyte policy`.

@@ -125,7 +125,7 @@ fn hidden_folders_are_empty() -> String {
     // SAFETY: getuid cannot fail and has no side effects.
     let uid = unsafe { libc::getuid() }.to_string();
     let folders: Vec<String> = HIDDEN_FOLDERS.iter().map(|f| format!("'{}'", f.replace("{uid}", &uid))).collect();
-    format!("for d in {}; do [ ! -d \"$d\" ] || [ -z \"$(ls -A \"$d\")\" ] || exit 1; done", folders.join(" "))
+    format!("for d in {}; do [ ! -d \"$d\" ] || [ -z \"$(ls -A \"$d\")\" ] || exit 1; done", folders.join(" ")) // not-ui-text: a shell script
 }
 
 /// Whether this system lets the app start an isolated process, by starting one. The error is

@@ -65,7 +65,8 @@ impl Session {
     pub fn run_again(&mut self) -> Result<Overview, String> {
         let open = self.report.as_ref().ok_or_else(|| t!("error-no-report"))?;
         let moved = || t!("error-sample-moved", path = open.view.sample_path.clone());
-        let sample_path = open.sample_path.clone().ok_or_else(moved)?;
+        // No local path: the report names a sample on another computer.
+        let sample_path = open.sample_path.clone().ok_or_else(|| t!("error-sample-remote", path = open.view.sample_path.clone()))?;
         let text = open.view.config_text.clone().unwrap_or_else(|| config::render_document(&open.view.config));
         let sample = Session::choose(&sample_path).map_err(|_| moved())?;
         let overview = self.inspect(sample.clone())?;
@@ -203,7 +204,7 @@ mod tests {
         assert_eq!(session.open_report().unwrap().sample_path, None);
         assert!(session.check_save_destination(&std::env::temp_dir().join("copy.zip")).is_ok());
         let refused = session.run_again().unwrap_err();
-        assert_eq!(refused, t!("error-sample-moved", path = remote));
+        assert_eq!(refused, t!("error-sample-remote", path = remote));
         let _ = std::fs::remove_dir_all(folder);
     }
 

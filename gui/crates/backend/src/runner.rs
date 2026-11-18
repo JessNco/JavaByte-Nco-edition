@@ -344,15 +344,29 @@ const STDERR_LIMIT: u64 = 1 << 20;
 /// child of its own holding the pipes open.
 const DRAIN_LIMIT: Duration = Duration::from_secs(2);
 
-/// Reads `source` to its end, or until `limit` bytes, appending the bytes to `into` as they
-/// arrive. Appending as it goes means that if the reader is still blocked when the run is
-/// summarised, everything that came before is kept.
-fn collect_bytes(source: impl Read, limit: u64, into: &Mutex<Vec<u8>>) {
-    let mut source = source.take(limit);
+/// How long a run that is being ended is given to exit by itself, once it has been asked to
+/// stop and its input has been closed, before its process is ended. The sandbox add-on uses
+/// this time to remove its grants, delete its container and delete the staged sample.
+const EXIT_GRACE: Duration = Duration::from_secs(2);
+
+/// Reads `source` to its end, appending the first `limit` bytes to `into` as they arrive and
+/// dropping the rest. Appending as it goes means that if the reader is still blocked when the
+/// run is summarised, everything that came before is kept. Reading on past the limit means a
+/// process that floods its error output never blocks on a full pipe.
+fn collect_bytes(mut source: impl Read, limit: u64, into: &Mutex<Vec<u8>>) {
+    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     let mut buffer = [0u8; 4096];
-    while let Ok(read @ 1..) = source.read(&mut buffer) {
-        if let Ok(mut into) = into.lock() {
-            into.extend_from_slice(&buffer[..read]);
+    loop {
+        match source.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                if let Ok(mut into) = into.lock() {
+                    let room = limit.saturating_sub(into.len());
+                    into.extend_from_slice(&buffer[..read.min(room)]);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => break,
         }
     }
 }
@@ -513,11 +527,11 @@ impl Run {
         Ended { exit_code, forced, tally: self.tally.clone(), stderr, summary }
     }
 
-    /// Ends the process now, for when it ignored a stop request. Takes the records it wrote
-    /// before it was ended, as `try_end` does.
+    /// Ends the process, for when it ignored a stop request. Takes the records it wrote
+    /// before it was ended, as `try_end` does. The process is first given a last chance to
+    /// exit by itself ([`Run::end_process`]).
     pub fn force_end(&mut self) -> Ended {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.end_process();
         self.drain_remaining();
         let ended = self.ending(None, true);
         self.ended = Some(ended.clone());
@@ -553,13 +567,35 @@ impl Run {
     }
 }
 
-impl Drop for Run {
-    fn drop(&mut self) {
-        // A run must never outlive the window that started it.
-        if let Ok(None) = self.child.try_wait() {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
+impl Run {
+    /// Ends the process if it is still running. It is asked to stop and its input is closed,
+    /// then given [`EXIT_GRACE`] to exit by itself, and only then ended. The grace lets the
+    /// sandbox add-on undo what it set up (its grants, its container, the staged sample)
+    /// rather than leave that to its next start.
+    fn end_process(&mut self) {
+        if !matches!(self.child.try_wait(), Ok(None)) {
+            return;
         }
+        let _ = self.stop();
+        // The end of input also asks the tool and the add-on to stop.
+        self.stdin = None;
+        let deadline = Instant::now() + EXIT_GRACE;
+        while Instant::now() < deadline {
+            if !matches!(self.child.try_wait(), Ok(None)) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for Run {
+    /// Ends the process, gracefully if it allows (see [`Run::end_process`]): a run must never
+    /// outlive the window that started it.
+    fn drop(&mut self) {
+        self.end_process();
     }
 }
 
@@ -643,12 +679,54 @@ mod ending_tests {
         assert_eq!(run.try_end().map(|e| e.forced), Some(true), "the ending is kept");
     }
 
-    /// `collect_bytes` keeps no more than its limit.
+    /// `collect_bytes` keeps no more than its limit, and reads on to the end so the writer
+    /// never blocks.
     #[test]
     fn stderr_is_kept_up_to_its_limit() {
         let into = Mutex::new(Vec::new());
-        collect_bytes(&[b'x'; 10_000][..], 5000, &into);
+        let mut source = std::io::Cursor::new(vec![b'x'; 10_000]);
+        collect_bytes(&mut source, 5000, &into);
         assert_eq!(into.lock().unwrap().len(), 5000);
+        assert_eq!(source.position(), 10_000, "the excess is read and dropped");
+    }
+
+    /// A process that writes more than the limit to stderr still ends: the reader keeps the
+    /// pipe empty.
+    #[test]
+    fn a_flood_of_stderr_does_not_block_the_process() {
+        let ended = end_by_polling(&mut shell("head -c 3000000 /dev/zero | tr '\\0' x >&2; exit 4"));
+        assert_eq!(ended.exit_code, Some(4));
+        assert_eq!(ended.stderr.len() as u64, STDERR_LIMIT);
+    }
+
+    /// A process that stops when its input ends is given the chance to: `force_end` and
+    /// dropping the run close its input and wait before ending it.
+    #[test]
+    fn ending_a_run_lets_it_exit_by_itself_first() {
+        let mut run = shell("cat >/dev/null; echo tidied >&2; exit 5");
+        thread::sleep(Duration::from_millis(200));
+        let ended = run.force_end();
+        assert!(ended.forced);
+        assert_eq!(ended.stderr.trim(), "tidied");
+
+        let marker = std::env::temp_dir().join(format!("javabyte-drop-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let run = shell(&format!("cat >/dev/null; touch '{}'", marker.display()));
+        thread::sleep(Duration::from_millis(200));
+        drop(run);
+        assert!(marker.exists(), "the process tidied up before it was ended");
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    /// A process that ignores both stop and the end of its input is still ended, soon after
+    /// the grace.
+    #[test]
+    fn a_run_that_ignores_stop_is_ended_after_the_grace() {
+        let mut run = shell("exec sleep 30 </dev/null");
+        let started = Instant::now();
+        let ended = run.force_end();
+        assert!(ended.forced);
+        assert!(started.elapsed() < EXIT_GRACE + DRAIN_LIMIT + Duration::from_secs(2), "took {:?}", started.elapsed());
     }
 }
 

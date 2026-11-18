@@ -54,9 +54,9 @@ and lists every problem at once.
 | `include` | For `clinit-sweep`: class-name globs to include; empty means all |
 
 - `main` runs `public static void main(String[])`.
-- `method` runs any method. An instance method is called on an object made with the no-argument
-  constructor. Arguments are converted by parameter type; a `byte[]` parameter takes base64 and a
-  `String[]` parameter takes a list.
+- `method` runs any method; `class` and `method` are required. An instance method is called on
+  an object made with the no-argument constructor. Arguments are converted by parameter type; a
+  `byte[]` parameter takes base64 and a `String[]` parameter takes a list.
 - `clinit-sweep` runs every class's static initialiser, each isolated from the others. Most
   string-encrypting obfuscators decrypt their tables there, so this harvests strings without
   running program logic.
@@ -76,7 +76,11 @@ After each entry point returns, threads and timers it started are run.
 | `maxWrittenBytes` | 268435456 | Total bytes the sample may write to the virtual disk |
 
 `maxSleeps` is what ends beacon and retry loops. Sleeping takes no real time: the virtual clock
-jumps forward.
+jumps forward. Every timed wait (`wait(ms)`, `join(ms)`, `parkNanos`, `Future.get(timeout)`,
+delayed and repeating executor or timer tasks) also passes in virtual time; a notify or a
+finished task still ends it early.
+
+All limits must be more than 0, except `maxSleeps` and `maxTasks`, which may be 0.
 
 ## `environment`
 
@@ -91,18 +95,39 @@ jumps forward.
 | `files` | `[]` | Files that exist before the run |
 | `directories` | `[]` | Directories that exist before the run |
 | `clockStart` | now | Start of the virtual clock, ISO-8601 |
+| `timeZone` | `America/New_York` | The guest's time zone (`TimeZone.getDefault()`, `user.timezone`, `Date.toString()`, `Calendar`, date formats). The host's own zone is never shown |
+| `locale` | `en-US` | The guest's language and region as a language tag (`Locale.getDefault()`, `user.language`, `user.country`, `String.format`, number and date formats) |
 | `randomSeed` | `1247901281` | Seed for `Math.random`, `new Random()`, `SecureRandom`, `ThreadLocalRandom` and `UUID.randomUUID`. `null` uses real entropy |
+| `manufacturer` | `Dell Inc.` | Computer maker shown by wmic, systeminfo and /sys/class/dmi |
+| `model` | `OptiPlex 7050` | Computer model shown by wmic, systeminfo and /sys/class/dmi |
+| `processors` | `4` | Logical processors: `Runtime.availableProcessors`, `NUMBER_OF_PROCESSORS`, the management beans, wmic and /proc/cpuinfo |
+| `memoryMegabytes` | `16384` | Installed memory: the management beans, `Runtime` heap defaults, wmic and systeminfo |
+| `screenWidth` | `1920` | Screen width reported by `java.awt.Toolkit` and `GraphicsEnvironment` |
+| `screenHeight` | `1080` | Screen height reported by `java.awt.Toolkit` and `GraphicsEnvironment` |
+| `processId` | `6732` | The sample's own process id; programs it starts get higher ids |
+| `jvmArguments` | `[]` | Options `RuntimeMXBean.getInputArguments` reports, such as `-agentlib:jdwp` to trigger debugger checks |
+| `builtInCommands` | `true` | Answer whoami, hostname, ver, echo, tasklist, wmic, systeminfo, ipconfig and getmac (whoami, hostname, uname, id and nproc on Linux) from the pretend machine when no `processes` rule matches |
 
 With `clockStart` and `randomSeed` both fixed, two runs of the same sample with the same config
 give the same report. By default only the clock differs between runs: it starts at the real
 current time, because samples with date checks should see today's date.
 
+The guest's time zone and locale come from `timeZone` and `locale`, never from the analysis
+computer. `timeZone` must be a zone the JDK knows, such as `Europe/London` (a fixed offset such
+as `+02:00` is accepted too). `locale` must be a language tag with at least a language, such as
+`de-DE`. `clockStart` must be an ISO-8601 time. `processors`, `memoryMegabytes`, `screenWidth`,
+`screenHeight` and `processId` must be more than 0.
+
 Each `files[]` entry has `path` and one of `text`, `base64`, or `hostFile` (a real file whose
 bytes back the virtual one).
 
-The emulated Java runtime reports version 1.8. A default set of directories exists (user
-profile, Desktop, Downloads, AppData, Startup, Temp, and `java.home` with `bin\java.exe`). The
-sample file itself is present at `samplePath`.
+The emulated Java runtime is Oracle Java 1.8.0_361 on Windows and Ubuntu's OpenJDK 1.8.0_392 on
+Linux, with the full set of standard Java 8 system properties. The disk looks like a used
+desktop: system binaries under `C:\Windows` (dated to the install date, about 13 months before
+`clockStart`), Program Files and Program Files (x86) with common software, shortcuts and files
+on the Desktop and in Recent, and `java.home` with `bin\java.exe`. On Linux, /etc/hostname,
+/etc/os-release, /sys/class/dmi/id and /proc/cpuinfo describe the same machine. The sample file
+itself is present at `samplePath`.
 
 ## `network`
 
@@ -113,12 +138,17 @@ sample file itself is present at `samplePath`.
 | `sockets` | `[]` | Bytes a raw socket receives after connecting |
 | `dns` | `{}` | Host name to IPv4 address |
 | `defaultAddress` | `203.0.113.10` | Address for unlisted names |
-| `localAddress` | `192.168.56.101` | The machine's own address |
-| `macAddress` | `00:1B:44:11:3A:B7` | Reported by network interface queries |
+| `localAddress` | `192.168.1.23` | The machine's own address; its router (gateway, DHCP and DNS) is .1 of the same /24 |
+| `macAddress` | `D4:BE:D9:5E:3A:9C` | Reported by network interface queries, ipconfig and getmac |
+
+`defaultAddress`, `localAddress` and every `dns` value must be IPv4 dotted quads (four parts,
+0-255). `macAddress` must be six two-digit hex octets separated by `:` or `-`. A run with any
+other value stops before it starts, naming the key, and `javabyte validate` lists it.
 
 `http[]`: `url` is a regular expression searched for in the full URL; the first matching rule
 wins. Set `status`, `headers`, and one of `body`, `bodyBase64`, `bodyFile`. With no matching rule
-the answer is an empty 200.
+the answer is an empty 200. An `http:` URL gives a plain `HttpURLConnection` and an `https:` URL
+an `HttpsURLConnection`, as on a real JVM.
 
 `sockets[]`: `endpoint` is a regular expression matched against `host:port`. Set one of `text`,
 `base64`, `file`. With no matching rule the peer sends nothing and reads reach end of stream.
@@ -130,7 +160,15 @@ recorded in clear.
 
 No process is ever started. Each rule supplies the output for launches whose joined command
 line contains a match for `command` (a regular expression): `stdout`, `stderr`, `exitCode`.
-Without a rule a launch "succeeds" with empty output and exit code 0.
+When no rule matches and `environment.builtInCommands` is on, common system commands are
+answered from the simulated machine and the event's `matchedRule` is `built-in:<program>`.
+Anything else prints nothing and exits with 0.
+
+What the sample writes to a launched process's standard input is recorded as `process.stdin`
+events, with the bytes saved under `processes/`.
+
+`command` (like `http[].url` and `sockets[].endpoint`) is required and must be a valid regular
+expression.
 
 ## `policy`
 
@@ -157,7 +195,7 @@ Anything that reaches the disk, the network, another process or a thread needs a
 
 | Key | Meaning |
 | --- | --- |
-| `method` | Glob over `owner.name` or `owner.name(descriptor)`; `*` matches any text |
+| `method` | Glob over `owner.name` or `owner.name(descriptor)`; `*` matches any text. Required |
 | `action` | `return`, `skip`, `throw` or `trace` |
 | `value` | For `return`: the value. For `throw`: an exception class name |
 
@@ -165,6 +203,11 @@ Anything that reaches the disk, the network, another process or a thread needs a
 - `skip` makes it return zero, false or null.
 - `throw` makes it throw a new instance of the named exception.
 - `trace` logs each call with arguments and result to `trace.log`.
+
+In `method`, `*` matches any text and `?` matches exactly one character. The same pattern
+syntax is used by plugins (`vm.hooks.add`, `vm.natives.register`). A plugin hook with action
+`trace` records calls like a config trace hook; any action other than return, skip, throw or
+trace is rejected.
 
 Hooks apply to interpreted methods, including methods of classes defined at run time, and to
 JDK methods.
@@ -183,7 +226,7 @@ JDK methods.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `mode` | `deferred` | `deferred`: a started thread first runs when the current one blocks or its time slice ends. `inline`: it runs first, at `start()` |
-| `periodicRuns` | 1 | Times a repeating timer or scheduled task body is run |
+| `periodicRuns` | 1 | Times a repeating timer or scheduled task body is run; at least 1 |
 | `runShutdownHooks` | `true` | Run registered shutdown hooks at the end |
 
 Guest threads are interleaved one at a time. A thread is switched out when it blocks and after

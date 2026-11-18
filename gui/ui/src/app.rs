@@ -177,6 +177,7 @@ pub fn App() -> impl IntoView {
             </section>
         </main>
         <crate::isolation::IsolationQuestion />
+        <crate::isolation::ProgramQuestion />
         <div role="status" aria-live="polite" aria-atomic="true" class="visually-hidden" id="announcer">
             {move || announcer.text()}
         </div>

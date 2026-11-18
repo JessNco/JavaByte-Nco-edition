@@ -10,8 +10,11 @@ change every setting, runs the analysis, and shows the whole report: summary, in
 events, limits and gaps, saved files (viewed as text, hex or bytecode, kept as password zips),
 the settings used, and a comparison of any two analyses. A Tools screen shows the host policy
 and every option with its default, with a search. It is packaged as installers for Windows and
-Linux that bring their own Java. On Linux it runs analyses with no network; on Windows the
-optional sandbox add-on does the same ([docs/gui/WINDOWS-SANDBOX.md](../docs/gui/WINDOWS-SANDBOX.md)).
+Linux that bring their own Java. On Linux each run starts in its own user, network and mount
+namespace: it has no network interface, and the folders where desktop services keep their Unix
+sockets (D-Bus, systemd-resolved, nscd, Avahi, CUPS, X11, Wayland, Docker) are hidden from it.
+On Windows the optional sandbox add-on runs each analysis with no network
+([docs/gui/WINDOWS-SANDBOX.md](../docs/gui/WINDOWS-SANDBOX.md)).
 What each phase built and how it is tested: [phase 2](../docs/gui/PHASE2.md),
 [phase 3](../docs/gui/PHASE3-PLAN.md), [phase 4](../docs/gui/PHASE4-PLAN.md),
 [phase 5](../docs/gui/PHASE5-PLAN.md), [phase 6](../docs/gui/PHASE6-AUDIT.md); the phase 0
@@ -30,8 +33,8 @@ on the path, and the tool's jar from `JAVABYTE_JAR`, a `javabyte.jar` next to th
 
 | Folder | What | Built with |
 | --- | --- | --- |
-| `crates/protocol` | Data types shared by screens and backend: the tool's stream and report (`stream`, `report`), sample facts (`inspect`), event views, limits and comparisons; safe display of untrusted text (`display`); the text resources (`i18n`); the settings form's layout (`form`) and the schema it is checked against (`schema`, `validate`); the Tools screen's data, policy listing and search (`tools`); the preference changes the screens may ask for (`preferences`) | Rust |
-| `crates/backend` | Starting and watching the command-line tool (`runner`); the bundled parts and the app's preferences (`setup`); runs without network on Linux (`isolation`); one window's sample, settings, run, report and recent list (`session/`); settings as YAML edited in place, and the matching command line (`config/`); saved files, pages and password zips (`artifacts`); event storage, filtering and paging (`events`); report reading (`report`); the pretend run and made-up events for browser tests (`simulation`, `synthetic`) | Rust, no UI code |
+| `crates/protocol` | Data types shared by screens and backend: the tool's stream and report (`stream`, `report`), sample facts (`inspect`), event views, limits and comparisons; safe display of untrusted text (`display`); the text resources (`i18n`); the settings form's layout (`form`) and the schema it is checked against (`schema`, `validate`); the Tools screen's data, policy listing and search (`tools`); the preference changes the screens may ask for, how each is applied, and the rules for asking before a run, shared by the app's commands and the screens' browser stand-in (`preferences`) | Rust |
+| `crates/backend` | Starting and watching the command-line tool (`runner`); the bundled parts and the app's preferences (`setup`); runs with no network and hidden host service sockets on Linux (`isolation`); one window's sample, settings, run, report and recent list (`session/`); settings as YAML edited in place, and the matching command line (`config/`); saved files, pages and password zips (`artifacts`); event storage, filtering and paging (`events`); report reading (`report`); the pretend run and made-up events for browser tests (`simulation`, `synthetic`) | Rust, no UI code |
 | `ui` | The screens (`screens/`, with the settings editor in `screens/settings/`), the event grid and table (`events/`), and the bridge to the app or, in a plain browser, to the pretend backend (`bridge.rs`) | Rust (Leptos), compiled to WebAssembly with Trunk |
 | `locales` | Every word the app shows, per language | Fluent |
 | `app` | The desktop window, its network guard (`guard.rs`) and the commands the screens may call (`main.rs`) | Rust (Tauri 2) |

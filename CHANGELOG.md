@@ -5,6 +5,105 @@ Notable changes, newest first. The report's JSON layout has its own version,
 
 ## Unreleased
 
+### Security
+- JDK code can no longer reach the network on the sample's behalf. URLs in collections
+  (`HashMap`, `HashSet`, `List.contains`) and `URL.sameFile` no longer cause real DNS lookups.
+  `InetAddress.getCanonicalHostName` is simulated (event `net.dns-reverse`).
+- As a backstop, the command-line tool turns off host name lookups for its whole JVM before it
+  starts, so a lookup that a stub ever missed fails instead of sending a DNS query. `localhost`
+  and address literals still work.
+- The sample can no longer change the JVM's security providers: it gets private copies, and
+  changes are reported as `crypto.provider-change`.
+- `URLClassLoader` is simulated, including a sample's own subclasses of it, and allow-listed
+  JDK methods that take a `ClassLoader`, such as `ResourceBundle.Control.newBundle`, are
+  blocked. New events `class.url-loader` and `class.url-loader-add`; JDK code that tries to
+  open a URL is reported as `policy.blocked` with `kind: url-open-by-jdk`.
+- What the sample writes to a launched process's standard input is now reported as
+  `process.stdin` events and saved under `processes/`; it used to be thrown away.
+
+### Anti-analysis fidelity
+- The simulated machine is now one coherent desktop (Dell OptiPlex 7050, Core i5-7500, 16 GB,
+  1920x1080, Windows 10 Pro 22H2). Management beans, `ProcessHandle`, `Runtime.version`, the
+  screen, a loopback interface and recon commands (whoami, tasklist, wmic, systeminfo,
+  ipconfig, getmac and more) answer from it. The disk looks used: system binaries, installed
+  software, Desktop and Recent files. The full set of standard Java 8 system properties and
+  Windows environment variables is present.
+- New `environment` options: `manufacturer`, `model`, `processors`, `memoryMegabytes`,
+  `screenWidth`, `screenHeight`, `processId`, `jvmArguments` and `builtInCommands`. Launches
+  answered by a built-in command have `matchedRule: built-in:<program>`.
+- The default local address is now 192.168.1.23 (it was VirtualBox's host-only address) and
+  the default MAC address D4:BE:D9:5E:3A:9C, a Dell prefix.
+- The guest has its own time zone and locale, `environment.timeZone` (default
+  `America/New_York`) and `environment.locale` (default `en-US`). The analysis computer's own
+  settings are never shown.
+- Time is consistent: executed instructions cost virtual time, so `currentTimeMillis` and
+  `nanoTime` agree, and `nanoTime` starts at a believable machine uptime. Delayed tasks,
+  `parkNanos`, `Future.get(timeout)`, timed joins and timed waits all pass in virtual time.
+  `Year.now`, chronologies and calendars follow `environment.clockStart`.
+- Threads look like a real JVM's: the main thread has id 1 and is not a daemon, and
+  `Thread.getAllStackTraces` lists the JVM's system threads. Parallel APIs no longer start
+  real threads.
+- JVM-made exceptions match the advertised Java 8: an implicit `NullPointerException` has no
+  message, and a failed cast reads "X cannot be cast to Y". Cast and class-name messages,
+  `getClass()` and loader text never name the emulator's own classes, and the application
+  class loader prints as Java 8's and has a platform or extension parent.
+- Exceptions thrown inside JDK methods, and methods called through reflection, keep their JDK
+  frames in the stack trace.
+- `Package` metadata comes from the sample's `MANIFEST.MF`.
+
+### Fixes
+- An `http:` URL now gives a plain `HttpURLConnection`; it used to give an
+  `HttpsURLConnection`.
+- Renaming a directory in the virtual file system now moves its contents; the `file.rename`
+  event gains `entriesMoved`.
+- A directory sample's `META-INF/MANIFEST.MF` `Main-Class` is now honoured by `run`, as
+  `inspect` already did. `inspect` and `run` now read samples with the same code.
+- Malformed `network.defaultAddress`, `network.localAddress`, `network.dns` values or
+  `network.macAddress` now stop the run up front as a config error (exit code 2) instead of an
+  internal error part way, and `javabyte validate` lists them. So do `processors`,
+  `memoryMegabytes`, `screenWidth`, `screenHeight` and `processId` of 0 or less.
+- Native bridge: a failing JNI callback no longer leaves the helper out of step. New gap
+  events `native-bridge-callback-failed`, `native-bridge-stopped` and
+  `array-region-size-mismatch`; `jni-handler-failed` now names the JNI function.
+- Plugins and the trace file are closed even when loading the sample fails.
+- Plugin hooks with action `trace` no longer skip the method, and unknown actions are rejected.
+  Native-handler patterns accept `?`, as config hooks do.
+- Dynamic-constant bootstrap methods declared with varargs now link.
+- `file:` URLs keep `+` as a plus sign.
+
+### Desktop app and Windows add-on
+- On Linux each analysis also runs in its own mount namespace, which hides the Unix sockets of
+  host services (D-Bus, systemd-resolved, nscd, Avahi, CUPS, X11, Wayland, Docker). A network
+  namespace alone does not.
+- The app opens only a sample the person chose with the picker, a drop or the command line,
+  and never touches remote (UNC) paths, including those named in opened reports.
+- Settings from report folders, imports and presets no longer carry
+  `plugins.native-bridge.python`, and before a run whose settings name a program for the
+  native bridge the app asks, showing its path.
+- Run endings always include the tool's full error output, including the sandbox add-on's
+  reason for an isolation failure. A run being ended is first asked to stop and given time to
+  tidy up.
+- Windows sandbox add-on: each AppContainer run uses its own container, deleted afterwards.
+  Grants are journalled, so a forced end is undone by the next run. Write access no longer
+  includes changing permissions. Job-object failures stop the run. Paths with non-ASCII
+  letters, trailing backslashes or a `%` in the sample's name now work in Windows Sandbox.
+  Stop no longer leaves the helper waiting for ever, and leftover staged samples are deleted.
+- The window-sealing test now covers the packaging overlays merged into shipped builds.
+- The egress test now fails when its fake network is incomplete, instead of passing.
+- `scripts/run-isolated.sh` runs the jar of the `pom.xml` version, never an older one left in
+  `target/`, and the GUI CI takes the jar name from `version.sh`.
+- Code: the preference changes and the isolation question are shared between the app and the
+  screens, and the Report, Tools and Settings tabs share one tab-list component. No change in
+  behaviour.
+
+### Docs
+- docs/CONFIG.md describes every option, with the validation rules.
+- docs/DESIGN.md describes the two entry points to the JDK, the objects made inert for JDK
+  code, the DNS backstop and the virtual clock.
+- AGENTS.md lists the new events; docs/TESTING.md the new test classes and scenarios.
+- The Linux isolation wording, the GUI status, the Windows Sandbox notes and the phase plans
+  are brought up to date.
+
 ### Added
 - Windows sandbox add-on, a separate download: each analysis runs with no network, in an
   AppContainer (every edition, the default) or in a fresh Windows Sandbox (Pro and up, chosen in

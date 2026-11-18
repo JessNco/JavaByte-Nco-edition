@@ -315,7 +315,9 @@ neither eyes nor screen readers are misled.
   commands and nothing else; file access is limited to files the user picked and the output
   folders.
 - **Linux isolation**: runs start in a network namespace with no network by default, as
-  `scripts/run-isolated.sh` does today. The setting can be turned off, with an explanation.
+  `scripts/run-isolated.sh` does, and in a mount namespace that hides host services' Unix
+  sockets (D-Bus, systemd-resolved, X11 and others), which a network namespace alone does not.
+  The setting can be turned off, with an explanation.
 - **Windows** has no equivalent without administrator rights or an extra part. The sandbox
   add-on, a separate download, adds one: each analysis in an AppContainer with no network, or
   in Windows Sandbox where available (see below). Without it, the GUI says so plainly on the

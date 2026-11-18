@@ -88,10 +88,10 @@ sudo apt install ./JavaByte-0.2.0-linux-x86_64.deb
 
 Then start JavaByte from the applications menu, or run `javabyte-gui`.
 
-**Network isolation:** each analysis runs with the network turned off, as a second layer of
-protection. Ubuntu 24.04 allows this only to programs that have permission, and the `.deb`
-adds that permission (a small AppArmor profile). Preferences shows whether isolation is
-available.
+**Network isolation:** each analysis runs with the network turned off, and with the sockets of
+desktop services (D-Bus, X11 and others) hidden from it, as a second layer of protection. Ubuntu
+24.04 allows this only to programs that have permission, and the `.deb` adds that permission (a
+small AppArmor profile). Preferences shows whether isolation is available.
 
 To uninstall:
 

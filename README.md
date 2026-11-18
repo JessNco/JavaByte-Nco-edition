@@ -64,8 +64,11 @@ For people who prefer not to use a command line, [`gui/`](gui/README.md) holds a
 for Windows and Linux. It opens a sample or an earlier report, lets you change every setting
 (the same YAML config the command line reads), runs the analysis with live progress, and shows
 the whole report: events, limits and gaps, saved files as text, hex or bytecode, and a
-comparison of two runs. It is built to WCAG 2.2 AA, its window has no network access, and on
-Linux (and on Windows with the sandbox add-on) each analysis also runs with no network. The installers bring their own Java; see
+comparison of two runs. It is built to WCAG 2.2 AA and its window has no network access. On
+Linux each run starts in its own user, network and mount namespace: it has no network
+interface, and the folders where desktop services keep their Unix sockets (D-Bus,
+systemd-resolved, nscd, Avahi, CUPS, X11, Wayland, Docker) are hidden from it. On Windows the
+sandbox add-on runs each analysis with no network. The installers bring their own Java; see
 [docs/INSTALL.md](docs/INSTALL.md). Building it from source: [gui/README.md](gui/README.md).
 The design is in [docs/GUI-PLAN.md](docs/GUI-PLAN.md).
 
@@ -154,7 +157,10 @@ add a second layer that does not depend on the emulator being right:
 scripts/run-isolated.sh run sample.jar
 ```
 
-That runs the tool in a network namespace with no network at all. See [docs/DESIGN.md](docs/DESIGN.md) for
+That runs the tool in a network namespace with no network interface at all. A network
+namespace does not hide host services' Unix sockets in the file system (D-Bus, X11 and
+others); the desktop app's isolation hides those too, and a container with `--network none`
+and only the output folder mounted is stronger still. See [docs/DESIGN.md](docs/DESIGN.md) for
 the reasoning and for what was borrowed from other projects.
 
 ## Tested against real samples
@@ -176,6 +182,8 @@ are in [docs/SELFTEST.md](docs/SELFTEST.md); the expectations are executable, se
 - **No real parallelism.** Guest threads are interleaved, with working locks, `wait`/`notify`
   and pre-emption, but only one runs at a time. A bug that needs two threads to execute at the
   same instant cannot occur. Sleeps take no real time, so timing measurements see virtual time.
+  The guest's time zone and locale come from `environment.timeZone` and `environment.locale`,
+  never from the analysis computer.
 - **Missing libraries become phantoms.** A class that is neither in the sample nor allowed from
   the JDK is replaced by a placeholder whose methods return neutral values. Add the library to
   `classpath` to have it interpreted instead.

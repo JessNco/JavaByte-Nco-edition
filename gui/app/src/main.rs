@@ -17,7 +17,7 @@ use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::Validation;
 use javabyte_gui_protocol::compare::Comparison;
-use javabyte_gui_protocol::preferences::{self, PreferenceChange};
+use javabyte_gui_protocol::preferences::{self, PreferenceChange, RunQuestions};
 use javabyte_gui_protocol::views::{AppPreferences, Artifact, EngineStatus, Isolation, SetupStatus, FilePage, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{EventFilter, Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
@@ -33,22 +33,44 @@ struct AppState {
     isolation: Isolation,
     /// The last file dropped on the window, waiting for the start screen to take it.
     dropped: Mutex<Option<PathBuf>>,
+    /// The last sample path the picker, a drop or the command line produced: the only one
+    /// `inspect_sample` accepts.
+    chosen: Mutex<Option<PathBuf>>,
 }
 
-/// The session, locked for this command.
-fn session<'a>(state: &'a tauri::State<'_, AppState>) -> std::sync::MutexGuard<'a, Session> {
-    session_of(state)
-}
-
-/// The session, locked.
-fn session_of(state: &AppState) -> std::sync::MutexGuard<'_, Session> {
+/// The session, locked for this command. Commands holding a `tauri::State` pass it as it is,
+/// through `Deref`.
+fn session(state: &AppState) -> std::sync::MutexGuard<'_, Session> {
     // A panic while holding the lock would poison it; the session's state is still usable.
     state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Checks a path the picker, a drop or the command line produced, and remembers it as the one
+/// sample path `inspect_sample` will accept.
+fn choose(state: &AppState, path: &Path) -> Result<SampleChoice, String> {
+    let choice = Session::choose(path)?;
+    *state.chosen.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(path.to_path_buf());
+    Ok(choice)
+}
+
+/// Whether `sample` names the path the picker, a drop or the command line last produced. A
+/// path on another computer is refused first, before anything compares or looks at it.
+fn accept_choice(state: &AppState, sample: &SampleChoice) -> Result<(), String> {
+    let path = Path::new(&sample.path);
+    if !javabyte_gui_backend::session::is_local_path(path) {
+        return Err(t!("error-sample-remote", path = sample.path.as_str()));
+    }
+    let chosen = state.chosen.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    match chosen.as_deref() {
+        Some(chosen) if chosen == path => Ok(()),
+        _ => Err(t!("error-sample-unchosen")),
+    }
+}
+
 // Every command the screens can call is listed here and nowhere else. Paths come from the
-// system's file picker or from a file the person dropped; the screens never supply a path of
-// their own, and nothing here opens, runs or reads the sample: only the Java tool does.
+// system's file picker, a file the person dropped, or the command line. inspect_sample accepts
+// only the path one of those produced, and the session refuses paths on other computers.
+// Nothing here opens, runs or reads the sample: only the Java tool does.
 
 /// Whether Java and the tool were found, and if not, why.
 #[tauri::command]
@@ -58,7 +80,7 @@ fn engine_status(state: tauri::State<'_, AppState>) -> EngineStatus {
 
 /// Opens the system file picker. Async so the picker does not block the window's thread.
 #[tauri::command]
-async fn choose_sample(app: tauri::AppHandle) -> Result<Option<SampleChoice>, String> {
+async fn choose_sample(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<SampleChoice>, String> {
     let picked = app
         .dialog()
         .file()
@@ -67,16 +89,16 @@ async fn choose_sample(app: tauri::AppHandle) -> Result<Option<SampleChoice>, St
         .add_filter(t!("picker-all-files"), &["*"])
         .blocking_pick_file();
     match picked.and_then(|p| p.into_path().ok()) {
-        Some(path) => Session::choose(&path).map(Some),
+        Some(path) => choose(&state, &path).map(Some),
         None => Ok(None),
     }
 }
 
 /// The same picker for a folder of classes.
 #[tauri::command]
-async fn choose_sample_folder(app: tauri::AppHandle) -> Result<Option<SampleChoice>, String> {
+async fn choose_sample_folder(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Option<SampleChoice>, String> {
     match app.dialog().file().set_title(t!("picker-folder")).blocking_pick_folder().and_then(|p| p.into_path().ok()) {
-        Some(path) => Session::choose(&path).map(Some),
+        Some(path) => choose(&state, &path).map(Some),
         None => Ok(None),
     }
 }
@@ -85,16 +107,17 @@ async fn choose_sample_folder(app: tauri::AppHandle) -> Result<Option<SampleChoi
 #[tauri::command]
 fn take_dropped(state: tauri::State<'_, AppState>) -> Result<Option<SampleChoice>, String> {
     let dropped = state.dropped.lock().map_err(|_| "busy")?.take();
-    dropped.map(|path| Session::choose(&path)).transpose()
+    dropped.map(|path| choose(&state, &path)).transpose()
 }
 
-/// Describes the chosen sample and starts its settings afresh. The path must be one the
-/// picker, a drop or the command line produced; the session checks it again.
+/// Describes the chosen sample and starts its settings afresh. The path must be the one the
+/// picker, a drop or the command line last produced ([`accept_choice`]); the session checks
+/// it again.
 #[tauri::command]
 async fn inspect_sample(sample: SampleChoice, state: tauri::State<'_, AppState>) -> Result<Overview, String> {
-    // Only paths the picker or a drop produced reach here, and the session re-checks them.
-    Session::choose(Path::new(&sample.path))?;
-    session(&state).inspect(sample)
+    accept_choice(&state, &sample)?;
+    let checked = Session::choose(Path::new(&sample.path))?;
+    session(&state).inspect(checked)
 }
 
 /// The same analysis as a command line, for the shell people usually have here.
@@ -111,10 +134,11 @@ fn isolation_question(state: &AppState) -> Option<String> {
     preferences::run_question(&state.isolation, &state.setup.preferences())
 }
 
-/// What to ask before the next run, if anything (see `isolation_question`).
+/// What to ask before the next run, if anything: why it cannot be isolated (see
+/// `isolation_question`), and the program on this computer its settings would start.
 #[tauri::command]
-fn run_question(state: tauri::State<'_, AppState>) -> Option<String> {
-    isolation_question(&state)
+fn run_question(state: tauri::State<'_, AppState>) -> RunQuestions {
+    RunQuestions { isolation: isolation_question(&state), program: session(&state).program_question() }
 }
 
 /// Starts the analysis again in an AppContainer, after Windows Sandbox could not start and the
@@ -125,13 +149,15 @@ fn start_run_without_sandbox(state: tauri::State<'_, AppState>) -> Result<(), St
 }
 
 /// Starts the analysis of the chosen sample with its settings. One at a time. Refused when a
-/// question must be answered first and `without_isolation` does not answer it.
+/// question must be answered first and the answers do not cover it: `without_isolation` for
+/// the isolation question, and `program`, the path the person agreed to, for a program the
+/// settings would start.
 #[tauri::command]
-fn start_run(without_isolation: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+fn start_run(without_isolation: bool, program: Option<String>, state: tauri::State<'_, AppState>) -> Result<(), String> {
     if isolation_question(&state).is_some() && !without_isolation {
         return Err(t!("error-isolation-unconfirmed"));
     }
-    session(&state).start()
+    session(&state).start(program.as_deref())
 }
 
 // --- Preferences ---
@@ -140,7 +166,7 @@ fn start_run(without_isolation: bool, state: tauri::State<'_, AppState>) -> Resu
 fn apply_preferences(state: &AppState, preferences: &AppPreferences) -> Result<SetupStatus, String> {
     state.setup.save_preferences(preferences)?;
     let launcher = state.setup.launcher(preferences, &state.isolation);
-    session_of(state).reconfigure(launcher, state.setup.output_folder(preferences));
+    session(state).reconfigure(launcher, state.setup.output_folder(preferences));
     Ok(state.setup.status(preferences, &state.isolation))
 }
 
@@ -516,6 +542,7 @@ fn main() {
                 // A file named on the command line ("Open with" in a file manager) is treated
                 // like a dropped one: the start screen picks it up and inspects it.
                 dropped: Mutex::new(std::env::args_os().nth(1).map(PathBuf::from)),
+                chosen: Mutex::new(None),
             });
             Ok(())
         })
@@ -544,6 +571,46 @@ fn main() {
     #[cfg(feature = "egress-probe")]
     let builder = egress_probe::install(builder).invoke_handler(commands!(egress_probe::probe_report));
     builder.run(context).expect("the JavaByte window could not be opened");
+}
+
+#[cfg(test)]
+mod choice_tests {
+    use super::*;
+
+    /// A state with no engine, for the checks that need no window.
+    fn state() -> AppState {
+        let dir = std::env::temp_dir().join(format!("javabyte-app-choice-{}", std::process::id()));
+        let setup = Setup { resources: dir.clone(), exe_dir: None, data: dir.clone(), default_output: dir.join("out") };
+        AppState {
+            session: Mutex::new(Session::new(Err("no engine".into()), dir.join("runs"), dir.join("recent.json"))),
+            setup,
+            isolation: Isolation::default(),
+            dropped: Mutex::new(None),
+            chosen: Mutex::new(None),
+        }
+    }
+
+    /// inspect_sample takes only the path the picker, a drop or the command line produced,
+    /// and refuses a path on another computer before anything else.
+    #[test]
+    fn only_the_chosen_path_is_accepted() {
+        let state = state();
+        let sample = std::env::temp_dir().join(format!("javabyte-app-choice-{}.jar", std::process::id()));
+        std::fs::write(&sample, b"PK").unwrap();
+        let named = |path: &str| SampleChoice { path: path.into(), name: "x.jar".into() };
+        let own = sample.display().to_string();
+        assert_eq!(accept_choice(&state, &named(&own)).unwrap_err(), t!("error-sample-unchosen"), "nothing chosen yet");
+        let choice = choose(&state, &sample).unwrap();
+        assert_eq!(choice.path, own);
+        assert!(accept_choice(&state, &choice).is_ok());
+        assert_eq!(accept_choice(&state, &named("/etc/passwd")).unwrap_err(), t!("error-sample-unchosen"));
+        let remote = r"\\attacker.example\share\x.jar";
+        assert_eq!(accept_choice(&state, &named(remote)).unwrap_err(), t!("error-sample-remote", path = remote));
+        // A refused choice does not replace the last good one.
+        assert!(choose(&state, Path::new(remote)).is_err());
+        assert!(accept_choice(&state, &choice).is_ok());
+        let _ = std::fs::remove_file(sample);
+    }
 }
 
 #[cfg(test)]

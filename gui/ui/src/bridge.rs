@@ -9,7 +9,7 @@ use javabyte_gui_backend::EventStore;
 use javabyte_gui_backend::simulation::Simulation;
 use javabyte_gui_backend::synthetic::SyntheticEvents;
 use javabyte_gui_protocol::inspect::Inspection;
-use javabyte_gui_protocol::preferences;
+use javabyte_gui_protocol::preferences::{self, RunQuestions};
 /// A preference the screens may change (paths are chosen with pickers instead). Shared with the
 /// app's `change_preference` command, so both sides agree on it at compile time.
 pub use javabyte_gui_protocol::preferences::PreferenceChange;
@@ -177,19 +177,23 @@ pub async fn inspect_sample(sample: &SampleChoice) -> Result<Overview, String> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct StartArgs {
+struct StartArgs<'a> {
     without_isolation: bool,
+    program: Option<&'a str>,
 }
 
 /// What must be asked before the next run, if anything: why it cannot be isolated from the
-/// network.
-pub async fn run_question() -> Option<String> {
+/// network, and the program on this computer its settings would start.
+pub async fn run_question() -> RunQuestions {
     if in_desktop_app() {
-        invoke("run_question", NoArgs {}).await.unwrap_or(None)
+        invoke("run_question", NoArgs {}).await.unwrap_or_default()
     } else {
-        // The same rule the app's command uses, so the accessibility tests exercise the real one.
+        // The same rules the app's command uses, so the accessibility tests exercise the real ones.
         let status = stand_in_setup();
-        preferences::run_question(&status.isolation, &status.preferences)
+        RunQuestions {
+            isolation: preferences::run_question(&status.isolation, &status.preferences),
+            program: in_page(|b| javabyte_gui_backend::session::host_program(&b.settings)),
+        }
     }
 }
 
@@ -200,15 +204,15 @@ pub async fn start_run_without_sandbox() -> Result<(), String> {
     } else {
         // The stand-in's AppContainer: the ordinary pretend run.
         in_page(|b| b.preferences.strongest_isolation = false);
-        start_run(false).await
+        start_run(false, None).await
     }
 }
 
-/// Starts the analysis of the chosen sample with its settings. `without_isolation` answers the
-/// [`run_question`], when there was one.
-pub async fn start_run(without_isolation: bool) -> Result<(), String> {
+/// Starts the analysis of the chosen sample with its settings. `without_isolation` and
+/// `program` (the path the person agreed to) answer the [`run_question`]s, when there were any.
+pub async fn start_run(without_isolation: bool, program: Option<&str>) -> Result<(), String> {
     if in_desktop_app() {
-        invoke("start_run", StartArgs { without_isolation }).await
+        invoke("start_run", StartArgs { without_isolation, program }).await
     } else {
         in_page(|b| b.run.start(js_sys::Date::now()));
         Ok(())

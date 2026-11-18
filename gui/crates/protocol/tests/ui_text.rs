@@ -47,11 +47,12 @@ struct Literal {
     comment: String,
 }
 
-/// String literals outside comments and `#[cfg(test)]` modules. A small scanner rather than a
-/// parser: enough for this code base, which uses no raw strings for text.
+/// String literals outside comments and test modules (`#[cfg(test)]`, or `#[cfg(all(test, ...))]`
+/// for tests that need one system). A small scanner rather than a parser: enough for this code
+/// base, which uses no raw strings for text.
 fn literals(source: &str) -> Vec<Literal> {
     // Unit tests at the end of a file quote text on purpose.
-    let source = source.split("#[cfg(test)]").next().unwrap_or(source);
+    let source = ["#[cfg(test)]", "#[cfg(all(test"].iter().filter_map(|marker| source.find(marker)).min().map_or(source, |end| &source[..end]);
     let mut out = Vec::new();
     for (index, line) in source.lines().enumerate() {
         let chars: Vec<char> = line.chars().collect();

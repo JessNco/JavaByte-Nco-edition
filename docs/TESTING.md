@@ -62,6 +62,18 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `report/ArtifactsTest` | 1 | Saved artifact paths use `/` on every system, so reports read the same elsewhere |
 | `FuzzTest` | 5 | About 1,350 mutated inputs by default: corrupted class files, invalid instruction streams, damaged archives, and corrupted class files given to the disassembler. None may end as `internal-error`, throw, or overrun its limits |
 | `EscapeTest` | 1 | About eighty escape attempts leave no file, process, thread or connection on the real machine |
+| `HostCallbackTest` | 8 | Runs the `HostCallbacks` fixture against a local listener. It checks URLs in collections, providers and loaders handed to JDK code, reverse lookups and the loader hierarchy for Java 8 and 17 profiles. Its provider-route test scans `java.base` for allow-listed methods returning a `Provider` and fails on any that has no stub |
+| `LoaderShellTest` | 4 | A sample's own subclass of `URLClassLoader` is built on the simulated loader, so neither the guest nor JDK code can make it fetch from its URL; the text of built-in loaders, concatenated dates and threads, and reflective stacks |
+| `MachineProfileTest` | 13 | The `Recon` fixture asks what anti-analysis code asks (management beans, `ProcessHandle`, the screen, network interfaces, recon commands, the disk); each answer looks like a real Windows desktop, and answers to the same question through different APIs agree |
+| `TimeTest` | 9 | The virtual clock on its own, validation of `timeZone` and `locale`, and that the host's own zone and locale never reach the report |
+| `WiringTest` | 8 | Parts built separately work together: process input reporting, the connection type for each URL scheme, config checks shared with the network simulator, and values the simulated machine gives in more than one place |
+| `vm/VmInternalsTest` | 8 | Component checks of hooks, traces, class naming and exception wording, without running guest code |
+| `vm/GuestTextTest` | 4 | Text the guest can read never names the emulator: class names of simulated objects, stand-in identity hashes, and what a JDK thread meets when it calls a guest lambda |
+| `env/NetworkSimulatorTest`, `env/SimHttpConnectionTest`, `env/SimProcessTest`, `env/VirtualFileSystemTest` | 15 | Address checks before the run; the connection class for `http:` and `https:`; standard input written to a launched process reaches the report; renaming a directory moves its contents |
+| `stubs/FileUrlPathTest` | 3 | The one conversion from a `file:` URL to a virtual path |
+| `nativebridge/NativeBridgeProtocolTest` | 6 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
+| `cli/InspectionTest` | 2 | `inspect` reads a sample with the same code as `run`, so the two agree |
+| `cli/HostLookupBackstopTest` | 2 | In a separate JVM: once the backstop is set, no host name reaches the system resolver, while `localhost` and address literals still work |
 | `SafetyTest` | 7 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
 | `NativeTest` | 5 | Native library description, plugin handlers, load failures |
 | `NativeBridgeTest` | 3 | A test DLL runs in the CPU emulator and calls back into Java. Needs `JAVABYTE_BRIDGE_PYTHON` |
@@ -121,7 +133,14 @@ wrong.
 | Scenario | Technique |
 | --- | --- |
 | `persistence-windows`, `persistence-linux` | Run keys, scheduled tasks, startup folder; cron, autostart entries, shell profiles |
-| `anti-analysis-clean`, `-detected-user`, `-detected-tools`, `-hook-bypass` | Sandbox checks by user name, process list, MAC address, debugger and sleep timing; a config hook that defeats them |
+| `anti-analysis-clean`, `-detected-user`, `-detected-tools`, `-hook-bypass` | Sandbox checks by user name, process list, MAC address, debugger and sleep timing; a config hook that defeats them. On the default machine the hardware, process list, network interfaces and built-in commands look like a desktop |
+| `anti-analysis-detected-debugger` | Debugger and CPU checks on the detected path: `jvmArguments` with a debugger agent and a single processor |
+| `anti-analysis-detected-hardware` | Memory and screen checks on the detected path, through the management bean and `java.awt.Toolkit` |
+| `emulator-tells` | JVM-made exception messages and stack traces read as a real Java 8 runtime's |
+| `timing-clocks`, `timing-timed-waits` | One consistent virtual clock; delayed tasks, `parkNanos`, future timeouts, timed joins and waits take their full virtual time, and a notify still ends a wait early |
+| `timing-region-default`, `timing-region-configured` | The time zone and locale are the simulated desktop's, or those set in the config, never the analysis computer's; every date source follows `clockStart` |
+| `timing-threads` | Thread checks see a real Java 8 JVM: main has id 1, and the thread list holds the JVM's system threads but no debugger thread |
+| `timing-parallel` | Parallel APIs beyond `parallelStream` give the right answer without any real thread |
 | `http-rat`, `http-rat-offline`, `http-rat-idle` | Command loop over HTTP driven by rules; no network; no commands |
 | `socket-rat`, `socket-rat-tls`, `socket-rat-reconnect` | Binary protocol over a socket; TLS; reconnect loop |
 | `stealer` | Credential file theft, in-memory zip, AES-GCM, HTTPS upload |
@@ -255,8 +274,9 @@ stated per event (under 10 µs for both together), which is what scales with use
 - **Linux samples** are covered by simulated scenarios only; no real Linux-specific sample is
   in the corpus.
 - **Performance** has no test. A change that halves interpreter speed would pass.
-- **Timing inside a millisecond** is not controlled: the virtual clock advances a millisecond
-  each time it is read, so the count of clock reads affects the values a sample sees.
+- **Timing inside a millisecond** is approximate: the virtual clock charges 1 ns per
+  instruction and 1 µs per read (more in a tight polling loop), so the count of clock reads and
+  instructions affects the values a sample sees.
 
 ## Adding tests
 
@@ -269,6 +289,9 @@ stated per event (under 10 µs for both together), which is what scales with use
 | A config key, command, exit code or report field | A case in `ContractTest` |
 | The event stream, progress or stopping a run | A case in `StreamingTest` |
 | A new way out of the sandbox | An attempt in the `Escape` fixture |
+| JDK code acting on an object the sample built | A case in the `HostCallbacks` fixture and `HostCallbackTest` |
+| A fact about the simulated machine | A question in the `Recon` fixture and a check in `MachineProfileTest` |
+| Time, the time zone or the locale | A case in the `Timing` fixture and a `timing-*` scenario |
 | A new simulated class | A completeness assertion in `SafetyTest` |
 | A sample that showed a bug | A scenario in `corpus/real/`, after reducing the bug to a fixture if you can |
 

@@ -46,21 +46,34 @@ developer locations used today (`JAVABYTE_JAR`, `target/`).
 - **Native bridge.** The tool's `native-bridge` plugin reads its default Python from
   `JAVABYTE_BRIDGE_PYTHON` when the config does not name one. The app sets that variable to
   the bundled interpreter, so turning the plugin on in Settings is enough. Preferences shows
-  whether a bridge was found and, if not, how to get one.
+  whether a bridge was found and, if not, how to get one. Settings that name another Python
+  (`plugins.native-bridge.python`) start a program outside the emulator, so they are never
+  taken from report folders, imports or presets, and the app asks before a run that uses one,
+  naming the path.
 - **Output folder.** Documents/JavaByte unless Preferences names another folder.
 - **Preferences** are stored by the app in its data folder (`preferences.json`), because the
   backend needs them. Display preferences stay in the window's storage as before.
 
 ## Network isolation on Linux
 
-Each run starts in a new user and network namespace, which has no network interfaces except
-a loopback that is down. This is what `scripts/run-isolated.sh` does, but done by the app
-itself between `fork` and `exec`, not by starting `unshare`. That matters on Ubuntu 24.04,
-which allows unprivileged namespaces only to programs with an AppArmor profile that permits
-them: the `.deb` installs such a profile for the app, and the namespace is created by the
-app's own process, so the profile applies. The child maps its own user and group to
-themselves, so Java sees the same user, home folder and file permissions as without
-isolation.
+Each run starts in a new user, network and mount namespace. The network namespace has no network
+interfaces except a loopback that is down. This is what `scripts/run-isolated.sh` does, but done
+by the app itself between `fork` and `exec`, not by starting `unshare`. That matters on Ubuntu
+24.04, which allows unprivileged namespaces only to programs with an AppArmor profile that
+permits them: the `.deb` installs such a profile for the app, and the namespace is created by
+the app's own process, so the profile applies. The child maps its own user and group to
+themselves, so Java sees the same user, home folder and file permissions as without isolation.
+
+The run also gets a mount namespace in which /run/user/<uid>, /run/dbus, /run/systemd,
+/run/nscd, /run/avahi-daemon, /run/cups and /tmp/.X11-unix are covered by empty read-only
+folders, because a network namespace alone does not hide sockets in the file system. The Docker
+and snapd sockets are covered by `/dev/null`, and the environment variables that point to these
+services (such as `DBUS_SESSION_BUS_ADDRESS` and `DISPLAY`) are removed. The rest of the file
+system is unchanged, so the sample, the runtime and the output folder are where they always
+are.
+
+One limitation follows: a sample or output folder inside /run/user/<uid> (for example a GVFS
+mount of a network share) cannot be used with isolation on.
 
 At start the app checks once whether a namespace can be created. When it cannot (the
 AppImage on 24.04, or a system that turned namespaces off), starting a run asks first:

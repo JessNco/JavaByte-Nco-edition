@@ -8,9 +8,11 @@ The "-without-dns" modes are for machines where name lookups cannot be observed 
 
 A run passes only if the probe reported and the fake network was all there; otherwise it proves
 nothing. In every mode the listener must have logged "ready". In the expect-none modes, every
-listener a leak would reach must also have opened: DNS on port 53 (not in the "-without-dns"
-mode) and TCP on 80, 443, the probe port and the one after it. A listener that crashed or could
-not bind would otherwise turn a real leak into a clean result. UDP 3478 and the black-hole port 9
+listener a leak would reach must also have opened: TCP on the probe port and the one after it,
+and, in "expect-none", DNS on port 53 and TCP on 80 and 443. Without DNS (Windows CI) nothing
+the probe sends can reach 80 or 443, since every probe names its port and *.leak.test only
+resolves through the fake DNS; there they only warn, as Windows runners may refuse to bind them.
+A listener that crashed or could not bind would otherwise turn a real leak into a clean result. UDP 3478 and the black-hole port 9
 only warn, because Windows may reserve them. "blackhole" entries are requests the app's
 black-hole proxy caught: they show the proxy working and are not leaks.
 """
@@ -32,9 +34,10 @@ def required_listeners(mode, probe_port):
     """
     if not mode.startswith("expect-none"):
         return set()
-    needed = {("tcp", port) for port in (80, 443, probe_port, probe_port + 1)}
+    needed = {("tcp", probe_port), ("tcp", probe_port + 1)}
     if mode == "expect-none":
-        needed.add(("dns", 53))
+        # Names resolve here, so a URL without a port reaches 80 or 443.
+        needed |= {("dns", 53), ("tcp", 80), ("tcp", 443)}
     return needed
 
 

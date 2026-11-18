@@ -67,14 +67,26 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
 
     def test_each_tcp_port_not_watched_fails(self):
-        for port in (80, 443, PORT, PORT + 1):
-            for mode in ("expect-none", "expect-none-without-dns"):
-                with self.subTest(port=port, mode=mode):
-                    tcp = [w for w in ALL_TCP if w["port"] != port]
-                    failed = {"kind": "bind-failed", "listener": "tcp", "port": port, "error": "denied"}
-                    code, out = self.judge([failed, ready([DNS, UDP, *tcp, BLACKHOLE])], mode)
-                    self.assertEqual(code, 1, out)
-                    self.assertIn(f"tcp port {port}", out)
+        cases = [(port, "expect-none") for port in (80, 443, PORT, PORT + 1)]
+        cases += [(port, "expect-none-without-dns") for port in (PORT, PORT + 1)]
+        for port, mode in cases:
+            with self.subTest(port=port, mode=mode):
+                tcp = [w for w in ALL_TCP if w["port"] != port]
+                failed = {"kind": "bind-failed", "listener": "tcp", "port": port, "error": "denied"}
+                code, out = self.judge([failed, ready([DNS, UDP, *tcp, BLACKHOLE])], mode)
+                self.assertEqual(code, 1, out)
+                self.assertIn(f"tcp port {port}", out)
+
+    def test_ports_80_and_443_only_warn_without_dns(self):
+        # Without the fake DNS no probe can reach them (each names its port), and Windows
+        # runners may refuse to bind port 80.
+        for port in (80, 443):
+            with self.subTest(port=port):
+                tcp = [w for w in ALL_TCP if w["port"] != port]
+                failed = {"kind": "bind-failed", "listener": "tcp", "port": port, "error": "denied"}
+                code, out = self.judge([failed, ready([UDP, *tcp, BLACKHOLE])], "expect-none-without-dns")
+                self.assertEqual(code, 0, out)
+                self.assertIn(f"Not watched: tcp port {port}", out)
 
     def test_probe_port_comes_from_the_ready_entry(self):
         # A listener started on another port must be judged by that port, not the default.

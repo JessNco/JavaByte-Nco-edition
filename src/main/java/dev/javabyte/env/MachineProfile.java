@@ -81,11 +81,8 @@ public final class MachineProfile {
     /** Refresh rate of the display mode in hertz. */
     public static final int SCREEN_REFRESH_HZ = 60;
 
-    /**
-     * The time zone of the simulated Windows installation, used where a command prints local
-     * time. It matches the advertised {@code user.country} of US.
-     */
-    public static final ZoneId TIME_ZONE = ZoneId.of("America/New_York");
+    /** The default time zone of the simulated installation: the same one {@link GuestRegion} uses. */
+    public static final ZoneId TIME_ZONE = ZoneId.of(GuestRegion.DEFAULT_TIME_ZONE);
     /** How {@code systeminfo} names {@link #TIME_ZONE}. */
     public static final String TIME_ZONE_DISPLAY = "(UTC-05:00) Eastern Time (US & Canada)";
 
@@ -133,6 +130,13 @@ public final class MachineProfile {
     public final String gateway;
     /** The network card's MAC address as {@code AA-BB-CC-DD-EE-FF}, the way Windows prints it. */
     public final String macAddress;
+    /**
+     * The machine's time zone, from {@code environment.timeZone}, so commands that print local
+     * time agree with {@code TimeZone.getDefault()} inside the guest.
+     */
+    public final ZoneId zone;
+    /** How {@code systeminfo} names {@link #zone}, in Windows' "(UTC+hh:mm) name" form. */
+    public final String zoneDisplay;
     /** The card's IPv6 link-local address, as {@code ipconfig} lists it. */
     public final String linkLocalAddress;
     /** The BIOS serial number. For Dell this is the seven-character service tag. */
@@ -181,6 +185,8 @@ public final class MachineProfile {
         this.jvmArguments = List.copyOf(environment.jvmArguments);
         this.localAddress = config.network.localAddress;
         this.gateway = localAddress.substring(0, localAddress.lastIndexOf('.') + 1) + "1";
+        this.zone = GuestRegion.of(config.environment).zone;
+        this.zoneDisplay = zone.equals(TIME_ZONE) ? TIME_ZONE_DISPLAY : windowsZoneName(zone, clockStart);
         this.macAddress = config.network.macAddress.toUpperCase(java.util.Locale.ROOT).replace(':', '-');
 
         byte[] seed = digest("machine:" + hostName);
@@ -378,5 +384,17 @@ public final class MachineProfile {
             tag.append(alphabet.charAt((seed[i + 10] & 0xFF) % alphabet.length()));
         }
         return tag.append('2').toString();
+    }
+
+    /**
+     * A Windows-style display name for a zone other than the default, such as
+     * {@code (UTC+01:00) Central European Standard Time}. Windows' own names cover regions, not
+     * zones, so this uses the zone's standard offset and its generic English name.
+     */
+    private static String windowsZoneName(ZoneId zone, long at) {
+        java.time.ZoneOffset standard = zone.getRules().getStandardOffset(java.time.Instant.ofEpochMilli(at));
+        String offset = standard.getTotalSeconds() == 0 ? "" : standard.getId();
+        String name = java.util.TimeZone.getTimeZone(zone).getDisplayName(false, java.util.TimeZone.LONG, java.util.Locale.US);
+        return "(UTC" + offset + ") " + name;
     }
 }

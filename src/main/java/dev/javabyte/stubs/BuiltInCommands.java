@@ -557,8 +557,8 @@ final class BuiltInCommands {
                 one.put("CountryCode", "1");
                 one.put("CSName", machine.hostName);
                 one.put("FreePhysicalMemory", String.valueOf(machine.freeMemoryBytes >> 10));
-                one.put("InstallDate", wmiDate(machine.installTime));
-                one.put("LastBootUpTime", wmiDate(machine.bootTime));
+                one.put("InstallDate", wmiDate(machine.installTime, machine.zone));
+                one.put("LastBootUpTime", wmiDate(machine.bootTime, machine.zone));
                 one.put("Locale", "0409");
                 one.put("Manufacturer", "Microsoft Corporation");
                 one.put("OSArchitecture", "64-bit");
@@ -655,8 +655,8 @@ final class BuiltInCommands {
     }
 
     /** A time in WMI's {@code yyyyMMddHHmmss.ffffff+UUU} form, in the machine's local time. */
-    private static String wmiDate(long millis) {
-        java.time.ZonedDateTime time = Instant.ofEpochMilli(millis).atZone(MachineProfile.TIME_ZONE);
+    private static String wmiDate(long millis, java.time.ZoneId zone) {
+        java.time.ZonedDateTime time = Instant.ofEpochMilli(millis).atZone(zone);
         int offsetMinutes = time.getOffset().getTotalSeconds() / 60;
         return DateTimeFormatter.ofPattern("yyyyMMddHHmmss.000000", Locale.US).format(time)
                 + (offsetMinutes < 0 ? "-" : "+") + String.format("%03d", Math.abs(offsetMinutes));
@@ -666,7 +666,7 @@ final class BuiltInCommands {
 
     private static String systeminfo(VirtualMachine vm) {
         MachineProfile machine = vm.env.machine;
-        DateTimeFormatter local = DateTimeFormatter.ofPattern("M/d/yyyy, h:mm:ss a", Locale.US).withZone(MachineProfile.TIME_ZONE);
+        DateTimeFormatter local = DateTimeFormatter.ofPattern("M/d/yyyy, h:mm:ss a", Locale.US).withZone(machine.zone);
         long visibleMb = machine.visibleMemoryBytes >> 20;
         long freeMb = machine.freeMemoryBytes >> 20;
         long pageFileMb = 2432;
@@ -695,7 +695,7 @@ final class BuiltInCommands {
         field(out, "Boot Device", "\\Device\\HarddiskVolume1");
         field(out, "System Locale", "en-us;English (United States)");
         field(out, "Input Locale", "en-us;English (United States)");
-        field(out, "Time Zone", MachineProfile.TIME_ZONE_DISPLAY);
+        field(out, "Time Zone", machine.zoneDisplay);
         field(out, "Total Physical Memory", String.format(Locale.US, "%,d MB", visibleMb));
         field(out, "Available Physical Memory", String.format(Locale.US, "%,d MB", freeMb));
         field(out, "Virtual Memory: Max Size", String.format(Locale.US, "%,d MB", visibleMb + pageFileMb));
@@ -752,7 +752,7 @@ final class BuiltInCommands {
                 .append("   Subnet Mask . . . . . . . . . . . : 255.255.255.0").append(CRLF);
         if (all) {
             DateTimeFormatter local = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy h:mm:ss a", Locale.US)
-                    .withZone(MachineProfile.TIME_ZONE);
+                    .withZone(machine.zone);
             out.append("   Lease Obtained. . . . . . . . . . : ").append(local.format(Instant.ofEpochMilli(machine.bootTime + 9_000)))
                     .append(CRLF)
                     .append("   Lease Expires . . . . . . . . . . : ")

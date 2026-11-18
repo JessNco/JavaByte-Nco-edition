@@ -110,6 +110,10 @@ fn inspect_schema_and_validate() {
     assert!(inspection.class_count > 10);
     assert!(inspection.main_candidates.iter().any(|c| c.ends_with("guest/Basics")));
 
+    let policy = launcher.policy().unwrap();
+    assert!(policy.rules.iter().any(|r| r.rule == "java/lang/String" && r.allow));
+    assert!(policy.rules.iter().any(|r| !r.allow), "the policy has blocking rules");
+
     let schema = launcher.schema().unwrap();
     assert!(schema.option("limits.timeoutSeconds").is_some());
 

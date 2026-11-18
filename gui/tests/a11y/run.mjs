@@ -189,6 +189,12 @@ await section(`axe, ${theme}, ${textSize}%`, async () => {
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
   await page.waitForSelector('#compare-result-heading');
   await axe(page, `compare, ${theme}, ${textSize}%`);
+  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.waitForSelector('#tools-panel-policy table');
+  await axe(page, `tools policy, ${theme}, ${textSize}%`);
+  await page.getByRole('tab', { name: 'Options and defaults' }).click();
+  await page.waitForSelector('#tools-panel-defaults table');
+  await axe(page, `tools defaults, ${theme}, ${textSize}%`);
   await page.getByRole('button', { name: 'Preferences' }).click();
   await page.waitForSelector('#prefs-isolate');
   await axe(page, `preferences, ${theme}, ${textSize}%`);
@@ -609,6 +615,9 @@ await section('reflow', async () => {
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
   await page.waitForSelector('#compare-result-heading');
   check((await overflow()) <= 1, `compare at 320 px scrolls sideways by ${await overflow()} px`);
+  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.waitForSelector('#tools-panel-policy tbody tr');
+  check((await overflow()) <= 1, `tools at 320 px scrolls sideways by ${await overflow()} px`);
   await context.close();
 });
 
@@ -661,7 +670,41 @@ await section('preferences and isolation', async () => {
   await context.close();
 });
 
-// 9. Chromium's accessibility tree for the grid, as assistive technology receives it.
+// 9. Tools: the policy and the defaults, searchable, as tables screen readers can walk.
+await section('tools', async () => {
+  const { page, context, errors } = await open();
+  await page.getByRole('button', { name: 'Tools' }).click();
+  check(await focusIs(page, 'tools-heading'), 'Tools focuses its heading');
+  check((await page.title()) === 'Tools – JavaByte', `tools title: ${await page.title()}`);
+  await page.waitForSelector('#tools-panel-policy tbody tr');
+  const allRules = await page.locator('#tools-panel-policy tbody tr').count();
+  check(allRules > 100, `the whole policy is listed (${allRules} rules)`);
+  check((await page.locator('#tools-policy-search-count').textContent()) === `${allRules} rows.`, 'the count says how many rules there are');
+  check(await page.getByRole('table', { name: 'Policy rules, in the order JavaByte reads them' }).isVisible(), 'the policy table is named by its caption');
+  check((await page.locator('#tools-panel-policy th[scope="row"]').first().textContent()) === 'java/lang/Object', 'each rule is a row header');
+  await page.getByLabel('Search the policy').fill('timer');
+  await page.waitForTimeout(150);
+  const timerRows = page.locator('#tools-panel-policy tbody tr');
+  check((await timerRows.count()) >= 1 && (await timerRows.count()) < allRules, 'searching narrows the rules');
+  check((await page.locator('#tools-panel-policy tbody').textContent()).includes('Blocked'), 'a blocking rule says Blocked in words');
+  check(/of \d+ rows match\./.test(await page.locator('#tools-policy-search-count').textContent()), 'the count follows the search');
+  await page.getByLabel('Search the policy').fill('zzzz no such rule');
+  await page.waitForTimeout(150);
+  check(await page.getByText('Nothing matches.').isVisible(), 'no match is said in words, not shown as an empty table');
+  await page.getByRole('tab', { name: 'Policy' }).focus();
+  await page.keyboard.press('ArrowRight');
+  check(await focusIs(page, 'tools-tab-defaults'), 'ArrowRight moves to the defaults tab');
+  await page.waitForSelector('#tools-panel-defaults tbody tr');
+  await page.getByLabel('Search the options').fill('timeoutSeconds');
+  await page.waitForTimeout(150);
+  const row = page.locator('#tools-panel-defaults tbody tr').first();
+  check((await row.locator('th').textContent()) === 'limits.timeoutSeconds' && (await row.locator('td').first().textContent()) === '120', 'an option shows its default');
+  await axe(page, 'tools, searched');
+  check(errors.length === 0, `page errors: ${errors.join('; ')}`);
+  await context.close();
+});
+
+// 10. Chromium's accessibility tree for the grid, as assistive technology receives it.
 await section('grid accessibility tree', async () => {
   const { page, context } = await open();
   await toReport(page);

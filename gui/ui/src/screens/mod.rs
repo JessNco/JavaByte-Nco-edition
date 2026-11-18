@@ -9,3 +9,4 @@ pub mod report_more;
 pub mod running;
 pub mod settings;
 pub mod start;
+pub mod tools;

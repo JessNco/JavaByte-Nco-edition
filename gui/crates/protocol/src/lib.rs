@@ -27,6 +27,8 @@ pub mod report;
 pub mod schema;
 /// `run --events jsonl`.
 pub mod stream;
+/// The Tools screen: the host policy and the options with their defaults.
+pub mod tools;
 /// `javabyte validate --json`.
 pub mod validate;
 /// What the screens show, built from the tool's output.

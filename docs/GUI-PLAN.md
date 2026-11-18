@@ -193,7 +193,10 @@ indicator. Runs are repeatable (seeded randomness, fixed clock), so differences 
 
 ### 6. Tools
 
-Not built yet. Read-only viewers for `javabyte policy` (the allow-list) and `javabyte defaults`, with search.
+Read-only viewers for the host policy (`javabyte policy --json`: each rule, whether it allows or
+blocks, its group and the policy file's explanation) and every option with its default, type and
+meaning (from `javabyte schema --json`, which also covers plugin settings). Each has a search that
+matches every typed word in any column, with a live count.
 
 ### 7. Preferences
 
@@ -213,7 +216,7 @@ spacing, and the isolation setting on Linux (below).
 | `inspect [--json]` | Sample overview; Save as JSON |
 | `init SAMPLE` | Settings → Start from this sample's suggestions; Export |
 | `defaults [--json]` | Tools → Defaults |
-| `policy` | Tools → Policy |
+| `policy [--json]` | Tools → Policy |
 | `disasm FILE [--class NAME]` | Report → Files → a saved class, shown as bytecode |
 | exit codes 0/1/2/3 | Outcome shown in words; 1 is shown as a tool fault with a "copy details" button |
 | `scripts/run-isolated.sh` | Linux: Preferences → "Run without network access" (on by default) |

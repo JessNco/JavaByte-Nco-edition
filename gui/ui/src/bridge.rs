@@ -30,6 +30,7 @@ pub const STAND_IN_RUN_MS: u64 = 20_000;
 const SAMPLE_INSPECTION: &str = include_str!("../../crates/protocol/tests/tool-output/inspect-native.json");
 const SAMPLE_REPORT: &str = include_str!("../../crates/protocol/tests/tool-output/report-basics.json");
 const SAMPLE_SCHEMA: &str = include_str!("../../crates/protocol/tests/tool-output/schema.json");
+const SAMPLE_POLICY: &str = include_str!("../../crates/protocol/tests/tool-output/policy.json");
 /// What `javabyte init` writes for the stand-in's sample (the committed inspection's main class).
 const EXAMPLE_SETTINGS: &str = include_str!("example-settings.yaml");
 /// What the stand-in's Import offers: a JSON config made for another sample.
@@ -688,4 +689,9 @@ pub async fn choose_java() -> Result<Option<SetupStatus>, String> {
 /// Picks the folder analyses are saved in. None when cancelled.
 pub async fn choose_output_folder() -> Result<Option<SetupStatus>, String> {
     if in_desktop_app() { invoke("choose_output_folder", NoArgs {}).await } else { Ok(None) }
+}
+
+/// The built-in host policy, rule by rule.
+pub async fn tool_policy() -> Result<javabyte_gui_protocol::tools::PolicyListing, String> {
+    if in_desktop_app() { invoke("tool_policy", NoArgs {}).await } else { serde_json::from_str(SAMPLE_POLICY).map_err(|e| e.to_string()) }
 }

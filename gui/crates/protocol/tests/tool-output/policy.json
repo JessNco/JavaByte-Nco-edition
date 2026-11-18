@@ -1,0 +1,1123 @@
+{
+  "rules" : [ {
+    "rule" : "java/lang/Object",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/String",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/StringBuilder",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/StringBuffer",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/AbstractStringBuilder",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/CharSequence",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Character",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Character$*",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Boolean",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Byte",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Short",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Integer",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Long",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Float",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Double",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Number",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Void",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Math",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/StrictMath",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Enum",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Record",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Iterable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Comparable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Runnable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/AutoCloseable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Cloneable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Appendable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Readable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/StackTraceElement",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/ThreadLocal",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/InheritableThreadLocal",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/Throwable",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/*Exception",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/*Error",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/annotation/**",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/ref/Reference",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/ref/WeakReference",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/ref/SoftReference",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/ref/PhantomReference",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/ref/ReferenceQueue#<init>,poll",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/runtime/ObjectMethods",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : ""
+  }, {
+    "rule" : "java/lang/System#arraycopy,identityHashCode",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "System, Runtime, Class, ClassLoader and Thread mix harmless and dangerous members, so they are never allowed wholesale. Only members listed here run for real; the rest are stubs."
+  }, {
+    "rule" : "java/lang/Thread#<init>,getName,setName,isDaemon,setDaemon,getPriority,setPriority,getId,threadId,run",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "System, Runtime, Class, ClassLoader and Thread mix harmless and dangerous members, so they are never allowed wholesale. Only members listed here run for real; the rest are stubs."
+  }, {
+    "rule" : "java/lang/Thread#getThreadGroup,getUncaughtExceptionHandler,setUncaughtExceptionHandler,toString,hashCode,equals",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "System, Runtime, Class, ClassLoader and Thread mix harmless and dangerous members, so they are never allowed wholesale. Only members listed here run for real; the rest are stubs."
+  }, {
+    "rule" : "java/lang/Thread$UncaughtExceptionHandler",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "System, Runtime, Class, ClassLoader and Thread mix harmless and dangerous members, so they are never allowed wholesale. Only members listed here run for real; the rest are stubs."
+  }, {
+    "rule" : "java/lang/ThreadGroup#<init>,getName",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "System, Runtime, Class, ClassLoader and Thread mix harmless and dangerous members, so they are never allowed wholesale. Only members listed here run for real; the rest are stubs."
+  }, {
+    "rule" : "java/lang/ClassLoader#<init>",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "A real loader object is created so it can be passed around, but every loading method is a stub."
+  }, {
+    "rule" : "java/net/URLClassLoader#<init>,getURLs",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "A real loader object is created so it can be passed around, but every loading method is a stub."
+  }, {
+    "rule" : "java/lang/ProcessBuilder#<init>,command,directory,redirectErrorStream,redirectInput,redirectOutput,redirectError,inheritIO",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "Building a command is harmless; start() is a stub and never launches anything."
+  }, {
+    "rule" : "java/lang/ProcessBuilder$Redirect",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "Building a command is harmless; start() is a stub and never launches anything."
+  }, {
+    "rule" : "java/lang/ProcessBuilder$Redirect$Type",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "Building a command is harmless; start() is a stub and never launches anything."
+  }, {
+    "rule" : "java/lang/Process",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "Building a command is harmless; start() is a stub and never launches anything."
+  }, {
+    "rule" : "java/lang/reflect/Array",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/reflect/Modifier",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/reflect/Member",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/reflect/Type",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/reflect/AnnotatedElement",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/reflect/InvocationHandler",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/reflect/*Exception",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/MethodHandle",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/MethodHandles",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/MethodType",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/CallSite",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/ConstantCallSite",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/MutableCallSite",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/VolatileCallSite",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/lang/invoke/*Exception",
+    "allow" : true,
+    "section" : "reflection and method handles",
+    "note" : "Inspecting members is harmless. Invoking through them is intercepted by stubs and re-routed through this same policy, so reflection cannot be used to reach a blocked method."
+  }, {
+    "rule" : "java/math/**",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/text/**",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/time/**",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/util/regex/**",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/charset/**",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/Buffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/ByteBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/CharBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/ShortBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/IntBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/LongBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/FloatBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/DoubleBuffer",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/ByteOrder",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/*Exception",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/*Exception",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/StandardOpenOption",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/StandardCopyOption",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/LinkOption",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/OpenOption",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/CopyOption",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/nio/file/attribute/FileAttribute",
+    "allow" : true,
+    "section" : "numbers, text, time",
+    "note" : ""
+  }, {
+    "rule" : "java/util/**",
+    "allow" : true,
+    "section" : "collections and utilities",
+    "note" : ""
+  }, {
+    "rule" : "java/util/function/**",
+    "allow" : true,
+    "section" : "collections and utilities",
+    "note" : ""
+  }, {
+    "rule" : "java/util/stream/**",
+    "allow" : true,
+    "section" : "collections and utilities",
+    "note" : ""
+  }, {
+    "rule" : "java/util/Timer",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Exceptions to the java/util tree: anything that starts threads, loads code or touches files."
+  }, {
+    "rule" : "java/util/ServiceLoader",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Exceptions to the java/util tree: anything that starts threads, loads code or touches files."
+  }, {
+    "rule" : "java/util/ServiceLoader$*",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Exceptions to the java/util tree: anything that starts threads, loads code or touches files."
+  }, {
+    "rule" : "java/util/ResourceBundle#getBundle,clearCache",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+  }, {
+    "rule" : "java/util/prefs/**",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+  }, {
+    "rule" : "java/util/logging/**",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+  }, {
+    "rule" : "java/util/spi/**",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Bundle lookup searches the class path; a stub serves bundles from the sample instead."
+  }, {
+    "rule" : "java/util/jar/JarFile#<init>",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/zip/ZipFile#<init>",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/ThreadPoolExecutor",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/ScheduledThreadPoolExecutor",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/ForkJoinPool",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/ForkJoinTask",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/Executors",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/ExecutorCompletionService",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/Phaser",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/Exchanger",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/SubmissionPublisher",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Archives are opened by a stub from the virtual disk; reading an opened archive is harmless."
+  }, {
+    "rule" : "java/util/concurrent/RecursiveTask",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Fork/join tasks run on the common pool's threads when forked."
+  }, {
+    "rule" : "java/util/concurrent/RecursiveAction",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Fork/join tasks run on the common pool's threads when forked."
+  }, {
+    "rule" : "java/util/concurrent/CountedCompleter",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Fork/join tasks run on the common pool's threads when forked."
+  }, {
+    "rule" : "java/util/Locale#setDefault",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "JVM-wide defaults: changing them would alter the emulator itself for the rest of the run."
+  }, {
+    "rule" : "java/util/TimeZone#setDefault",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "JVM-wide defaults: changing them would alter the emulator itself for the rest of the run."
+  }, {
+    "rule" : "java/util/Formatter#<init>(Ljava/lang/String;)V",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Formatter and Scanner have overloads that open files by name."
+  }, {
+    "rule" : "java/util/Formatter#<init>(Ljava/lang/String;Ljava/lang/String;)V",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Formatter and Scanner have overloads that open files by name."
+  }, {
+    "rule" : "java/util/Formatter#<init>(Ljava/lang/String;Ljava/lang/String;Ljava/util/Locale;)V",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Formatter and Scanner have overloads that open files by name."
+  }, {
+    "rule" : "java/util/Formatter#<init>(Ljava/lang/String;Ljava/nio/charset/Charset;Ljava/util/Locale;)V",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Formatter and Scanner have overloads that open files by name."
+  }, {
+    "rule" : "java/io/InputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/OutputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/ByteArrayInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/ByteArrayOutputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/DataInput",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/DataOutput",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/DataInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/DataOutputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/BufferedInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/BufferedOutputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/FilterInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/FilterOutputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/PushbackInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/SequenceInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/ObjectOutputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Stream classes that only wrap other streams or byte arrays. File-backed classes are stubs."
+  }, {
+    "rule" : "java/io/ObjectInputStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/ObjectInput",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/ObjectOutput",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/ObjectStreamClass",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/Reader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/Writer",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/BufferedReader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/BufferedWriter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/InputStreamReader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/OutputStreamWriter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/StringReader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/StringWriter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/CharArrayReader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/CharArrayWriter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/PrintStream",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/PrintWriter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/LineNumberReader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/PushbackReader",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/Closeable",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/Flushable",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/Serializable",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/Externalizable",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/FilenameFilter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/FileFilter",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/*Exception",
+    "allow" : true,
+    "section" : "in-memory I/O",
+    "note" : "Deserialization is limited to plain value types by dev.javabyte.host.SerializationGuard."
+  }, {
+    "rule" : "java/io/PrintStream#<init>(Ljava/lang/String;)V",
+    "allow" : false,
+    "section" : "in-memory I/O",
+    "note" : "PrintStream and PrintWriter overloads that open a file by name are replaced by stubs."
+  }, {
+    "rule" : "java/io/PrintStream#<init>(Ljava/lang/String;Ljava/lang/String;)V",
+    "allow" : false,
+    "section" : "in-memory I/O",
+    "note" : "PrintStream and PrintWriter overloads that open a file by name are replaced by stubs."
+  }, {
+    "rule" : "java/io/PrintStream#<init>(Ljava/lang/String;Ljava/nio/charset/Charset;)V",
+    "allow" : false,
+    "section" : "in-memory I/O",
+    "note" : "PrintStream and PrintWriter overloads that open a file by name are replaced by stubs."
+  }, {
+    "rule" : "java/io/PrintWriter#<init>(Ljava/lang/String;)V",
+    "allow" : false,
+    "section" : "in-memory I/O",
+    "note" : "PrintStream and PrintWriter overloads that open a file by name are replaced by stubs."
+  }, {
+    "rule" : "java/io/PrintWriter#<init>(Ljava/lang/String;Ljava/lang/String;)V",
+    "allow" : false,
+    "section" : "in-memory I/O",
+    "note" : "PrintStream and PrintWriter overloads that open a file by name are replaced by stubs."
+  }, {
+    "rule" : "java/io/PrintWriter#<init>(Ljava/lang/String;Ljava/nio/charset/Charset;)V",
+    "allow" : false,
+    "section" : "in-memory I/O",
+    "note" : "PrintStream and PrintWriter overloads that open a file by name are replaced by stubs."
+  }, {
+    "rule" : "javax/crypto/**",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : ""
+  }, {
+    "rule" : "java/security/MessageDigest",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/DigestInputStream",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/DigestOutputStream",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/SecureRandom",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/Key",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/PublicKey",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/PrivateKey",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/KeyPair",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/KeyPairGenerator",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/KeyFactory",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/KeyRep",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/Signature",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/AlgorithmParameters",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/AlgorithmParameterGenerator",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/Principal",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/Provider",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/Security#getProvider,getProviders,getAlgorithms,getProperty",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/AccessController#doPrivileged",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/PrivilegedAction",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/PrivilegedExceptionAction",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/ProtectionDomain",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/CodeSource",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/KeyStore",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/KeyStore$*",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/*Exception",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/spec/**",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/interfaces/**",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/cert/Certificate",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/cert/X509Certificate",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/cert/CertificateFactory",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "java/security/cert/*Exception",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "javax/security/auth/x500/**",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "javax/security/cert/**",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "java.security is listed class by class rather than as a tree. The package also holds classes that fetch over the network (certificate revocation, domain key stores) or change JVM-wide state (provider registration), and a wildcard would let those in."
+  }, {
+    "rule" : "javax/net/ssl/TrustManager",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/X509TrustManager",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/KeyManager",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/HostnameVerifier",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/SSLSession",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/SSLParameters",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/SNIServerName",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/SNIHostName",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/SNIMatcher",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/SSLContext#getInstance,init,getProtocol",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "javax/net/ssl/*Exception",
+    "allow" : true,
+    "section" : "cryptography",
+    "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "java/net/URL",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/URI",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/URLEncoder",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/URLDecoder",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/IDN",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/Proxy",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/Proxy$Type",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/InetAddress#getHostAddress,getHostName,getCanonicalHostName,getAddress,toString,equals,hashCode,isLoopbackAddress,isAnyLocalAddress,isSiteLocalAddress",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/Inet4Address#getHostAddress,getAddress,toString,equals,hashCode",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/InetSocketAddress#getHostName,getHostString,getPort,getAddress,toString,equals,hashCode,isUnresolved,createUnresolved",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/SocketAddress",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/*Exception",
+    "allow" : true,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/URL#openConnection,openStream,getContent,setURLStreamHandlerFactory",
+    "allow" : false,
+    "section" : "network value types",
+    "note" : "Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket is always a stub."
+  }, {
+    "rule" : "java/net/URL#equals,hashCode",
+    "allow" : false,
+    "section" : "network value types",
+    "note" : "URL.equals and URL.hashCode resolve the host name through real DNS; stubs compare text instead."
+  } ]
+}

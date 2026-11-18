@@ -6,6 +6,10 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Desktop app: a Tools screen with the built-in policy and every option with its default, each
+  searchable.
+- `javabyte policy --json`: each rule of the built-in policy with its effect (allow or block),
+  section and the explanation written above it.
 - JavaByte is free software under the GNU General Public License, version 3 or later (LICENSE).
   The installers carry the licence beside the app, and Preferences says so.
 - Desktop app, phase 5: installers. MSI and portable zip for Windows, .deb and AppImage for

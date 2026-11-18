@@ -81,6 +81,7 @@ class ContractSamplesTest {
         compare("inspect-native.json", normalise(cli("inspect", "--json", withNative.toString())), problems);
 
         compare("schema.json", normalise(cli("schema", "--json")), problems);
+        compare("policy.json", normalise(cli("policy", "--json")), problems);
 
         Path bad = Files.writeString(temp.resolve("bad.yaml"),
                 "limitz: {}\nlimits: {timeoutSeconds: soon}\nnetwork: {http: [{body: x}]}\n");

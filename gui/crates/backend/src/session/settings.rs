@@ -35,6 +35,11 @@ impl Session {
         Ok(self.schema.clone().expect("just set"))
     }
 
+    /// The built-in host policy, for the Tools screen.
+    pub fn policy(&self) -> Result<javabyte_gui_protocol::tools::PolicyListing, String> {
+        self.launcher()?.policy()
+    }
+
     /// Every problem in some settings, as the tool sees them. The sample is the chosen one.
     pub fn check(&self, text: &str) -> Result<Validation, String> {
         self.checker()?.check(text)

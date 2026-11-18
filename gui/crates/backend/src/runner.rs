@@ -143,6 +143,11 @@ impl Launcher {
         self.json_command(&["schema".as_ref(), "--json".as_ref()], &[exit_code::OK])
     }
 
+    /// The built-in host policy, rule by rule (`javabyte policy --json`).
+    pub fn policy(&self) -> Result<javabyte_gui_protocol::tools::PolicyListing, String> {
+        self.json_command(&["policy".as_ref(), "--json".as_ref()], &[exit_code::OK])
+    }
+
     /// Every problem with a config file and overrides. An invalid config is an answer, not an error.
     pub fn validate(&self, config: Option<&Path>, overrides: &[String]) -> Result<Validation, String> {
         let mut args: Vec<&std::ffi::OsStr> = vec!["validate".as_ref(), "--json".as_ref()];

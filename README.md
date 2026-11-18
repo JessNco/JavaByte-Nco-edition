@@ -80,7 +80,7 @@ The design is in [docs/GUI-PLAN.md](docs/GUI-PLAN.md).
 | `schema [--json]` | Every config option with its type, default, allowed values and meaning |
 | `init SAMPLE` | Print a starter config |
 | `defaults [--json]` | Print every option with its default |
-| `policy` | Print the built-in JDK allow-list |
+| `policy [--json]` | Print the built-in JDK allow-list; `--json` lists each rule with its effect, section and explanation |
 | `disasm FILE [--class NAME]` | Print a class (or one class in a jar) as readable instructions; nothing runs |
 
 Ctrl+C during `run` stops the run and still writes the report.

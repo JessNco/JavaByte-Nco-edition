@@ -299,6 +299,12 @@ async fn config_schema(state: tauri::State<'_, AppState>) -> Result<Schema, Stri
     session(&state).schema()
 }
 
+/// The built-in host policy, rule by rule, for the Tools screen.
+#[tauri::command]
+async fn tool_policy(state: tauri::State<'_, AppState>) -> Result<javabyte_gui_protocol::tools::PolicyListing, String> {
+    session(&state).policy()
+}
+
 /// Every problem the tool finds in some settings.
 #[tauri::command]
 async fn check_settings(text: String, state: tauri::State<'_, AppState>) -> Result<Validation, String> {
@@ -533,7 +539,7 @@ fn main() {
         ($($extra:path),*) => {
             tauri::generate_handler![engine_status, choose_sample, choose_sample_folder, take_dropped, inspect_sample,
                 command_line, run_question, start_run, setup_status, change_preference, choose_java, choose_output_folder, run_status, stop_run, current_report, recent_runs, open_recent, events_page,
-                settings_text, set_settings_text, config_schema, check_settings, presets, presets_folder, save_preset,
+                settings_text, set_settings_text, config_schema, tool_policy, check_settings, presets, presets_folder, save_preset,
                 load_preset, delete_preset, import_settings, export_settings, choose_host_file,
                 open_report_file, open_report_folder, artifacts, artifact_page, artifact_disasm, save_zip, save_as_is,
                 compare_runs, run_again, event_actions, event_position $(, $extra)*]

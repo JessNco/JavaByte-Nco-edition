@@ -1,11 +1,11 @@
 //! The window's frame: skip link, heading, navigation between screens, and the live region.
 //!
-//! Screens follow the analysis: Start, Sample overview, Running, Report. Preferences are
-//! always available. Moving to a screen puts keyboard focus on its heading and changes the
+//! Screens follow the analysis: Start, Sample overview, Running, Report. Tools and Preferences
+//! are always available. Moving to a screen puts keyboard focus on its heading and changes the
 //! window title, so screen-reader users always know where they are (the usual pattern for
 //! single-window apps, since no page load announces it).
 
-use crate::screens::{compare, overview, preferences, report, running, settings as settings_screen, start};
+use crate::screens::{compare, overview, preferences, report, running, settings as settings_screen, start, tools};
 use crate::util::{announcer, focus_id};
 use crate::{events, prefs};
 use javabyte_gui_protocol::t;
@@ -21,6 +21,7 @@ pub enum Screen {
     Running,
     Report,
     Compare,
+    Tools,
     Preferences,
 }
 
@@ -33,6 +34,7 @@ impl Screen {
             Screen::Running => "screen-running",
             Screen::Report => "screen-report",
             Screen::Compare => "screen-compare",
+            Screen::Tools => "screen-tools",
             Screen::Preferences => "screen-preferences",
         })
     }
@@ -45,6 +47,7 @@ impl Screen {
             Screen::Running => "running-heading",
             Screen::Report => "report-heading",
             Screen::Compare => "compare-heading",
+            Screen::Tools => "tools-heading",
             Screen::Preferences => "preferences-heading",
         }
     }
@@ -140,6 +143,7 @@ pub fn App() -> impl IntoView {
                     {nav_item(Screen::Settings, Signal::derive(move || flow.overview.with(Option::is_some)), "nav-settings-unavailable")}
                     {nav_item(Screen::Running, Signal::derive(move || flow.run_started.get()), "nav-running-unavailable")}
                     {nav_item(Screen::Report, Signal::derive(move || flow.report.with(Option::is_some)), "nav-report-unavailable")}
+                    {nav_item(Screen::Tools, Signal::derive(|| true), "")}
                     {nav_item(Screen::Preferences, Signal::derive(|| true), "")}
                 </ul>
             </nav>
@@ -164,6 +168,9 @@ pub fn App() -> impl IntoView {
             </section>
             <section aria-labelledby="compare-heading" hidden=move || flow.screen.get() != Screen::Compare>
                 <compare::CompareScreen />
+            </section>
+            <section aria-labelledby="tools-heading" hidden=move || flow.screen.get() != Screen::Tools>
+                <tools::ToolsScreen />
             </section>
             <section aria-labelledby="preferences-heading" hidden=move || flow.screen.get() != Screen::Preferences>
                 <preferences::PreferencesScreen />

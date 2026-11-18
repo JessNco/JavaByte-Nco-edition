@@ -68,9 +68,11 @@ public final class HostBridge {
     }
 
     /**
-     * True for objects the emulator itself supplies as replacements for JDK objects: classes in
-     * the {@code env} package, and JDK proxies whose handler is emulator code (guest lambdas and
-     * simulated management beans). Calls on such objects are safe by construction.
+     * True for objects the emulator itself supplies as replacements for JDK objects: any
+     * {@link StandIn} implementation, wherever it lives (for example
+     * {@code SystemStubs.LegacyBase64}), classes in the {@code env} package, and JDK proxies whose
+     * handler is emulator code (guest lambdas and simulated management beans). Calls on such
+     * objects are safe by construction.
      */
     public static boolean isSimulated(Object value) {
         if (value == null) {

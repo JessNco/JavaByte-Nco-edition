@@ -2,6 +2,7 @@ package dev.javabyte;
 
 import dev.javabyte.config.ConfigLoader.ConfigException;
 import dev.javabyte.config.EmulatorConfig;
+import dev.javabyte.model.ClassRepository;
 import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestMethod;
 import dev.javabyte.plugin.EmulatorPlugin;
@@ -15,6 +16,7 @@ import dev.javabyte.vm.InvocationRouter;
 import dev.javabyte.vm.Scheduler;
 import dev.javabyte.vm.Values;
 import dev.javabyte.vm.VirtualMachine;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -83,88 +85,121 @@ public final class Emulator {
             Files.createDirectories(outputDirectory);
             trace = Files.newBufferedWriter(outputDirectory.resolve("trace.log"), StandardCharsets.UTF_8);
         }
-        EventLog events = new EventLog(config.limits.maxEventsPerCategory, trace);
-        VirtualMachine vm = new VirtualMachine(config, events, new Artifacts(outputDirectory));
-        control.attach(vm);
-        BuiltinStubs.install(vm);
+        // Declared before the try so that a failure part way through installing plugins, or
+        // while loading the sample, still closes the plugins installed so far.
         List<EmulatorPlugin> installed = new ArrayList<>();
-        for (EmulatorPlugin plugin : ServiceLoader.load(EmulatorPlugin.class)) {
-            if (config.plugins.containsKey(plugin.id())) {
-                Map<String, Object> settings = config.plugins.get(plugin.id());
-                plugin.install(vm, settings == null ? Map.of() : settings);
-                installed.add(plugin);
-                events.add("lifecycle", "plugin-installed", "id", plugin.id());
-            }
-        }
-
-        byte[] sampleBytes = Files.isDirectory(samplePath) ? new byte[0] : Files.readAllBytes(samplePath);
-        Manifest manifest = load(vm, samplePath, sampleBytes, "sample");
-        for (String extra : config.classpath) {
-            Path extraPath = Path.of(extra);
-            load(vm, extraPath, Files.isDirectory(extraPath) ? new byte[0] : Files.readAllBytes(extraPath), "classpath");
-        }
-        vm.env.initialise(samplePath.getFileName().toString(), sampleBytes);
-
-        String mainClass = manifest == null ? null : manifest.getMainAttributes().getValue("Main-Class");
-        Report report = new Report(config, samplePath, sampleBytes, mainClass, vm);
-        report.setRunListener(control::entryFinished);
-        control.started(report);
-        List<EmulatorConfig.EntryPoint> entries = config.entryPoints;
-        if (entries.isEmpty()) {
-            entries = List.of(new EmulatorConfig.EntryPoint());
-        }
-
-        List<EmulatorConfig.EntryPoint> plan = entries;
-        Thread emulatorThread = new Thread(null, () -> runAll(vm, plan, mainClass, report, control),
-                "javabyte-emulator", EMULATOR_STACK_BYTES);
-        // A daemon thread cannot keep the tool alive if guest-driven JDK code blocks forever.
-        emulatorThread.setDaemon(true);
-        emulatorThread.start();
-        boolean stopped = false;
+        EventLog events = null;
         try {
-            // Waits in short steps so that a stop request is acted on even while the sample is
-            // stuck inside a JDK call, where the emulator thread cannot notice it.
-            long deadline = System.nanoTime() + config.limits.timeoutSeconds * 1_000_000_000L;
-            while (emulatorThread.isAlive() && System.nanoTime() < deadline && !control.stopRequested()) {
-                emulatorThread.join(100);
+            events = new EventLog(config.limits.maxEventsPerCategory, trace);
+            VirtualMachine vm = new VirtualMachine(config, events, new Artifacts(outputDirectory));
+            control.attach(vm);
+            BuiltinStubs.install(vm);
+            for (EmulatorPlugin plugin : ServiceLoader.load(EmulatorPlugin.class)) {
+                if (config.plugins.containsKey(plugin.id())) {
+                    Map<String, Object> settings = config.plugins.get(plugin.id());
+                    plugin.install(vm, settings == null ? Map.of() : settings);
+                    installed.add(plugin);
+                    events.add("lifecycle", "plugin-installed", "id", plugin.id());
+                }
+            }
+
+            byte[] sampleBytes = Files.isDirectory(samplePath) ? new byte[0] : Files.readAllBytes(samplePath);
+            Manifest manifest = loadSample(vm.classes, samplePath, sampleBytes, "sample");
+            for (String extra : config.classpath) {
+                Path extraPath = Path.of(extra);
+                loadSample(vm.classes, extraPath, Files.isDirectory(extraPath) ? new byte[0] : Files.readAllBytes(extraPath),
+                        "classpath");
+            }
+            vm.env.initialise(samplePath.getFileName().toString(), sampleBytes);
+
+            String mainClass = manifest == null ? null : manifest.getMainAttributes().getValue("Main-Class");
+            Report report = new Report(config, samplePath, sampleBytes, mainClass, vm);
+            report.setRunListener(control::entryFinished);
+            control.started(report);
+            List<EmulatorConfig.EntryPoint> entries = config.entryPoints;
+            if (entries.isEmpty()) {
+                entries = List.of(new EmulatorConfig.EntryPoint());
+            }
+
+            List<EmulatorConfig.EntryPoint> plan = entries;
+            Thread emulatorThread = new Thread(null, () -> runAll(vm, plan, mainClass, report, control),
+                    "javabyte-emulator", EMULATOR_STACK_BYTES);
+            // A daemon thread cannot keep the tool alive if guest-driven JDK code blocks forever.
+            emulatorThread.setDaemon(true);
+            emulatorThread.start();
+            boolean stopped = false;
+            try {
+                // Waits in short steps so that a stop request is acted on even while the sample is
+                // stuck inside a JDK call, where the emulator thread cannot notice it.
+                long deadline = System.nanoTime() + config.limits.timeoutSeconds * 1_000_000_000L;
+                while (emulatorThread.isAlive() && System.nanoTime() < deadline && !control.stopRequested()) {
+                    emulatorThread.join(100);
+                }
+                if (emulatorThread.isAlive()) {
+                    stopped = control.stopRequested();
+                    vm.cancel(stopped ? EmulationAbort.Reason.STOPPED : EmulationAbort.Reason.TIMEOUT);
+                    emulatorThread.join(CANCEL_GRACE_MILLIS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
             if (emulatorThread.isAlive()) {
-                stopped = control.stopRequested();
-                vm.cancel(stopped ? EmulationAbort.Reason.STOPPED : EmulationAbort.Reason.TIMEOUT);
-                emulatorThread.join(CANCEL_GRACE_MILLIS);
+                // The thread is not at an instruction boundary, so it must be inside a real JDK call.
+                report.addRun("(run)", stopped ? "stopped" : "timeout",
+                        (stopped ? "stopped while blocked in host call " : "emulator thread blocked in host call ") + vm.hostCallInProgress(), 0);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            control.finalProgress();
+            try {
+                // Also done after a hard timeout: the stuck thread is parked inside the JDK, and
+                // losing every dropped file would throw away the evidence gathered so far.
+                finish(vm, config);
+            } catch (RuntimeException e) {
+                vm.events.add("gap", "finish-failed", "error", e.toString());
+            }
+            // Closed before the report is completed, so that a failure to close is in the report.
+            closePlugins(installed, events);
+            report.complete();
+            if (outputDirectory != null) {
+                report.writeJson(outputDirectory.resolve("report.json"));
+            }
+            events.flush();
+            if (trace != null) {
+                Writer finished = trace;
+                trace = null;
+                finished.close();
+            }
+            return report;
+        } finally {
+            // Only reached with work left to do when the run failed before its report was
+            // written, for example on a classpath entry that is not a jar.
+            closePlugins(installed, events);
+            if (trace != null) {
+                try {
+                    trace.close();
+                } catch (IOException ignored) {
+                    // The run has already failed; that failure is the one worth reporting.
+                }
+            }
         }
-        if (emulatorThread.isAlive()) {
-            // The thread is not at an instruction boundary, so it must be inside a real JDK call.
-            report.addRun("(run)", stopped ? "stopped" : "timeout",
-                    (stopped ? "stopped while blocked in host call " : "emulator thread blocked in host call ") + vm.hostCallInProgress(), 0);
-        }
-        control.finalProgress();
-        try {
-            // Also done after a hard timeout: the stuck thread is parked inside the JDK, and
-            // losing every dropped file would throw away the evidence gathered so far.
-            finish(vm, config);
-        } catch (RuntimeException e) {
-            vm.events.add("gap", "finish-failed", "error", e.toString());
-        }
+    }
+
+    /**
+     * Closes every installed plugin and empties the list, so a second call does nothing. A plugin
+     * that fails to close is recorded as a gap and does not stop the others from closing.
+     *
+     * @param events where failures are recorded; null if the event log was never created
+     */
+    private static void closePlugins(List<EmulatorPlugin> installed, EventLog events) {
         for (EmulatorPlugin plugin : installed) {
             try {
                 plugin.close();
             } catch (RuntimeException e) {
-                events.add("gap", "plugin-close-failed", "id", plugin.id(), "error", e.toString());
+                if (events != null) {
+                    events.add("gap", "plugin-close-failed", "id", plugin.id(), "error", e.toString());
+                }
             }
         }
-        report.complete();
-        if (outputDirectory != null) {
-            report.writeJson(outputDirectory.resolve("report.json"));
-        }
-        events.flush();
-        if (trace != null) {
-            trace.close();
-        }
-        return report;
+        installed.clear();
     }
 
     /** Collects what is only known once execution has stopped: unflushed output and dropped files. */
@@ -181,31 +216,55 @@ public final class Emulator {
 
     // ------------------------------------------------------------------ loading
 
-    /** Adds a jar, a class file or a directory of classes to the guest class repository. */
-    private static Manifest load(VirtualMachine vm, Path path, byte[] bytes, String origin) throws IOException {
+    /**
+     * Adds a jar, a class file or a directory of classes to a class repository. This is the one
+     * definition of what counts as a sample, so that {@code run} and {@code inspect} agree on it.
+     *
+     * <p>A directory is read as an unpacked jar: every {@code .class} file under it becomes a
+     * class, every file becomes a resource, and {@code META-INF/MANIFEST.MF} (in any letter case,
+     * as Windows would find it) supplies the manifest, so that its Main-Class is honoured.
+     *
+     * @param bytes  the file's content; ignored for a directory
+     * @param origin where the classes came from, as the report names it ({@code sample}, {@code classpath})
+     * @return the manifest, or null if there is none
+     * @throws ConfigException if the path is neither an archive, a class file nor a directory
+     */
+    public static Manifest loadSample(ClassRepository repository, Path path, byte[] bytes, String origin) throws IOException {
         if (Files.isDirectory(path)) {
+            Manifest manifest = null;
             try (Stream<Path> files = Files.walk(path)) {
-                for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+                for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile).sorted()::iterator) {
                     String relative = path.relativize(file).toString().replace('\\', '/');
                     byte[] data = Files.readAllBytes(file);
                     if (relative.endsWith(".class")) {
-                        vm.classes.addClassBytes(relative.substring(0, relative.length() - 6), data, origin);
+                        repository.addClassBytes(relative.substring(0, relative.length() - ".class".length()), data, origin);
                     }
-                    vm.classes.addResource(relative, data);
+                    repository.addResource(relative, data);
+                    if (relative.equalsIgnoreCase("META-INF/MANIFEST.MF")) {
+                        manifest = new Manifest(new ByteArrayInputStream(data));
+                    }
                 }
             }
-            return null;
+            return manifest;
         }
-        boolean isArchive = bytes.length > 3 && bytes[0] == 'P' && bytes[1] == 'K';
-        if (isArchive) {
-            return vm.classes.addArchive(bytes, origin);
+        if (isArchive(bytes)) {
+            return repository.addArchive(bytes, origin);
         }
-        boolean isClass = bytes.length > 3 && (bytes[0] & 0xFF) == 0xCA && (bytes[1] & 0xFF) == 0xFE;
-        if (!isClass) {
+        if (!isClassFile(bytes)) {
             throw new ConfigException(path + " is neither a jar/zip archive nor a class file");
         }
-        vm.classes.addClassFile(bytes, origin);
+        repository.addClassFile(bytes, origin);
         return null;
+    }
+
+    /** True if the bytes start like a zip archive (a jar is one), with room for more than the signature. */
+    public static boolean isArchive(byte[] bytes) {
+        return bytes.length > 3 && bytes[0] == 'P' && bytes[1] == 'K';
+    }
+
+    /** True if the bytes start with the class file signature {@code 0xCAFE}. */
+    public static boolean isClassFile(byte[] bytes) {
+        return bytes.length > 3 && (bytes[0] & 0xFF) == 0xCA && (bytes[1] & 0xFF) == 0xFE;
     }
 
     // ------------------------------------------------------------------ execution
@@ -232,7 +291,10 @@ public final class Emulator {
         }
     }
 
-    /** The name progress reports use for an entry point, matching the report's run labels. */
+    /**
+     * The name of an entry point, as both progress records and the report's run labels use it.
+     * It is defined only here, so that the two always match and the GUI can pair them.
+     */
     private static String entryLabel(EmulatorConfig.EntryPoint entry, String mainClass) {
         if ("clinit-sweep".equals(entry.type)) {
             return "clinit-sweep";
@@ -245,7 +307,7 @@ public final class Emulator {
     private static boolean runEntry(VirtualMachine vm, EmulatorConfig.EntryPoint entry, String mainClass, Report report) {
         vm.scheduler.beginEntry();
         if ("clinit-sweep".equals(entry.type)) {
-            return guarded(vm, report, "clinit-sweep", () -> sweepInitialisers(vm, entry));
+            return guarded(vm, report, entryLabel(entry, mainClass), () -> sweepInitialisers(vm, entry));
         }
         String className = entry.className != null ? entry.className : mainClass;
         if (className == null) {
@@ -253,7 +315,7 @@ public final class Emulator {
                     "The sample has no Main-Class. Set entryPoints[].class; candidates: " + mainCandidates(vm), 0);
             return false;
         }
-        String label = className + '.' + ("main".equals(entry.type) ? "main" : entry.method);
+        String label = entryLabel(entry, mainClass);
         boolean stopped = guarded(vm, report, label, () -> invokeEntry(vm, entry, className.replace('.', '/')));
         if (!stopped) {
             // Threads and timers the entry point started run once it has returned, like a JVM
@@ -387,9 +449,17 @@ public final class Emulator {
 
     /** Names of classes declaring {@code public static void main(String[])}, to help pick an entry point. */
     public static List<String> mainCandidates(VirtualMachine vm) {
+        return mainCandidates(vm.classes);
+    }
+
+    /**
+     * Names of classes in a repository that declare {@code public static void main(String[])}.
+     * Shared by the {@code no-entry-point} message and {@code inspect}, so both list the same classes.
+     */
+    public static List<String> mainCandidates(ClassRepository repository) {
         List<String> candidates = new ArrayList<>();
-        for (String name : new ArrayList<>(vm.classes.classNames())) {
-            GuestClass cls = vm.classes.find(name);
+        for (String name : new ArrayList<>(repository.classNames())) {
+            GuestClass cls = repository.find(name);
             if (cls != null && cls.declared("main", "([Ljava/lang/String;)V") != null) {
                 candidates.add(name);
             }

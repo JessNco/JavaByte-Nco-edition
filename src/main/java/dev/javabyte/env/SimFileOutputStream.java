@@ -7,7 +7,9 @@ import java.nio.channels.FileChannel;
 
 /**
  * A {@code FileOutputStream} that collects what the guest writes and stores it in the
- * {@link VirtualFileSystem} when flushed or closed.
+ * {@link VirtualFileSystem} when the stream is closed, or at the end of the run via
+ * {@link VirtualFileSystem#commitOpenStreams()} for streams the guest never closed. Flushing does
+ * not commit.
  */
 public final class SimFileOutputStream extends FileOutputStream {
 

@@ -2,6 +2,7 @@ package dev.javabyte;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.javabyte.config.EmulatorConfig;
@@ -179,6 +180,34 @@ class LoaderTest {
         EmulatorConfig exploded = Fixtures.config(directory);
         exploded.entryPoints.add(entry);
         assertEquals(List.of("1599"), Fixtures.stdout(Fixtures.run(exploded)));
+    }
+
+    @Test
+    void aDirectorySampleHonoursItsManifestMainClass() throws Exception {
+        // An unpacked jar: the manifest names the entry point, so no entryPoints are needed,
+        // exactly as 'inspect' reports it.
+        byte[] bytes = GeneratedClasses.manyLocals("Solo");
+        Path directory = Files.createDirectory(temp.resolve("unpacked"));
+        Files.write(directory.resolve("Solo.class"), bytes);
+        Files.createDirectories(directory.resolve("meta-inf"));
+        Files.writeString(directory.resolve("meta-inf/MANIFEST.MF"), "Manifest-Version: 1.0\r\nMain-Class: Solo\r\n\r\n");
+        Report report = Fixtures.run(Fixtures.config(directory));
+        assertEquals(List.of("1599"), Fixtures.stdout(report), Fixtures.outcomes(report));
+        assertEquals("Solo", report.mainClass(), Fixtures.outcomes(report));
+    }
+
+    @Test
+    void aFailedLoadStillClosesInstalledPlugins() throws Exception {
+        EmulatorConfig config = Fixtures.config(Fixtures.jar(temp, Map.of(), Basics.class));
+        config.plugins.put("test-native", Map.of());
+        config.classpath.add(Files.writeString(temp.resolve("notes.txt"), "not a jar").toString());
+        int before = dev.javabyte.TestNativePlugin.closed;
+        Path out = temp.resolve("failed-out");
+        assertThrows(dev.javabyte.config.ConfigLoader.ConfigException.class, () -> Emulator.run(config, out));
+        assertEquals(before + 1, dev.javabyte.TestNativePlugin.closed, "the plugin installed before the failure is closed");
+        // The trace writer is closed too, so the file can be removed straight away (on Windows
+        // an open file cannot be).
+        Files.delete(out.resolve("trace.log"));
     }
 
     /** Adds a class and its nested classes under their real entry names. */

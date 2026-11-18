@@ -433,9 +433,21 @@ fn events_page(request: PageRequest, state: tauri::State<'_, AppState>) -> Page 
 /// Where the app's parts are: its resource folder (where installers put the runtime, the jar
 /// and the bridge), its own folder, its data folder and Documents/JavaByte.
 fn setup_for(resources: PathBuf, data: PathBuf, documents: Option<PathBuf>) -> Setup {
+    let resources = plain_path(resources);
     let exe_dir = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
     let default_output = documents.unwrap_or_else(|| data.clone()).join("JavaByte");
     Setup { resources, exe_dir, data, default_output }
+}
+
+/// Removes Windows' `\\?\` prefix from a path such as `\\?\C:\Program Files\JavaByte`, as
+/// Tauri reports its resource folder. Java cannot open a jar named that way ("Could not find or
+/// load main class"), and the prefix is only needed for paths longer than 260 characters.
+fn plain_path(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|p| p.strip_prefix(r"\\?\")) {
+        // Only drive paths (C:\...); \\?\UNC\ paths would need their own form.
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
 }
 
 /// `--self-check`: prints what the app found and whether the tool works, then exits. Support
@@ -532,4 +544,17 @@ fn main() {
     #[cfg(feature = "egress-probe")]
     let builder = egress_probe::install(builder).invoke_handler(commands!(egress_probe::probe_report));
     builder.run(context).expect("the JavaByte window could not be opened");
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::plain_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn verbatim_drive_paths_lose_their_prefix() {
+        assert_eq!(plain_path(PathBuf::from(r"\\?\C:\Program Files\JavaByte")), PathBuf::from(r"C:\Program Files\JavaByte"));
+        assert_eq!(plain_path(PathBuf::from(r"\\?\UNC\server\share")), PathBuf::from(r"\\?\UNC\server\share"));
+        assert_eq!(plain_path(PathBuf::from("/usr/lib/JavaByte")), PathBuf::from("/usr/lib/JavaByte"));
+    }
 }

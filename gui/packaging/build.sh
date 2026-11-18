@@ -67,7 +67,8 @@ else
         cargo build --release -p javabyte-sandbox
         addon="JavaByte-$version-windows-x86_64-sandbox-addon"
         repo="$(cd "$gui/.." && pwd)"
-        wix=(${WIX:-wix})
+        # Not $WIX: Windows runners set that to the WiX 3 folder, which Tauri uses.
+        wix=(${WIX5_CLI:-wix})
         "${wix[@]}" build -arch x64 -d "Version=$version" \
             -d "Helper=$(cygpath -w "$gui/target/release/javabyte-sandbox.exe")" \
             -d "Readme=$(cygpath -w "$gui/packaging/windows/sandbox-addon-README.txt")" \

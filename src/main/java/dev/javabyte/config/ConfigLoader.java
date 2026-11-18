@@ -172,8 +172,9 @@ public final class ConfigLoader {
     }
 
     /**
-     * Problems in a bound config: allowed values (from {@link ConfigDoc}), and rules involving
-     * more than one value, which the structural check cannot see.
+     * Problems in a bound config: allowed values (from {@link ConfigDoc}), numbers that must be
+     * positive, addresses that must be well formed, and rules involving more than one value,
+     * which the structural check cannot see.
      */
     public static List<Problem> problems(EmulatorConfig config) {
         List<Problem> found = new ArrayList<>();
@@ -217,8 +218,21 @@ public final class ConfigLoader {
                         + "2024-03-01T09:00:00Z, found '" + config.environment.clockStart + "'"));
             }
         }
+        // The simulated hardware: a machine with no processors, memory or screen, or a process
+        // id of 0 (the System Idle Process), is impossible and would fail the run part way.
+        EmulatorConfig.Environment environment = config.environment;
+        positive(found, "environment.processors", environment.processors);
+        positive(found, "environment.memoryMegabytes", environment.memoryMegabytes);
+        positive(found, "environment.screenWidth", environment.screenWidth);
+        positive(found, "environment.screenHeight", environment.screenHeight);
+        positive(found, "environment.processId", environment.processId);
         timeZone(found, config.environment.timeZone);
         locale(found, config.environment.locale);
+        // Addresses and the MAC address: the same checks the network simulator makes when the
+        // run starts, so that 'validate' lists them too instead of the run stopping later.
+        if (config.network.dns != null) {
+            found.addAll(dev.javabyte.env.NetworkSimulator.configProblems(config.network));
+        }
         for (int i = 0; i < config.network.http.size(); i++) {
             pattern(found, "network.http[" + i + "].url", config.network.http.get(i).url);
         }
@@ -231,6 +245,7 @@ public final class ConfigLoader {
         return found;
     }
 
+    /** Adds a problem for {@code key} unless its value is more than zero. */
     private static void positive(List<Problem> found, String key, long value) {
         if (value <= 0) {
             found.add(new Problem(key, key + " must be more than 0, found " + value));

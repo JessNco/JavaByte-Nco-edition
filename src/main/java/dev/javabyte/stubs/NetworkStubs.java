@@ -170,10 +170,15 @@ final class NetworkStubs {
         @Override public String toString() { return "name:lo (" + getDisplayName() + ")"; }
     }
 
+    /**
+     * The simulated connection for a URL: HTTP and HTTPS through the network simulator, file:
+     * from the virtual disk, and jar: entries from the sample. Nothing is fetched for real.
+     */
     private static URLConnection open(VirtualMachine vm, URL url) throws IOException {
         switch (url.getProtocol()) {
             case "http", "https":
-                return new SimHttpConnection(url, vm.env.network);
+                // An http: URL gives a plain HttpURLConnection, an https: one an HttpsURLConnection.
+                return SimHttpConnection.open(url, vm.env.network);
             case "file": {
                 String path = FileStubs.pathFromFileUrl(url.getPath(), vm.env.windows);
                 byte[] data = vm.env.files.read(path);

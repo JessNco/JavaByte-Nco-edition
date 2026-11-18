@@ -139,18 +139,20 @@ public final class EmulatorConfig {
         /**
          * The guest's time zone. Without it the sample would see the analysis computer's own
          * zone, which tells it where the sandbox is and changes the report from one computer to
-         * the next. The default matches the simulated en-US Windows desktop.
+         * the next. The default matches the simulated en-US Windows desktop and is taken from
+         * {@link dev.javabyte.env.GuestRegion#DEFAULT_TIME_ZONE}, so the two cannot drift apart.
          */
         @ConfigDoc("The pretend computer's time zone, as a region name such as America/New_York or Europe/London.")
-        public String timeZone = "America/New_York";
+        public String timeZone = dev.javabyte.env.GuestRegion.DEFAULT_TIME_ZONE;
 
         /**
          * The guest's language and region. Like {@link #timeZone}, it keeps the analysis
          * computer's own settings away from the sample, and it decides the user.language and
-         * user.country properties.
+         * user.country properties. The default is
+         * {@link dev.javabyte.env.GuestRegion#DEFAULT_LOCALE}.
          */
         @ConfigDoc("The pretend computer's language and region, as a language tag such as en-US or de-DE.")
-        public String locale = "en-US";
+        public String locale = dev.javabyte.env.GuestRegion.DEFAULT_LOCALE;
 
         @ConfigDoc("Seed for random numbers the sample does not seed itself, so that runs are repeatable. Empty means truly random.")
         public Long randomSeed = 0x4A617661L;

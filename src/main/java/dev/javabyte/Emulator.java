@@ -202,10 +202,14 @@ public final class Emulator {
         installed.clear();
     }
 
-    /** Collects what is only known once execution has stopped: unflushed output and dropped files. */
+    /**
+     * Collects what is only known once execution has stopped: unflushed file output, open
+     * sockets, input written to launched processes but never flushed, and dropped files.
+     */
     private static void finish(VirtualMachine vm, EmulatorConfig config) {
         vm.env.files.commitOpenStreams();
         vm.env.network.reportOpenSockets();
+        vm.env.reportProcessInput();
         if (config.output.dumpDroppedFiles) {
             vm.env.files.guestFiles().forEach(node -> vm.artifacts.save("dropped", node.path, node.data));
         }

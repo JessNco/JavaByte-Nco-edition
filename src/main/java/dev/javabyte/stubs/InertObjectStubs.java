@@ -49,6 +49,7 @@ final class InertObjectStubs {
             "javax/crypto/Cipher", "javax/crypto/Mac", "javax/crypto/KeyGenerator", "javax/crypto/KeyAgreement",
             "javax/crypto/SecretKeyFactory", "javax/crypto/ExemptionMechanism");
 
+    /** Installs the stubs for URLs, reverse lookups and security providers; called from {@link BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
         installUrls(vm, stubs);

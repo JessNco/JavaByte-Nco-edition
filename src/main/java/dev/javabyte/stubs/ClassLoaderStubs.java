@@ -3,7 +3,6 @@ package dev.javabyte.stubs;
 import dev.javabyte.env.SimPlatformClassLoader;
 import dev.javabyte.env.SimURLClassLoader;
 import dev.javabyte.host.CallContext;
-import dev.javabyte.host.HostBridge;
 import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestMethod;
 import dev.javabyte.model.InstanceState;
@@ -25,23 +24,33 @@ import org.objectweb.asm.Type;
  * Class loading.
  *
  * <p>No guest class is ever loaded into the host JVM. Every loader method is answered from the
- * guest class repository, and the three ways of creating a class from bytes at run time
- * ({@code ClassLoader.defineClass}, {@code Unsafe.defineClass}, and {@code Lookup.defineClass}
- * in {@link InvokeStubs}) all end in {@link VirtualMachine#defineClass}, which records the class
+ * guest class repository, and every way of creating a class from bytes at run time
+ * ({@code ClassLoader.defineClass} and {@code Unsafe.defineClass}/{@code defineAnonymousClass}
+ * here, and {@code Lookup.defineClass}/{@code defineHiddenClass}/{@code defineHiddenClassWithClassData}
+ * in {@link InvokeStubs}) ends in {@link VirtualMachine#defineClass}, which records the class
  * and makes it available to the interpreter. This is how packed and staged payloads are both
  * captured and followed.
  *
  * <p>The guest never holds a loader that fetches anything by itself. {@code new URLClassLoader}
  * yields a {@link SimURLClassLoader}, which only remembers its URLs; the archives they name are
- * read here, from the virtual disk or the network simulator. The application loader and its
- * parent are simulated too, and look like those of the Java version the guest environment
- * advertises.
+ * read here, from the virtual disk or the network simulator. A sample's own subclass of
+ * {@code URLClassLoader} is built on the same simulated loader (see
+ * {@link dev.javabyte.shell.ShellFactory}). The application loader and its parent are
+ * simulated too, and look like those of the Java version the guest environment advertises.
+ *
+ * <p>Objects the JDK would make inert at creation, such as security providers, have their
+ * own stubs in {@link InertObjectStubs}.
  */
 final class ClassLoaderStubs {
 
     private ClassLoaderStubs() {}
 
+    /**
+     * Installs the class-loading stubs and makes the application loader's own text follow the
+     * advertised Java version.
+     */
     static void install(VirtualMachine vm) {
+        vm.env.appLoader.followJavaVersion(() -> SystemStubs.legacyJava(vm.env));
         // Archives already mounted from URLClassLoader URLs, so each is read only once.
         Set<String> mountedArchives = new HashSet<>();
         BuiltinLoaders builtins = new BuiltinLoaders(vm);
@@ -62,11 +71,6 @@ final class ClassLoaderStubs {
             vm.stubs.on(unsafe, "defineAnonymousClass", ctx ->
                     vm.defineClass(null, (byte[]) ctx.arg(1), "Unsafe.defineAnonymousClass"));
         }
-
-        // Objects that JDK code would otherwise use to reach the network or load classes on
-        // the guest's behalf. Security providers belong here in particular: each is a table of
-        // class names that the JDK loads and constructs.
-        InertObjectStubs.install(vm);
     }
 
     /** Creates the guest's {@code URLClassLoader} from any constructor or {@code newInstance} overload. */
@@ -107,12 +111,9 @@ final class ClassLoaderStubs {
             this.vm = vm;
         }
 
-        /**
-         * True when the guest environment advertises Java 8 or older. Read on each call: the
-         * properties are filled in after stubs are installed, and config can change them.
-         */
+        /** True when the guest environment advertises Java 8 or older; see {@link SystemStubs#legacyJava}. */
         boolean java8() {
-            return vm.env.properties.getProperty("java.specification.version", "1.8").startsWith("1.");
+            return SystemStubs.legacyJava(vm.env);
         }
 
         /** The application loader's parent; created on first use, then always the same object. */
@@ -129,13 +130,12 @@ final class ClassLoaderStubs {
             return loader == vm.env.appLoader || (loader != null && loader == platform);
         }
 
-        /** {@code toString()} of a built-in loader. */
+        /**
+         * {@code toString()} of a built-in loader. The application loader's text is its own, so
+         * guest calls that bypass the stubs see the same.
+         */
         String describe(Object loader) {
-            if (loader == vm.env.appLoader) {
-                return java8() ? "sun.misc.Launcher$AppClassLoader@18b4aac2"
-                        : "jdk.internal.loader.ClassLoaders$AppClassLoader@1b6d3586";
-            }
-            return platform().toString();
+            return loader == vm.env.appLoader ? vm.env.appLoader.toString() : platform().toString();
         }
 
         /** {@code hashCode()} of a built-in loader: the value its {@code toString()} shows. */
@@ -156,6 +156,10 @@ final class ClassLoaderStubs {
         }
     }
 
+    /**
+     * Answers every {@code ClassLoader} method the guest calls, on any loader it holds: the
+     * built-in ones, {@code URLClassLoader}s and the sample's own loaders.
+     */
     private static Object loaderOperation(VirtualMachine vm, CallContext ctx, Set<String> mountedArchives,
             BuiltinLoaders builtins) throws Exception {
         switch (ctx.name) {
@@ -177,7 +181,8 @@ final class ClassLoaderStubs {
                 if (builtins.isBuiltin(ctx.receiver)) {
                     return null;
                 }
-                return ctx.receiver instanceof SimURLClassLoader urlLoader ? urlLoader.guestParent() : vm.env.appLoader;
+                return ctx.receiver instanceof SimURLClassLoader urlLoader && !urlLoader.hasDefaultParent()
+                        ? urlLoader.guestParent() : vm.env.appLoader;
             case "getName":
                 if (builtins.isBuiltin(ctx.receiver)) {
                     return builtins.name(ctx.receiver);
@@ -208,15 +213,17 @@ final class ClassLoaderStubs {
             case "getPackages", "getDefinedPackages":
                 return new Package[0];
             case "hashCode":
-                return builtins.isBuiltin(ctx.receiver) ? builtins.hash(ctx.receiver) : System.identityHashCode(ctx.receiver);
+                // A real identity hash would differ between runs; see TypeSystem.identityHash.
+                return builtins.isBuiltin(ctx.receiver) ? builtins.hash(ctx.receiver) : vm.types.identityHash(ctx.receiver);
             case "equals":
                 return ctx.receiver == ctx.arg(0) ? 1 : 0;
             case "toString":
                 if (builtins.isBuiltin(ctx.receiver)) {
                     return builtins.describe(ctx.receiver);
                 }
-                return ctx.receiver instanceof SimURLClassLoader ? ctx.receiver.toString()
-                        : visibleClassName(vm, ctx.receiver) + '@' + Integer.toHexString(System.identityHashCode(ctx.receiver));
+                // Object.toString's form, with the class the guest sees: a sample's own loader by
+                // its own name, the emulator's loaders by the JDK class they stand for.
+                return vm.types.nameOf(ctx.receiver) + '@' + Integer.toHexString(vm.types.identityHash(ctx.receiver));
             case "resolveClass", "close", "setDefaultAssertionStatus", "setPackageAssertionStatus",
                     "setClassAssertionStatus", "clearAssertionStatus", "definePackage", "getPackage",
                     "getDefinedPackage":
@@ -225,21 +232,6 @@ final class ClassLoaderStubs {
             default:
                 return vm.router.gap("ClassLoader." + ctx.name + ctx.desc, ctx.desc);
         }
-    }
-
-    /**
-     * The class name the guest would see for a loader. The emulator's own loaders are named
-     * after the JDK class they extend, as {@code getClass()} reports them.
-     */
-    private static String visibleClassName(VirtualMachine vm, Object loader) {
-        if (!HostBridge.isSimulated(loader)) {
-            return vm.types.nameOf(loader);
-        }
-        Class<?> cls = loader.getClass();
-        while (cls.getName().startsWith("dev.javabyte.")) {
-            cls = cls.getSuperclass();
-        }
-        return cls.getName();
     }
 
     private static String stripSlash(String name) {

@@ -202,7 +202,7 @@ matches every typed word in any column, with a live count.
 
 Java runtime (bundled, or a chosen Java 17+), native bridge status, default output folder,
 appearance (follow system, light, dark, high contrast), text size, reduced motion, line
-spacing, and the isolation setting on Linux (below).
+spacing, and the isolation setting (Linux, and Windows with the sandbox add-on; below).
 
 ## Command-line parity
 
@@ -212,14 +212,14 @@ spacing, and the isolation setting on Linux (below).
 | `run -c FILE` | Open a config file, or Settings → Import |
 | `run -s KEY=VALUE` | The corresponding form field; the YAML tab for anything else |
 | `run -o DIR` | Settings → Output, and Preferences default |
-| `run --json` | Report → Save report (the same `report.json`) |
-| `inspect [--json]` | Sample overview; Save as JSON |
+| `run --json` | Report → Copy folder path (`report.json` is already written to the output folder) |
+| `inspect [--json]` | Sample overview (no JSON export in the GUI) |
 | `init SAMPLE` | Settings → Start from this sample's suggestions; Export |
 | `defaults [--json]` | Tools → Defaults |
 | `policy [--json]` | Tools → Policy |
 | `disasm FILE [--class NAME]` | Report → Files → a saved class, shown as bytecode |
 | exit codes 0/1/2/3 | Outcome shown in words; 1 is shown as a tool fault with a "copy details" button |
-| `scripts/run-isolated.sh` | Linux: Preferences → "Run without network access" (on by default) |
+| `scripts/run-isolated.sh` | Preferences → "Turn off the network for each analysis" (on by default; Linux, and Windows with the sandbox add-on) |
 | Plugins (`plugins:`) | Settings → Plugins, from the schema |
 | Native bridge | Settings → Plugins → Native bridge, available because it is bundled |
 
@@ -237,8 +237,10 @@ accessible name.
 
 **Keyboard.** Everything works without a mouse, in a logical tab order, with a visible focus
 indicator at least 2 px thick and 3:1 contrast that is never hidden behind sticky headers
-(WCAG 2.4.11). A "skip to content" link. Shortcuts always use a modifier key, are listed in a
-help dialog, and can be changed. The events grid uses arrow keys inside and a single tab stop.
+(WCAG 2.4.11). A "skip to content" link. Shortcuts always use a modifier key and are given to
+assistive technology with `aria-keyshortcuts`; there is one so far, Control+Period to stop a
+run. A help dialog listing shortcuts, and changing them, are not built: with one shortcut they
+are not needed yet. The events grid uses arrow keys inside and a single tab stop.
 
 **Screen readers.** Tested with NVDA on Windows and Orca on Linux. Live regions are polite and
 throttled. Tables have header cells and captions. Long-running states are announced at start

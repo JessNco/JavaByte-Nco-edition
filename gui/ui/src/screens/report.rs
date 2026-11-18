@@ -1,13 +1,38 @@
-//! Report: what the sample did. Tabs for the summary, the indicators and every event.
+//! Report: what the sample did. Tabs for the summary, the indicators, every event, limits and
+//! gaps, saved files, and the settings used (the last three live in `report_more`).
 
 use crate::app::{EventsPanel, flow};
 use crate::screens::report_more::{FilesPanel, LimitsPanel, SettingsUsedPanel};
-use crate::util::{Disclosure, copied_message, copy_text, focus_id, fmt_num};
+use crate::util::{Disclosure, Tab, copied_message, copy_text, fmt_num, tab_list};
 use javabyte_gui_protocol::{display_text, t};
 use leptos::prelude::*;
 
-/// Tab stems; each tab's label is the message `report-tab-<stem>`.
-const TABS: [&str; 6] = ["summary", "indicators", "events", "limits", "files", "settings"];
+/// The Report screen's tabs, in the order shown. Each tab's label is the message
+/// `report-tab-<stem>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReportTab {
+    Summary,
+    Indicators,
+    Events,
+    Limits,
+    Files,
+    Settings,
+}
+
+impl Tab for ReportTab {
+    const ALL: &'static [Self] = &[Self::Summary, Self::Indicators, Self::Events, Self::Limits, Self::Files, Self::Settings];
+
+    fn stem(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Indicators => "indicators",
+            Self::Events => "events",
+            Self::Limits => "limits",
+            Self::Files => "files",
+            Self::Settings => "settings",
+        }
+    }
+}
 /// Characters of one indicator shown before "show all" is needed; the full text is in the file.
 const ITEM_CHARS: usize = 300;
 
@@ -15,29 +40,14 @@ const ITEM_CHARS: usize = 300;
 #[component]
 pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
     let flow = flow();
-    let active = RwSignal::new(0usize);
+    let active = RwSignal::new(ReportTab::Summary);
     let copied = RwSignal::new(String::new());
 
     // A newly opened report starts on its summary.
     Effect::new(move |_| {
         flow.report.track();
-        active.set(0);
+        active.set(ReportTab::Summary);
     });
-
-    // Tabs with automatic activation, as tested in phase 0.
-    let on_tab_key = move |ev: leptos::ev::KeyboardEvent| {
-        let current = active.get_untracked();
-        let next = match ev.key().as_str() {
-            "ArrowRight" => (current + 1) % TABS.len(),
-            "ArrowLeft" => (current + TABS.len() - 1) % TABS.len(),
-            "Home" => 0,
-            "End" => TABS.len() - 1,
-            _ => return,
-        };
-        ev.prevent_default();
-        active.set(next);
-        focus_id(format!("report-tab-{}", TABS[next]));
-    };
 
     view! {
         <h2 id="report-heading" tabindex="-1">
@@ -46,23 +56,9 @@ pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
         <div class="buttons">
             <button type="button" on:click=move |_| crate::app::show(crate::app::Screen::Compare)>{t!("report-compare")}</button>
         </div>
-        <div role="tablist" aria-label=t!("report-tabs") class="tablist" on:keydown=on_tab_key>
-            {TABS.iter().enumerate().map(|(index, stem)| view! {
-                <button
-                    type="button"
-                    role="tab"
-                    id=format!("report-tab-{stem}")
-                    aria-controls=format!("report-panel-{stem}")
-                    aria-selected=move || (active.get() == index).to_string()
-                    tabindex=move || if active.get() == index { "0" } else { "-1" }
-                    on:click=move |_| active.set(index)
-                >
-                    {javabyte_gui_protocol::i18n::tr(&format!("report-tab-{stem}"), None)}
-                </button>
-            }).collect_view()}
-        </div>
+        {tab_list("report", t!("report-tabs"), active, |tab| javabyte_gui_protocol::i18n::tr(&format!("report-tab-{}", tab.stem()), None))}
 
-        <div role="tabpanel" id="report-panel-summary" aria-labelledby="report-tab-summary" hidden=move || active.get() != 0>
+        <div role="tabpanel" id="report-panel-summary" aria-labelledby="report-tab-summary" hidden=move || active.get() != ReportTab::Summary>
             {move || flow.report.get().map(|r| {
                 let folder = r.output_dir.clone();
                 view! {
@@ -102,7 +98,7 @@ pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
             })}
         </div>
 
-        <div role="tabpanel" id="report-panel-indicators" aria-labelledby="report-tab-indicators" hidden=move || active.get() != 1>
+        <div role="tabpanel" id="report-panel-indicators" aria-labelledby="report-tab-indicators" hidden=move || active.get() != ReportTab::Indicators>
             {move || flow.report.get().map(|r| {
                 if r.sections.is_empty() {
                     view! { <p>{t!("indicators-none")}</p> }.into_any()
@@ -150,16 +146,16 @@ pub fn ReportScreen(visible: Signal<bool>) -> impl IntoView {
             })}
         </div>
 
-        <div role="tabpanel" id="report-panel-events" aria-labelledby="report-tab-events" hidden=move || active.get() != 2>
-            <EventsPanel visible=Signal::derive(move || visible.get() && active.get() == 2) reload=Signal::derive(move || flow.report.with(|r| r.as_ref().map(|r| r.output_dir.clone()))) />
+        <div role="tabpanel" id="report-panel-events" aria-labelledby="report-tab-events" hidden=move || active.get() != ReportTab::Events>
+            <EventsPanel visible=Signal::derive(move || visible.get() && active.get() == ReportTab::Events) reload=Signal::derive(move || flow.report.with(|r| r.as_ref().map(|r| r.output_dir.clone()))) />
         </div>
-        <div role="tabpanel" id="report-panel-limits" aria-labelledby="report-tab-limits" hidden=move || active.get() != 3>
+        <div role="tabpanel" id="report-panel-limits" aria-labelledby="report-tab-limits" hidden=move || active.get() != ReportTab::Limits>
             <LimitsPanel />
         </div>
-        <div role="tabpanel" id="report-panel-files" aria-labelledby="report-tab-files" hidden=move || active.get() != 4>
-            <FilesPanel visible=Signal::derive(move || visible.get() && active.get() == 4) />
+        <div role="tabpanel" id="report-panel-files" aria-labelledby="report-tab-files" hidden=move || active.get() != ReportTab::Files>
+            <FilesPanel visible=Signal::derive(move || visible.get() && active.get() == ReportTab::Files) />
         </div>
-        <div role="tabpanel" id="report-panel-settings" aria-labelledby="report-tab-settings" hidden=move || active.get() != 5>
+        <div role="tabpanel" id="report-panel-settings" aria-labelledby="report-tab-settings" hidden=move || active.get() != ReportTab::Settings>
             <SettingsUsedPanel />
         </div>
     }

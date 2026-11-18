@@ -10,9 +10,9 @@ helper; this add-on is that helper, downloaded separately, so the main installer
 | --- | --- |
 | Which isolation | **AppContainer** on every edition of Windows 10 and 11, **plus Windows Sandbox** where Windows offers it (Pro, Enterprise, Education, with virtualisation on and the feature enabled) |
 | Default | AppContainer: no network, starts in about a second |
-| Windows Sandbox | A Preferences choice, "Strongest isolation, slower start" |
+| Windows Sandbox | A Preferences choice, "Windows Sandbox: strongest isolation, a fresh Windows for each analysis; slower to start" |
 | Each analysis | A fresh Windows Sandbox every time; nothing carries over |
-| The slow start | The Running screen shows "Starting the sandbox (usually 20–40 seconds)", announced to screen readers; Stop works during start-up |
+| The slow start | The Running screen shows "Starting Windows Sandbox (usually 20 to 40 seconds)", announced to screen readers; Stop works during start-up |
 | If the sandbox fails | No silent fallback: the app says why and asks before using AppContainer for that analysis |
 | Distribution | A separate download (`…-windows-x86_64-sandbox-addon.msi`, and a zip for the portable edition). Signed later, with the main installer |
 
@@ -55,7 +55,7 @@ sandbox's, so the app builds one command line for every way of running.
   with it, "Turn off the network for each analysis" and the choice between AppContainer and
   Windows Sandbox, each saying whether it is available here and why not.
 - The Running screen shows the starting stage while Windows Sandbox starts.
-- A failed sandbox start ends the run with the reason, and offers "Analyse with AppContainer
+- A failed sandbox start ends the run with the reason, and offers "Analyse in an AppContainer
   instead".
 
 ## Tests
@@ -65,8 +65,9 @@ sandbox's, so the app builds one command line for every way of running.
 - On the Windows CI runner: `check`; a program in the AppContainer cannot reach the network
   while the same program outside it can; a whole analysis of a harmless fixture through the
   helper writes its report; grants are gone afterwards. Windows Sandbox needs nested
-  virtualisation, which CI runners do not have, so it is tested by hand: see the checklist in
-  [PHASE6-AUDIT.md](PHASE6-AUDIT.md) and the steps below.
+  virtualisation, which CI runners do not have, so it is tested by hand: see the steps below,
+  and steps D4 to D6 and F3 to F4 of the accessibility checklist in
+  [PHASE6-AUDIT.md](PHASE6-AUDIT.md), which cover what a screen reader says at each stage.
 
 ### Checking Windows Sandbox by hand
 

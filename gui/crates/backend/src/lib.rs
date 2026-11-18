@@ -8,10 +8,14 @@
 //! - [`config`] edits settings as YAML in place, keeping comments;
 //! - [`events`], [`report`] page through a report's events;
 //! - `artifacts` reads and saves the files a run produced (desktop only);
+//! - `setup` finds the bundled runtime, jar, bridge and Windows sandbox helper, and the
+//!   preferences that choose between them (desktop only);
+//! - `isolation` runs the tool with no network (Linux only);
 //! - [`simulation`], [`synthetic`] stand in for a real run and real events in browser tests.
 //!
-//! Everything except `artifacts` also compiles to WebAssembly, so the screens can run in an
-//! ordinary browser for the automated accessibility tests, without the desktop shell.
+//! Everything except `artifacts`, `setup` and `isolation` also compiles to WebAssembly, so the
+//! screens can run in an ordinary browser for the automated accessibility tests, without the
+//! desktop shell.
 
 /// Files a run saved: listing, pages, and safe copies.
 #[cfg(not(target_arch = "wasm32"))]
@@ -21,7 +25,8 @@ pub mod config;
 /// Runs with no network, on Linux.
 #[cfg(target_os = "linux")]
 pub mod isolation;
-/// The bundled runtime, jar and bridge, and the preferences that choose between them.
+/// The bundled runtime, jar, bridge and Windows sandbox helper, and the preferences that
+/// choose between them.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod setup;
 /// Paging and filtering events.

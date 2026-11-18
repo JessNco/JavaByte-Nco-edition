@@ -96,12 +96,79 @@ mod tests {
         }
     }
 
+    /// Applies a JSON merge patch (RFC 7396) to `target`, as the Tauri CLI does with each
+    /// `--config` file given to `cargo tauri build`. A local copy, so the test needs no
+    /// dependency of its own; the rules are short: objects merge key by key, `null` removes a
+    /// key, and anything else (arrays included) replaces the value whole.
+    fn merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+        let Some(patch) = patch.as_object() else {
+            *target = patch.clone();
+            return;
+        };
+        if !target.is_object() {
+            *target = serde_json::json!({});
+        }
+        let target = target.as_object_mut().expect("just made an object");
+        for (key, value) in patch {
+            if value.is_null() {
+                target.remove(key);
+            } else {
+                merge_patch(target.entry(key.clone()).or_insert(serde_json::Value::Null), value);
+            }
+        }
+    }
+
+    #[test]
+    fn merge_patches_follow_the_standard() {
+        let mut target = serde_json::json!({"a": {"b": 1, "c": [1, 2]}, "d": 4});
+        merge_patch(&mut target, &serde_json::json!({"a": {"b": null, "c": [3]}, "e": {"f": 5}}));
+        assert_eq!(target, serde_json::json!({"a": {"c": [3]}, "d": 4, "e": {"f": 5}}));
+    }
+
+    /// The configuration of every build the installers make: the base file alone (plain
+    /// `cargo build`, the egress probe), with the bundle overlay, and with the bundle and
+    /// bridge overlays (gui/packaging/build.sh).
+    fn shipped_configurations() -> Vec<(&'static str, serde_json::Value)> {
+        let read = |text: &str| -> serde_json::Value { serde_json::from_str(text).unwrap() };
+        let base = read(include_str!("../tauri.conf.json"));
+        let bundle = read(include_str!("../../packaging/tauri.bundle.conf.json"));
+        let bridge = read(include_str!("../../packaging/tauri.bridge.conf.json"));
+        let mut with_bundle = base.clone();
+        merge_patch(&mut with_bundle, &bundle);
+        let mut with_bridge = with_bundle.clone();
+        merge_patch(&mut with_bridge, &bridge);
+        vec![("tauri.conf.json", base), ("with the bundle overlay", with_bundle), ("with the bundle and bridge overlays", with_bridge)]
+    }
+
     /// The network containment lives partly in configuration, where a one-word edit could
-    /// undo it without any code changing. This test fails if any part is loosened. Changing
-    /// it is a security decision; rerun tests/egress after any such change.
+    /// undo it without any code changing. This test fails if any part is loosened, in the base
+    /// configuration or by a packaging overlay merged into it for the installers. Changing it
+    /// is a security decision; rerun tests/egress after any such change.
     #[test]
     fn configuration_keeps_the_window_sealed() {
-        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        for (name, config) in shipped_configurations() {
+            assert_sealed(name, &config);
+        }
+        // The overlays are for packaging only. Anything else in them would be missed by the
+        // egress test, which builds without them.
+        for (name, overlay) in [
+            ("tauri.bundle.conf.json", include_str!("../../packaging/tauri.bundle.conf.json")),
+            ("tauri.bridge.conf.json", include_str!("../../packaging/tauri.bridge.conf.json")),
+        ] {
+            let overlay: serde_json::Value = serde_json::from_str(overlay).unwrap();
+            let keys: Vec<&String> = overlay.as_object().expect("an overlay is an object").keys().collect();
+            assert_eq!(keys, ["bundle"], "{name} may change only the bundle settings");
+        }
+
+        let capabilities: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert_eq!(capabilities["permissions"], serde_json::json!([]), "the window must get no plugin permissions");
+        assert!(!capabilities.to_string().contains("remote"), "no remote origin may use the app's commands");
+    }
+
+    /// The checks one configuration must pass: the content security policy exactly as
+    /// written, and every window's traffic sent to the closed local port. `name` says which
+    /// configuration failed.
+    fn assert_sealed(name: &str, config: &serde_json::Value) {
         let csp = &config["app"]["security"]["csp"];
         let expected = [
             ("default-src", "'self'"),
@@ -120,24 +187,22 @@ mod tests {
             ("form-action", "'none'"),
             ("frame-ancestors", "'none'"),
         ];
-        let directives = csp.as_object().expect("the policy must be set, as an object of directives");
-        assert_eq!(directives.len(), expected.len(), "unexpected directives: {directives:?}");
-        for (name, value) in expected {
-            assert_eq!(csp[name].as_str(), Some(value), "content security policy {name}");
+        let directives = csp.as_object().unwrap_or_else(|| panic!("{name}: the policy must be set, as an object of directives"));
+        assert_eq!(directives.len(), expected.len(), "{name}: unexpected directives: {directives:?}");
+        for (directive, value) in expected {
+            assert_eq!(csp[directive].as_str(), Some(value), "{name}: content security policy {directive}");
         }
-        assert_ne!(config["app"]["security"]["dangerousDisableAssetCspModification"], serde_json::json!(true));
+        assert_ne!(config["app"]["security"]["dangerousDisableAssetCspModification"], serde_json::json!(true), "{name}");
 
         // Every window sends all web traffic, loopback included, to a closed local port.
-        for window in config["app"]["windows"].as_array().unwrap() {
-            assert_eq!(window["proxyUrl"].as_str(), Some("http://127.0.0.1:9"), "window {}", window["label"]);
+        let windows = config["app"]["windows"].as_array().unwrap_or_else(|| panic!("{name}: windows must be listed"));
+        assert!(!windows.is_empty(), "{name}: no windows");
+        for window in windows {
+            assert_eq!(window["proxyUrl"].as_str(), Some("http://127.0.0.1:9"), "{name}: window {}", window["label"]);
             let args = window["additionalBrowserArgs"].as_str().unwrap_or_default();
             for required in ["--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=<-loopback>", "msSmartScreenProtection"] {
-                assert!(args.split_whitespace().any(|a| a.contains(required)), "window {} WebView2 arguments lack {required}", window["label"]);
+                assert!(args.split_whitespace().any(|a| a.contains(required)), "{name}: window {} WebView2 arguments lack {required}", window["label"]);
             }
         }
-
-        let capabilities: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
-        assert_eq!(capabilities["permissions"], serde_json::json!([]), "the window must get no plugin permissions");
-        assert!(!capabilities.to_string().contains("remote"), "no remote origin may use the app's commands");
     }
 }

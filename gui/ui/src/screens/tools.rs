@@ -7,20 +7,39 @@
 
 use crate::app::{ErrorBox, Screen, flow, report_error};
 use crate::bridge;
-use crate::util::focus_id;
+use crate::util::{Tab, tab_list};
 use javabyte_gui_protocol::i18n::tr;
 use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::tools::{DefaultRow, PolicyListing, default_rows};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-const TABS: [&str; 2] = ["policy", "defaults"];
+/// The Tools screen's tabs, in the order shown. Each tab's label is the message
+/// `tools-tab-<stem>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToolsTab {
+    /// The built-in host policy.
+    Policy,
+    /// Every option with its default.
+    Defaults,
+}
+
+impl Tab for ToolsTab {
+    const ALL: &'static [Self] = &[Self::Policy, Self::Defaults];
+
+    fn stem(self) -> &'static str {
+        match self {
+            Self::Policy => "policy",
+            Self::Defaults => "defaults",
+        }
+    }
+}
 
 /// The Tools screen.
 #[component]
 pub fn ToolsScreen() -> impl IntoView {
     let flow = flow();
-    let tab = RwSignal::new(0usize);
+    let tab = RwSignal::new(ToolsTab::Policy);
     let policy = RwSignal::new(None::<PolicyListing>);
     let defaults = RwSignal::new(None::<Vec<DefaultRow>>);
     let error = RwSignal::new(None::<String>);
@@ -41,43 +60,15 @@ pub fn ToolsScreen() -> impl IntoView {
         }
     });
 
-    let on_tab_key = move |ev: web_sys::KeyboardEvent| {
-        let current = tab.get_untracked();
-        let next = match ev.key().as_str() {
-            "ArrowRight" => (current + 1) % TABS.len(),
-            "ArrowLeft" => (current + TABS.len() - 1) % TABS.len(),
-            "Home" => 0,
-            "End" => TABS.len() - 1,
-            _ => return,
-        };
-        ev.prevent_default();
-        tab.set(next);
-        focus_id(format!("tools-tab-{}", TABS[next]));
-    };
-
     view! {
         <h2 id="tools-heading" tabindex="-1">{t!("tools-heading")}</h2>
         <p>{t!("tools-intro")}</p>
         <ErrorBox id="tools-error" message=Signal::derive(move || error.get()) />
-        <div role="tablist" aria-label=t!("tools-tabs") class="tablist" on:keydown=on_tab_key>
-            {TABS.iter().enumerate().map(|(index, stem)| view! {
-                <button
-                    type="button"
-                    role="tab"
-                    id=format!("tools-tab-{stem}")
-                    aria-controls=format!("tools-panel-{stem}")
-                    aria-selected=move || (tab.get() == index).to_string()
-                    tabindex=move || if tab.get() == index { "0" } else { "-1" }
-                    on:click=move |_| tab.set(index)
-                >
-                    {tr(&format!("tools-tab-{stem}"), None)}
-                </button>
-            }).collect_view()}
-        </div>
-        <div role="tabpanel" id="tools-panel-policy" aria-labelledby="tools-tab-policy" hidden=move || tab.get() != 0>
+        {tab_list("tools", t!("tools-tabs"), tab, |tab| tr(&format!("tools-tab-{}", tab.stem()), None))}
+        <div role="tabpanel" id="tools-panel-policy" aria-labelledby="tools-tab-policy" hidden=move || tab.get() != ToolsTab::Policy>
             <PolicyPanel policy />
         </div>
-        <div role="tabpanel" id="tools-panel-defaults" aria-labelledby="tools-tab-defaults" hidden=move || tab.get() != 1>
+        <div role="tabpanel" id="tools-panel-defaults" aria-labelledby="tools-tab-defaults" hidden=move || tab.get() != ToolsTab::Defaults>
             <DefaultsPanel defaults />
         </div>
     }

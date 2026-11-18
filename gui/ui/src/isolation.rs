@@ -1,7 +1,7 @@
-//! The question before a run that cannot be isolated from the network (Linux,
-//! docs/gui/PHASE5-PLAN.md): why, what JavaByte still does, and how to get isolation. Cancel
-//! has focus, as in every warning in this app. "Don't ask again" makes the answer stick, and
-//! Preferences can undo it.
+//! The question before a run that cannot be isolated from the network (Linux, or Windows with
+//! the sandbox add-on; see docs/gui/PHASE5-PLAN.md): why, what JavaByte still does, and how to
+//! get isolation. Cancel has focus, as in every warning in this app. "Don't ask again" makes the
+//! answer stick, and Preferences can undo it.
 //!
 //! One dialog serves every Analyse button, so it lives in the app's frame and is opened with
 //! [`ask`].

@@ -108,4 +108,6 @@ Found and fixed on the way:
 
 Not built: the **Tools** screen of the GUI plan (viewers for `javabyte policy` and `javabyte
 defaults`) belongs to no phase yet; the same information is in **Settings** (defaults beside
-each field, the policy options under Java features it may use).
+each field, the policy options under Java features it may use). (Since then, built: the Tools
+screen, `gui/ui/src/screens/tools.rs`, with its viewers for `javabyte policy` and `javabyte
+defaults`; see [GUI-PLAN.md](../GUI-PLAN.md).)

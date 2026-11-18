@@ -9,6 +9,10 @@ use javabyte_gui_backend::EventStore;
 use javabyte_gui_backend::simulation::Simulation;
 use javabyte_gui_backend::synthetic::SyntheticEvents;
 use javabyte_gui_protocol::inspect::Inspection;
+use javabyte_gui_protocol::preferences;
+/// A preference the screens may change (paths are chosen with pickers instead). Shared with the
+/// app's `change_preference` command, so both sides agree on it at compile time.
+pub use javabyte_gui_protocol::preferences::PreferenceChange;
 use javabyte_gui_protocol::report::Report;
 use javabyte_gui_protocol::t;
 use javabyte_gui_backend::config::ConfigDoc;
@@ -183,9 +187,9 @@ pub async fn run_question() -> Option<String> {
     if in_desktop_app() {
         invoke("run_question", NoArgs {}).await.unwrap_or(None)
     } else {
+        // The same rule the app's command uses, so the accessibility tests exercise the real one.
         let status = stand_in_setup();
-        (status.isolation.supported && status.preferences.isolate && !status.isolation.available && status.preferences.ask_without_isolation)
-            .then(|| status.isolation.problem.unwrap_or_default())
+        preferences::run_question(&status.isolation, &status.preferences)
     }
 }
 
@@ -690,22 +694,6 @@ pub async fn setup_status() -> Result<SetupStatus, String> {
     if in_desktop_app() { invoke("setup_status", NoArgs {}).await } else { Ok(stand_in_setup()) }
 }
 
-/// A preference the screens may change (paths are chosen with pickers instead).
-#[derive(Clone, Copy, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PreferenceChange {
-    /// Start runs with no network (Linux).
-    Isolate(bool),
-    /// Ask before a run that cannot be isolated.
-    AskWithoutIsolation(bool),
-    /// Windows: use Windows Sandbox rather than an AppContainer.
-    Strongest(bool),
-    /// Use the Java that came with the app again.
-    BundledJava,
-    /// Save runs in Documents/JavaByte again.
-    DefaultOutputFolder,
-}
-
 #[derive(Serialize)]
 struct ChangeArgs {
     change: PreferenceChange,
@@ -716,13 +704,7 @@ pub async fn change_preference(change: PreferenceChange) -> Result<SetupStatus, 
     if in_desktop_app() {
         invoke("change_preference", ChangeArgs { change }).await
     } else {
-        in_page(|b| match change {
-            PreferenceChange::Isolate(on) => b.preferences.isolate = on,
-            PreferenceChange::AskWithoutIsolation(ask) => b.preferences.ask_without_isolation = ask,
-            PreferenceChange::Strongest(on) => b.preferences.strongest_isolation = on,
-            PreferenceChange::BundledJava => b.preferences.java = None,
-            PreferenceChange::DefaultOutputFolder => b.preferences.output_folder = None,
-        });
+        in_page(|b| change.apply(&mut b.preferences));
         Ok(stand_in_setup())
     }
 }

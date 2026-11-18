@@ -9,6 +9,10 @@
 # leave the machine whatever happens. The test passes if the probe ran and nothing reached any
 # listener. With "expect-leaks" the result is inverted, for the control run against a build
 # with protections removed: it proves the harness can see a leak when there is one.
+#
+# A broken fake network fails the run instead of passing it: the listener must be ready within
+# five seconds and still running when the app has finished (check.py also checks that every
+# listener it depends on was opened).
 set -euo pipefail
 app="$(realpath "${1:?path to a javabyte-gui built with --features egress-probe}")"
 mode="${2:-expect-none}"
@@ -30,7 +34,12 @@ echo "nameserver 127.0.0.1" > "$work/resolv.conf"
 mount --bind "$work/resolv.conf" /etc/resolv.conf
 python3 "$here/listener.py" "$work/network.log" "$port" &
 listener=$!
-for _ in $(seq 50); do grep -q ready "$work/network.log" 2>/dev/null && break; sleep 0.1; done
+for _ in $(seq 50); do grep -q '"ready"' "$work/network.log" 2>/dev/null && break; sleep 0.1; done
+if ! grep -q '"ready"' "$work/network.log" 2>/dev/null; then
+    echo "FAIL the fake network's listener did not become ready within 5 s" >&2
+    kill "$listener" 2>/dev/null || true
+    exit 1
+fi
 Xvfb :93 -screen 0 1280x900x24 -nolisten tcp >/dev/null 2>&1 &
 display=$!
 sleep 1
@@ -43,6 +52,10 @@ env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u AL
   JAVABYTE_PROBE_PORT="$port" JAVABYTE_PROBE_REPORT="$work/report.json" \
   timeout 120 dbus-run-session -- "$app" > "$work/app.log" 2>&1 || true
 sleep 1
+# A listener that died during the run saw nothing after that, so check.py fails the run.
+if ! kill -0 "$listener" 2>/dev/null; then
+    echo '{"time": 0, "kind": "listener-exited"}' >> "$work/network.log"
+fi
 kill "$listener" "$display" 2>/dev/null || true
 INNER
 

@@ -17,6 +17,7 @@ use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::validate::Validation;
 use javabyte_gui_protocol::compare::Comparison;
+use javabyte_gui_protocol::preferences::{self, PreferenceChange};
 use javabyte_gui_protocol::views::{AppPreferences, Artifact, EngineStatus, Isolation, SetupStatus, FilePage, Imported, Overview, Preset, RecentRun, ReportView, SampleChoice};
 use javabyte_gui_protocol::{EventFilter, Page, PageRequest, RunStatus};
 use std::path::{Path, PathBuf};
@@ -104,10 +105,10 @@ fn command_line(state: tauri::State<'_, AppState>) -> String {
 
 /// Whether starting a run needs the person's agreement first, and why: isolation is on in
 /// Preferences, the system does not allow it, and they have not said to stop asking.
+/// The rule itself is shared with the screens' browser stand-in, in
+/// `javabyte_gui_protocol::preferences::run_question`.
 fn isolation_question(state: &AppState) -> Option<String> {
-    let preferences = state.setup.preferences();
-    (state.isolation.supported && preferences.isolate && !state.isolation.available && preferences.ask_without_isolation)
-        .then(|| state.isolation.problem.clone().unwrap_or_default())
+    preferences::run_question(&state.isolation, &state.setup.preferences())
 }
 
 /// What to ask before the next run, if anything (see `isolation_question`).
@@ -135,24 +136,6 @@ fn start_run(without_isolation: bool, state: tauri::State<'_, AppState>) -> Resu
 
 // --- Preferences ---
 
-/// A preference change the screens may ask for. Paths are never among them: a Java runtime or
-/// an output folder is chosen with the system's picker, in `choose_java` and
-/// `choose_output_folder`.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum PreferenceChange {
-    /// Start runs with no network (Linux).
-    Isolate(bool),
-    /// Ask before a run that cannot be isolated.
-    AskWithoutIsolation(bool),
-    /// Windows, with the sandbox add-on: use Windows Sandbox rather than an AppContainer.
-    Strongest(bool),
-    /// Use the Java that came with the app again.
-    BundledJava,
-    /// Save runs in Documents/JavaByte again.
-    DefaultOutputFolder,
-}
-
 /// Saves the preferences and makes the session use them.
 fn apply_preferences(state: &AppState, preferences: &AppPreferences) -> Result<SetupStatus, String> {
     state.setup.save_preferences(preferences)?;
@@ -171,13 +154,7 @@ async fn setup_status(state: tauri::State<'_, AppState>) -> Result<SetupStatus, 
 #[tauri::command]
 fn change_preference(change: PreferenceChange, state: tauri::State<'_, AppState>) -> Result<SetupStatus, String> {
     let mut preferences = state.setup.preferences();
-    match change {
-        PreferenceChange::Isolate(on) => preferences.isolate = on,
-        PreferenceChange::AskWithoutIsolation(ask) => preferences.ask_without_isolation = ask,
-        PreferenceChange::Strongest(on) => preferences.strongest_isolation = on,
-        PreferenceChange::BundledJava => preferences.java = None,
-        PreferenceChange::DefaultOutputFolder => preferences.output_folder = None,
-    }
+    change.apply(&mut preferences);
     apply_preferences(&state, &preferences)
 }
 

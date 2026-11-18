@@ -95,8 +95,9 @@ runtime and the tool work. Support can ask for its output, and CI uses it to tes
 
 ## CI
 
-- **On every push** (`GUI` workflow): build the standard installers on both systems, then
-  install and self-check them:
+- **On every push** (`Installers` workflow, `.github/workflows/installers.yml`, which
+  `release.yml` also calls to build the native-bridge edition): build the standard installers
+  on both systems, then install and self-check them:
   - `.deb` in fresh `ubuntu:22.04` and `ubuntu:24.04` containers (dependencies come from
     `apt`, which proves the package declares them);
   - the AppImage extracted and self-checked;

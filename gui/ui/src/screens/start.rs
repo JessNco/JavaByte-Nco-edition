@@ -111,7 +111,8 @@ pub fn StartScreen() -> impl IntoView {
                 <h3 id="notice-heading">{t!("notice-heading")}</h3>
                 <p>{t!("notice-emulated")}</p>
                 <p>{t!("notice-live")}</p>
-                // What this computer adds or lacks: network isolation on Linux, none on Windows.
+                // What this computer adds or lacks: network isolation where available (Linux, or Windows
+                // with the sandbox add-on).
                 {move || setup.get().map(|s| {
                     let text = if s.isolation.available && s.preferences.isolate {
                         t!("notice-isolated")

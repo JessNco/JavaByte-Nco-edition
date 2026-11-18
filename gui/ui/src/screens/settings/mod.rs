@@ -6,8 +6,8 @@
 //! its field. See docs/gui/PHASE3-PLAN.md.
 
 use crate::app::{ErrorBox, Screen, flow, report_error, show};
-use crate::settings::{self, check_now, settings};
-use crate::util::{Disclosure, focus_id, open_disclosures_around};
+use crate::settings::{self, SettingsTab, check_now, settings};
+use crate::util::{Disclosure, Tab, focus_id, open_disclosures_around, tab_list};
 use javabyte_gui_backend::config::{ConfigPath, Step};
 use javabyte_gui_protocol::form::{self, Widget};
 use javabyte_gui_protocol::i18n::tr;
@@ -28,8 +28,6 @@ use presets::Presets;
 use share::Share;
 use yaml::YamlEditor;
 
-const TABS: [&str; 2] = ["forms", "yaml"];
-
 /// The Settings screen.
 #[component]
 pub fn SettingsScreen() -> impl IntoView {
@@ -37,21 +35,6 @@ pub fn SettingsScreen() -> impl IntoView {
     let s = settings();
     let error = RwSignal::new(None::<String>);
     let busy = RwSignal::new(false);
-    let status = RwSignal::new(String::new());
-
-    let on_tab_key = move |ev: web_sys::KeyboardEvent| {
-        let current = s.tab.get_untracked();
-        let next = match ev.key().as_str() {
-            "ArrowRight" => (current + 1) % TABS.len(),
-            "ArrowLeft" => (current + TABS.len() - 1) % TABS.len(),
-            "Home" => 0,
-            "End" => TABS.len() - 1,
-            _ => return,
-        };
-        ev.prevent_default();
-        s.tab.set(next);
-        focus_id(format!("settings-tab-{}", TABS[next]));
-    };
 
     let name = move || flow.sample.with(|s| s.as_ref().map(|s| display_text(&s.name, 120).text).unwrap_or_default());
 
@@ -63,29 +46,18 @@ pub fn SettingsScreen() -> impl IntoView {
         <ProblemSummary />
         <Presets />
 
-        <div role="tablist" aria-label=t!("settings-tabs") class="tablist" on:keydown=on_tab_key>
-            {TABS.iter().enumerate().map(|(index, stem)| view! {
-                <button
-                    type="button"
-                    role="tab"
-                    id=format!("settings-tab-{stem}")
-                    aria-controls=format!("settings-panel-{stem}")
-                    aria-selected=move || (s.tab.get() == index).to_string()
-                    tabindex=move || if s.tab.get() == index { "0" } else { "-1" }
-                    on:click=move |_| s.tab.set(index)
-                >
-                    {move || if index == 1 && !s.checked() && !s.text.with(String::is_empty) {
-                        t!("settings-tab-yaml-changed")
-                    } else {
-                        tr(&format!("settings-tab-{stem}"), None)
-                    }}
-                </button>
-            }).collect_view()}
-        </div>
-        <div role="tabpanel" id="settings-panel-forms" aria-labelledby="settings-tab-forms" hidden=move || s.tab.get() != 0>
+        // The YAML tab says when its text has changed since the last check.
+        {tab_list("settings", t!("settings-tabs"), s.tab, move |tab| {
+            if tab == SettingsTab::Yaml && !s.checked() && !s.text.with(String::is_empty) {
+                t!("settings-tab-yaml-changed")
+            } else {
+                tr(&format!("settings-tab-{}", tab.stem()), None)
+            }
+        })}
+        <div role="tabpanel" id="settings-panel-forms" aria-labelledby="settings-tab-forms" hidden=move || s.tab.get() != SettingsTab::Forms>
             <Forms />
         </div>
-        <div role="tabpanel" id="settings-panel-yaml" aria-labelledby="settings-tab-yaml" hidden=move || s.tab.get() != 1>
+        <div role="tabpanel" id="settings-panel-yaml" aria-labelledby="settings-tab-yaml" hidden=move || s.tab.get() != SettingsTab::Yaml>
             <YamlEditor />
         </div>
 
@@ -113,7 +85,7 @@ pub fn SettingsScreen() -> impl IntoView {
                 String::new()
             }
         }}</p>
-        <Share status />
+        <Share />
     }
 }
 
@@ -181,7 +153,7 @@ pub(super) fn go_to_problem(key: &str) {
     if let Some(at) = path.0.iter().position(|step| matches!(step, Step::Index(_)))
         && let Step::Index(index) = path.0[at] {
             let list = ConfigPath(path.0[..at].to_vec()).to_string();
-            s.tab.set(0);
+            s.tab.set(SettingsTab::Forms);
             s.editing.set(Some((list, index)));
         }
     let id = form::field_element_id(key);
@@ -190,7 +162,7 @@ pub(super) fn go_to_problem(key: &str) {
         let element = document().get_element_by_id(&id);
         match element {
             Some(element) => {
-                s.tab.set(0);
+                s.tab.set(SettingsTab::Forms);
                 open_disclosures_around(&element);
                 focus_id(id);
             }
@@ -202,7 +174,8 @@ pub(super) fn go_to_problem(key: &str) {
     });
 }
 
-/// The line where the last part of a key (`netwrk` in `netwrk.mode`) is written, or 1.
+/// The line where the first (top-level) part of a key (`netwrk` in `netwrk.mode`) is written,
+/// or 1.
 pub(super) fn line_of_key(text: &str, key: &str) -> usize {
     let first = key.split(['.', '[']).next().unwrap_or(key);
     text.lines().position(|l| l.trim_start().starts_with(&format!("{first}:"))).map_or(1, |i| i + 1)
@@ -211,7 +184,7 @@ pub(super) fn line_of_key(text: &str, key: &str) -> usize {
 /// Shows the YAML tab with the caret at the start of a line.
 pub(super) fn go_to_line(line: usize) {
     let s = settings();
-    s.tab.set(1);
+    s.tab.set(SettingsTab::Yaml);
     let text = s.text.get_untracked();
     let offset: usize = text.split_inclusive('\n').take(line.saturating_sub(1)).map(|l| l.encode_utf16().count()).sum();
     request_animation_frame(move || {

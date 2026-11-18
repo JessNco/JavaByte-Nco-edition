@@ -21,6 +21,8 @@ pub mod i18n;
 pub mod inspect;
 /// The report's Limits and gaps tab.
 pub mod limits;
+/// Preference changes the screens may ask for, and when a run needs agreement first.
+pub mod preferences;
 /// `report.json`.
 pub mod report;
 /// `javabyte schema --json`.

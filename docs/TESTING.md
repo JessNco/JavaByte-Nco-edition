@@ -28,7 +28,7 @@ of reported behaviour do need stated expectations; those are written as data, no
 mvn verify
 ```
 
-That runs everything that needs no malware and no Python: about 90 tests in under a minute.
+That runs everything that needs no malware and no Python: about 120 tests in under a minute.
 It also writes a coverage report to `target/site/jacoco/index.html`.
 
 | To run | Command |
@@ -37,6 +37,7 @@ It also writes a coverage report to `target/site/jacoco/index.html`.
 | A longer fuzz hunt | `mvn verify -Dtest=FuzzTest -Djavabyte.fuzz.iterations=3000 -Djavabyte.fuzz.seed=77` |
 | The native bridge tests | `JAVABYTE_BRIDGE_PYTHON=/path/to/venv/bin/python mvn verify` (see [NATIVE.md](NATIVE.md)) |
 | The real-malware tests | `JAVABYTE_SAMPLES=samples mvn verify -Dtest=RealCorpusTest` (see [below](#real-malware)) |
+| That `scripts/run-isolated.sh` runs the jar of the version in `pom.xml` | `scripts/test-run-isolated.sh` (no Java, no namespace; CI runs it) |
 
 Tests that lack what they need are reported as *skipped*, never as passed.
 
@@ -55,8 +56,11 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `SimulatedCorpusTest` | 35 | 18 malware scenarios and 16 limit and limitation scenarios (below) |
 | `LoaderTest` | 7 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |
 | `BehaviourTest` | 7 | `defineClass` routes, lazy loading through the sample's loader, hooks, file fixtures |
-| `ContractTest` | 15 | Config loading, overrides and every validation error; each command and exit code; report fields; that identical runs give identical reports |
-| `FuzzTest` | 4 | 750 mutated samples by default: corrupted class files, invalid instruction streams, damaged archives. None may end as `internal-error`, throw, or overrun its limits |
+| `ContractTest` | 19 | Config loading, overrides and every validation error; each command and exit code, `disasm`, `validate` and `schema` included; report fields; that identical runs give identical reports |
+| `StreamingTest` | 7 | The `--events jsonl` stream matches the report; `--progress`; a stop sent on `--control stdin`, and the end of that input, end the run and keep the report; a stop through `RunControl`; unknown stream options are usage errors; the trace survives a killed process |
+| `ContractSamplesTest` | 2 | Real tool output is written to `gui/crates/protocol/tests/tool-output/`, where the desktop app's Rust tests read it (see above) |
+| `report/ArtifactsTest` | 1 | Saved artifact paths use `/` on every system, so reports read the same elsewhere |
+| `FuzzTest` | 5 | About 1,350 mutated inputs by default: corrupted class files, invalid instruction streams, damaged archives, and corrupted class files given to the disassembler. None may end as `internal-error`, throw, or overrun its limits |
 | `EscapeTest` | 1 | About eighty escape attempts leave no file, process, thread or connection on the real machine |
 | `SafetyTest` | 7 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
 | `NativeTest` | 5 | Native library description, plugin handlers, load failures |
@@ -263,6 +267,7 @@ stated per event (under 10 µs for both together), which is what scales with use
 | How a behaviour is reported | A fixture in `guest/sim/` and a scenario in `corpus/simulated/` |
 | A new limit, or a limitation lifted or added | A scenario in `corpus/limits/` and a row in the tables above |
 | A config key, command, exit code or report field | A case in `ContractTest` |
+| The event stream, progress or stopping a run | A case in `StreamingTest` |
 | A new way out of the sandbox | An attempt in the `Escape` fixture |
 | A new simulated class | A completeness assertion in `SafetyTest` |
 | A sample that showed a bug | A scenario in `corpus/real/`, after reducing the bug to a fixture if you can |

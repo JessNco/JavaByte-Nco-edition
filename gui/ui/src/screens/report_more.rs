@@ -150,15 +150,16 @@ enum View {
     Instructions,
 }
 
-/// Hex with offsets and printable characters, 16 bytes a line, like common hex viewers.
-fn hex_lines(offset: u64, bytes: &[u8]) -> String {
+/// Hex with offsets and printable characters, 16 bytes a line, like common hex viewers. The
+/// viewer always holds the file from its start, so offsets count from 0.
+fn hex_lines(bytes: &[u8]) -> String {
     bytes
         .chunks(16)
         .enumerate()
         .map(|(i, chunk)| {
             let hex: Vec<String> = chunk.iter().map(|b| format!("{b:02x}")).collect();
             let ascii: String = chunk.iter().map(|&b| if (0x20..0x7f).contains(&b) { b as char } else { '.' }).collect();
-            format!("{:08x}  {:<47}  {ascii}", offset + (i * 16) as u64, hex.join(" "))
+            format!("{:08x}  {:<47}  {ascii}", i * 16, hex.join(" "))
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -316,7 +317,7 @@ pub fn FilesPanel(visible: Signal<bool>) -> impl IntoView {
         viewing.get()?;
         let text = match view_as.get() {
             View::Text => safe_lines(&String::from_utf8_lossy(&loaded.get())),
-            View::Hex => hex_lines(0, &loaded.get()),
+            View::Hex => hex_lines(&loaded.get()),
             View::Instructions => match instructions.get() {
                 None => t!("files-loading"),
                 Some(Ok(text)) => safe_lines(&text),

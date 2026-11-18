@@ -17,6 +17,10 @@ It offers two ways, chosen in JavaByte's Preferences:
 Installing: run the add-on's MSI after installing JavaByte. For the portable edition, unpack the
 add-on's zip so that the "sandbox" folder sits next to javabyte-gui.exe.
 
+Tidying up: each analysis gets a container or sandbox of its own, which is removed afterwards
+with any access it was given. If JavaByte is closed in the middle of an analysis, the add-on
+finishes tidying up (and deletes its copy of the sample) the next time it runs.
+
 Checking: run  javabyte-gui.exe --self-check  and look for "Sandbox add-on" and "Network
 isolation for analyses: available."
 

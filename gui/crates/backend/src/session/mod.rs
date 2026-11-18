@@ -25,7 +25,7 @@ use std::time::{Duration, Instant, SystemTime};
 mod reports;
 mod settings;
 
-pub use settings::{Checker, with_sample};
+pub use settings::{Checker, with_sample, without_host_programs};
 use reports::open_report;
 
 /// Categories whose events are shown live while a run goes on.
@@ -33,8 +33,6 @@ const NOTABLE: &[&str] = &["process", "net", "class", "native"];
 /// Fixed order for the live per-category table, so rows do not jump around.
 const CATEGORY_ORDER: &[&str] = &["process", "net", "file", "class", "native", "crypto", "string", "reflect", "thread", "console", "policy", "gap"];
 const RECENT_LIMIT: usize = 20;
-/// The sandbox add-on's exit code when the isolation could not start (gui/sandbox).
-const ISOLATION_FAILED: i32 = 70;
 
 /// How long a run gets to honour a stop request before its process is ended.
 const STOP_GRACE: Duration = Duration::from_secs(15);
@@ -73,7 +71,10 @@ struct OpenReport {
     /// The report's `artifacts` list: the only files the app will read or copy.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     artifacts: Vec<String>,
-    sample_path: PathBuf,
+    /// Where the report says the sample was. None when that is not a path on this computer
+    /// (see [`is_local_path`]): the report may come from someone else, and its path is then
+    /// never looked at.
+    sample_path: Option<PathBuf>,
 }
 
 impl Session {
@@ -102,9 +103,10 @@ impl Session {
         self.launcher.as_ref().map_err(Clone::clone)
     }
 
-    /// Checks a path someone picked or dropped.
+    /// Checks a path someone picked or dropped. A path on another computer is refused before
+    /// anything looks at it (see [`is_local_path`]).
     pub fn choose(path: &Path) -> Result<SampleChoice, String> {
-        if !path.exists() {
+        if !is_local_path(path) || !path.exists() {
             return Err(javabyte_gui_protocol::t!("error-not-found", path = path.display().to_string()));
         }
         let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
@@ -230,7 +232,7 @@ impl Session {
             report_ready: self.report.is_some() && active.ended.is_some(),
             starting: (active.ended.is_none() && active.sandboxed && tally.start.is_none()).then(|| t!("running-starting-sandbox")),
             // The add-on's exit code when the isolation itself failed, before the tool began.
-            isolation_failed: active.ended.as_ref().filter(|e| e.exit_code == Some(ISOLATION_FAILED) && e.tally.start.is_none()).map(|e| {
+            isolation_failed: active.ended.as_ref().filter(|e| e.exit_code == Some(views::SANDBOX_ISOLATION_FAILED) && e.tally.start.is_none()).map(|e| {
                 t!("running-isolation-failed", detail = e.stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim_start_matches("javabyte-sandbox: "))
             }),
         }
@@ -298,6 +300,35 @@ impl Session {
     }
 }
 
+/// Whether a path is on this computer, judged from its text alone, without touching it.
+///
+/// On Windows, merely looking at a UNC path such as `\\host\share\x.jar` (or its other
+/// spellings, `\\?\UNC\host\...`, `//host/...`) makes the system connect to that host over
+/// SMB and offer the person's credentials. That connection is outside any isolation the app
+/// gives a run. Device paths (`\\.\...`) and NT paths (`\??\...`) are refused too. The only
+/// forms allowed among these name a drive on this computer: `\\?\C:\...` and `\??\C:\...`.
+///
+/// Paths are judged the same way on every system, because a report written on Windows can be
+/// opened anywhere.
+pub fn is_local_path(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    let separator = |c: char| c == '\\' || c == '/';
+    let mut chars = text.chars();
+    let (Some(first), Some(second)) = (chars.next(), chars.next()) else { return true };
+    let double = separator(first) && separator(second);
+    let nt = separator(first) && second == '?' && text[2..].starts_with('?');
+    if !double && !nt {
+        return true;
+    }
+    // `\\?\C:\` or `\??\C:\`: a drive on this computer.
+    let rest = &text[2..];
+    let mut rest = rest.chars();
+    matches!(
+        (rest.next(), rest.next(), rest.next(), rest.next()),
+        (Some('?'), Some(s), Some(drive), Some(':')) if separator(s) && drive.is_ascii_alphabetic()
+    )
+}
+
 /// The current time for log lines, in UTC.
 pub fn now_for_log() -> String {
     timestamp(SystemTime::now(), false)
@@ -349,6 +380,35 @@ mod tests {
         assert_eq!(safe_name("../.."), "sample");
     }
 
+
+    #[test]
+    fn paths_on_other_computers_are_not_local() {
+        for remote in [
+            r"\\attacker.example\share\x.jar",
+            r"\\?\UNC\attacker.example\share\x.jar",
+            r"\\.\pipe\x",
+            r"\??\UNC\attacker.example\share",
+            r"\\?\GLOBALROOT\Device\Mup\host\share",
+            "//attacker.example/share/x.jar",
+            r"/\attacker.example\share",
+        ] {
+            assert!(!is_local_path(Path::new(remote)), "{remote}");
+            assert!(Session::choose(Path::new(remote)).is_err(), "{remote}");
+        }
+        for local in [r"C:\samples\x.jar", r"\\?\C:\samples\x.jar", r"\??\D:\x.jar", "/samples/x.jar", "x.jar", "", "/", r"\samples\x.jar"] {
+            assert!(is_local_path(Path::new(local)), "{local}");
+        }
+    }
+
+    /// The app recognises an isolation failure only by the add-on's exit code. The add-on must
+    /// use the same number, whether through the shared constant or a copy of it.
+    #[test]
+    fn the_sandbox_add_on_agrees_on_the_isolation_failure_code() {
+        let helper = include_str!("../../../../sandbox/src/main.rs");
+        let shared = helper.contains("SANDBOX_ISOLATION_FAILED");
+        let copied = helper.contains(&format!("ISOLATION_FAILED: i32 = {};", views::SANDBOX_ISOLATION_FAILED));
+        assert!(shared || copied, "gui/sandbox/src/main.rs must use views::SANDBOX_ISOLATION_FAILED");
+    }
 
     #[test]
     fn without_an_engine_everything_says_why() {

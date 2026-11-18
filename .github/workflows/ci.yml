@@ -27,6 +27,11 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn --batch-mode --no-transfer-progress verify
+      # The isolated launcher must run the jar of the version in pom.xml, not an older one left
+      # in target/. The check uses stand-ins for Java, so one Java version is enough.
+      - name: Launcher picks the right jar
+        if: matrix.java == '21'
+        run: scripts/test-run-isolated.sh
       # One copy of the coverage report is enough; it does not differ meaningfully by Java version.
       - name: Keep the coverage report
         if: matrix.java == '21'

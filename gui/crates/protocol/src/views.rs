@@ -570,9 +570,11 @@ pub struct AppPreferences {
     pub output_folder: Option<String>,
     /// A Java 17+ executable to use instead of the bundled runtime. None: the bundled one.
     pub java: Option<String>,
-    /// Linux: start each run with no network (a new network namespace).
+    /// Start each run with no network: a new network namespace on Linux, or an AppContainer
+    /// (or Windows Sandbox, see `strongest_isolation`) on Windows with the sandbox add-on.
     pub isolate: bool,
-    /// Linux: ask before a run when isolation is on but the system does not allow it.
+    /// Ask before a run when isolation is on but cannot be used on this computer (Linux, or
+    /// Windows with the sandbox add-on).
     pub ask_without_isolation: bool,
     /// Windows, with the sandbox add-on: use Windows Sandbox (strongest, slower to start)
     /// instead of an AppContainer.
@@ -626,6 +628,11 @@ pub struct Isolation {
     /// Windows: why Windows Sandbox cannot be used, when it cannot.
     pub strongest_problem: Option<String>,
 }
+
+/// The Windows sandbox add-on's exit code when the isolation itself could not start, before
+/// the tool began (gui/sandbox). It is a contract between the add-on and the app: the app
+/// recognises an isolation failure only by this number, so both must use this one constant.
+pub const SANDBOX_ISOLATION_FAILED: i32 = 70;
 
 #[cfg(test)]
 mod follow_up_tests {

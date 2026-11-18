@@ -36,10 +36,32 @@ pub struct Settings {
     pub undo: RwSignal<Option<String>>,
     /// The list item being edited: its list's path and its position.
     pub editing: RwSignal<Option<(String, usize)>>,
-    /// 0 for the forms, 1 for the YAML.
-    pub tab: RwSignal<usize>,
+    /// Which tab the Settings screen shows: the forms or the YAML.
+    pub tab: RwSignal<SettingsTab>,
     /// Changes since start, so a stale check result or timer can be recognised.
     generation: StoredValue<u64>,
+}
+
+/// The Settings screen's tabs, in the order shown. Each tab's label is the message
+/// `settings-tab-<stem>`. Kept with the settings state because other screens and the presets
+/// switch tabs too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsTab {
+    /// The forms built from the schema.
+    Forms,
+    /// The settings as YAML text.
+    Yaml,
+}
+
+impl crate::util::Tab for SettingsTab {
+    const ALL: &'static [Self] = &[Self::Forms, Self::Yaml];
+
+    fn stem(self) -> &'static str {
+        match self {
+            Self::Forms => "forms",
+            Self::Yaml => "yaml",
+        }
+    }
 }
 
 thread_local! {
@@ -62,7 +84,7 @@ pub fn settings() -> Settings {
                 check_error: RwSignal::new(None),
                 undo: RwSignal::new(None),
                 editing: RwSignal::new(None),
-                tab: RwSignal::new(0),
+                tab: RwSignal::new(SettingsTab::Forms),
                 generation: StoredValue::new(0),
             }
         })
@@ -303,7 +325,7 @@ fn focus_when_ready(id: String, tries: u32) {
     set_timeout(
         move || match document().get_element_by_id(&id) {
             Some(element) if settings().text.with_untracked(|t| !t.is_empty()) => {
-                settings().tab.set(0);
+                settings().tab.set(SettingsTab::Forms);
                 crate::util::open_disclosures_around(&element);
                 focus_id(id);
             }

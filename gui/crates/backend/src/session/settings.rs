@@ -14,6 +14,11 @@ use std::path::{Path, PathBuf};
 /// sample, a disk image) from being read into memory.
 const IMPORT_LIMIT: u64 = 1 << 20;
 
+/// Settings that name a program on this computer for the tool to start, by plugin. The
+/// `native-bridge` plugin starts its Python with `plugins.native-bridge.python`; without it,
+/// the plugin uses the Python the app bundles (`JAVABYTE_BRIDGE_PYTHON`).
+const HOST_PROGRAMS: &[(&str, &str)] = &[("plugins.native-bridge", "python")];
+
 impl Session {
     /// The settings for the next run, as YAML.
     pub fn settings_text(&self) -> Option<String> {
@@ -92,11 +97,12 @@ impl Session {
         Ok(Preset { name })
     }
 
-    /// A preset's settings, for the chosen sample.
+    /// A preset's settings, for the chosen sample. A preset is a file anyone could have put
+    /// in the presets folder, so settings that name a program to start are left out.
     pub fn load_preset(&self, name: &str) -> Result<String, String> {
         let name = preset_name(name).ok_or_else(|| t!("error-preset-name"))?;
         let text = std::fs::read_to_string(self.presets_folder().join(format!("{name}.yaml"))).map_err(|e| t!("error-preset-read", detail = e.to_string()))?;
-        Ok(with_sample(&text, self.settings.as_ref().map(|(s, _)| s)))
+        Ok(without_host_programs(&with_sample(&text, self.settings.as_ref().map(|(s, _)| s))))
     }
 
     /// Deletes a saved preset.
@@ -105,7 +111,9 @@ impl Session {
         std::fs::remove_file(self.presets_folder().join(format!("{name}.yaml"))).map_err(|e| t!("error-preset-delete", detail = e.to_string()))
     }
 
-    /// Reads a config file someone chose: YAML as it is, JSON turned into YAML.
+    /// Reads a config file someone chose: YAML as it is, JSON turned into YAML. The file may
+    /// come from anyone, so settings that name a program to start are left out
+    /// ([`without_host_programs`]).
     pub fn import(path: &Path) -> Result<Imported, String> {
         let size = std::fs::metadata(path).map_err(|e| t!("error-import", detail = e.to_string()))?.len();
         if size > IMPORT_LIMIT {
@@ -117,6 +125,7 @@ impl Session {
             _ => raw,
         };
         // A file that cannot be read as YAML is still offered: the YAML tab shows where.
+        let text = without_host_programs(&text);
         let doc = ConfigDoc::new(text.clone());
         let sample = doc.get(&ConfigPath::parse("sample")).and_then(|v| v.as_str().map(str::to_string));
         Ok(Imported { text, sample })
@@ -161,6 +170,29 @@ pub fn with_sample(text: &str, sample: Option<&SampleChoice>) -> String {
     if result.is_ok() { doc.text().to_string() } else { text.to_string() }
 }
 
+/// Settings text without the settings that name a program on this computer to start
+/// ([`HOST_PROGRAMS`]), for settings that come from a file the app did not write: a report
+/// folder, an imported file or a preset. Such a file could otherwise make a run start any
+/// program, or on Windows reach another computer through a `\\host\share` path. The plugin
+/// itself stays on, and uses the Python the app bundles. Text that cannot be read as YAML is
+/// returned as it is: the tool refuses it too.
+pub fn without_host_programs(text: &str) -> String {
+    let mut doc = ConfigDoc::new(text);
+    for (plugin, setting) in HOST_PROGRAMS {
+        let plugin = ConfigPath::parse(plugin);
+        let program = plugin.clone().key(*setting);
+        if doc.get(&program).is_none() {
+            continue;
+        }
+        let _ = doc.remove(&program);
+        // Removing the last setting removes the plugin's entry, which would turn it off.
+        if doc.get(&plugin).is_none() {
+            let _ = doc.set(&plugin, &serde_json::Value::Object(serde_json::Map::new()));
+        }
+    }
+    doc.text().to_string()
+}
+
 /// A preset name that is also a safe file name: letters, digits, spaces, dash, underscore,
 /// up to 60 characters. `None` if nothing is left.
 pub(super) fn preset_name(name: &str) -> Option<String> {
@@ -183,5 +215,40 @@ mod tests {
         assert!(!with_sample(text, None).contains("sample:"));
         assert_eq!(preset_name("  My preset: v2! "), Some("My preset v2".into()));
         assert_eq!(preset_name("../.."), None);
+    }
+
+    /// Settings from a file the app did not write may not name a program for a run to start;
+    /// the plugin stays on and the rest is kept as it was.
+    #[test]
+    fn settings_from_files_name_no_program_to_start() {
+        let crafted = "limits:\n  maxSleeps: 3\nplugins:\n  native-bridge:\n    python: '\\\\host\\share\\x.exe'   # sent to you\n";
+        let cleaned = without_host_programs(crafted);
+        assert!(!cleaned.contains("python") && !cleaned.contains("host"), "{cleaned}");
+        let doc = ConfigDoc::new(cleaned.clone());
+        assert_eq!(doc.get(&ConfigPath::parse("plugins.native-bridge")), Some(serde_json::json!({})), "{cleaned}");
+        assert_eq!(doc.get(&ConfigPath::parse("limits.maxSleeps")), Some(serde_json::json!(3)));
+
+        let with_others = "plugins:\n  native-bridge:\n    python: /usr/bin/evil\n    other: 1\n";
+        let cleaned = without_host_programs(with_others);
+        assert_eq!(ConfigDoc::new(cleaned.clone()).get(&ConfigPath::parse("plugins.native-bridge")), Some(serde_json::json!({"other": 1})), "{cleaned}");
+
+        // Nothing to remove: the text is untouched, comments and all.
+        let plain = "# mine\nlimits:\n  maxSleeps: 3   # three\n";
+        assert_eq!(without_host_programs(plain), plain);
+        assert_eq!(without_host_programs("not: [valid"), "not: [valid");
+    }
+
+    /// An imported settings file loses the program setting too.
+    #[test]
+    fn imported_settings_name_no_program_to_start() {
+        let dir = std::env::temp_dir().join(format!("javabyte-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("crafted.json");
+        std::fs::write(&file, r#"{"sample": "/s/x.jar", "plugins": {"native-bridge": {"python": "/tmp/evil"}}}"#).unwrap();
+        let imported = Session::import(&file).unwrap();
+        assert!(!imported.text.contains("evil"), "{}", imported.text);
+        assert!(imported.text.contains("native-bridge"), "{}", imported.text);
+        assert_eq!(imported.sample.as_deref(), Some("/s/x.jar"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

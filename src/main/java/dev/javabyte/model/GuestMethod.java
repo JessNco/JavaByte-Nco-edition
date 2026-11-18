@@ -29,7 +29,10 @@ public final class GuestMethod {
     public final String desc;
     /** {@code name + desc}: unique within a class. */
     public final String key;
-    /** {@code owner.name + desc}: unique within a run; the form used in hooks, traces and reports. */
+    /**
+     * {@code owner.name + '.' + name + desc} (e.g. {@code com/example/Foo.bar(I)V}): unique within
+     * a run; the form used in hooks, traces and reports.
+     */
     public final String id;
 
     public final Type[] argTypes;

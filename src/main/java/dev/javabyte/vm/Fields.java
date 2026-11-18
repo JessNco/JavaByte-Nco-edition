@@ -8,7 +8,14 @@ import java.util.function.Supplier;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.FieldInsnNode;
 
-/** Field reads and writes, for both interpreted fields and fields of real JDK objects. */
+/**
+ * Field reads and writes, for both interpreted fields and fields of real JDK objects.
+ *
+ * <p>Alongside {@link InvocationRouter}, this is the only place where guest code reaches the JDK.
+ * Static reads of JDK fields are policy-checked here, and static writes are never performed.
+ * Instance fields of JDK objects are read and written without a policy check; see
+ * {@link #get} for why that is safe.
+ */
 public final class Fields {
 
     private final VirtualMachine vm;
@@ -49,12 +56,19 @@ public final class Fields {
     /**
      * Reads an instance field.
      *
+     * <p>A JDK object's instance field needs no policy check. The guest can only hold host
+     * objects that policy-checked calls, constructors or stubs gave it, and the host bridge
+     * reaches only public fields ({@code Class.getField}) or the accessors generated for a
+     * shell's superclass. A public field of an object the guest already holds can do nothing
+     * that its public methods could not. The simulated classes in {@code dev.javabyte.env}
+     * declare no public fields, which keeps emulator state out of reach; keep it that way.
+     *
      * @param ref  the resolved guest field, or null if the field belongs to a JDK class
      * @param insn the instruction, for the names when {@code ref} is null
      */
     public Object get(Object target, FieldRef ref, FieldInsnNode insn) {
         if (target == null) {
-            throw vm.raise(new NullPointerException("Cannot read field \"" + insn.name + "\" because value is null"));
+            throw vm.implicitExceptions.nullPointer("Cannot read field \"" + insn.name + "\" because value is null");
         }
         if (ref != null) {
             InstanceState state = vm.stateOf(target);
@@ -69,9 +83,16 @@ public final class Fields {
         return vm.host.getField(target, hostOwner(insn.owner), insn.name);
     }
 
+    /**
+     * Writes an instance field. A JDK object's field is written without a policy check, for the
+     * reasons given on {@link #get}.
+     *
+     * @param ref  the resolved guest field, or null if the field belongs to a JDK class
+     * @param insn the instruction, for the names when {@code ref} is null
+     */
     public void put(Object target, FieldRef ref, FieldInsnNode insn, Object value) {
         if (target == null) {
-            throw vm.raise(new NullPointerException("Cannot assign field \"" + insn.name + "\" because value is null"));
+            throw vm.implicitExceptions.nullPointer("Cannot assign field \"" + insn.name + "\" because value is null");
         }
         if (ref != null) {
             InstanceState state = vm.stateOf(target);

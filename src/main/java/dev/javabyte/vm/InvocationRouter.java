@@ -20,7 +20,9 @@ import org.objectweb.asm.tree.FieldInsnNode;
 
 /**
  * Decides what every call made by guest code actually does. This is the emulator's security
- * boundary: no guest call reaches the real JDK except through {@link #hostCall}.
+ * boundary for code: a JDK method is reached only through {@link #hostCall} and a JDK
+ * constructor only through {@link #constructHost}. The one other route to the JDK is field
+ * access, which goes through {@link Fields}; it explains why that route needs less checking.
  *
  * <p>For each call the order of precedence is:
  * <ol>
@@ -77,8 +79,8 @@ public final class InvocationRouter {
 
     public Object invokeVirtual(String owner, String name, String desc, Object receiver, Object[] args) {
         if (receiver == null) {
-            throw vm.raise(new NullPointerException("Cannot invoke \"" + owner.replace('/', '.') + '.' + name
-                    + "()\" because value is null"));
+            throw vm.implicitExceptions.nullPointer("Cannot invoke \"" + owner.replace('/', '.') + '.' + name
+                    + "()\" because value is null");
         }
         InstanceState state = vm.stateOf(receiver);
         if (state != null) {
@@ -183,7 +185,8 @@ public final class InvocationRouter {
 
     public Object invokeSpecial(String owner, String name, String desc, Object receiver, Object[] args) {
         if (receiver == null) {
-            throw vm.raise(new NullPointerException("Cannot invoke \"" + name + "()\" because value is null"));
+            throw vm.implicitExceptions.nullPointer("Cannot invoke \"" + owner.replace('/', '.') + '.' + name
+                    + "()\" because value is null");
         }
         GuestClass cls = vm.classes.find(owner);
         if (cls != null) {

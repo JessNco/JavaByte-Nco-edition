@@ -2,7 +2,6 @@ package dev.javabyte.vm;
 
 import dev.javabyte.host.StandIn;
 import dev.javabyte.model.GuestClass;
-import dev.javabyte.model.GuestInstance;
 import dev.javabyte.model.GuestLambda;
 import dev.javabyte.model.InstanceState;
 import dev.javabyte.model.Mirrors;
@@ -127,7 +126,11 @@ public final class TypeSystem {
         return value instanceof Object[];
     }
 
-    /** A readable class name for any value, as the guest would name it. */
+    /**
+     * A readable class name for any value, as the guest would name it. It appears in text the
+     * guest can read (cast failures, {@code ClassLoader.toString}), so it never names one of
+     * the emulator's own classes: those are reported as the JDK class they stand for.
+     */
     public String nameOf(Object value) {
         if (value == null) {
             return "null";
@@ -139,8 +142,44 @@ public final class TypeSystem {
         if (value instanceof PhantomObject phantom) {
             return phantom.type.replace('/', '.');
         }
+        return reportedClass(value).getName();
+    }
+
+    /**
+     * The JDK class the guest is told a value belongs to, for any value that is not an
+     * instance of an interpreted class. This is the single rule for both {@code getClass()} and
+     * {@link #nameOf}, so the two always agree.
+     *
+     * <p>Emulator objects must not reveal themselves: a simulated {@code File} is a
+     * {@code dev.javabyte.env.SimFile} on the host, and a sample that found that package name in
+     * a cast message would know it is being emulated. Such objects are reported as their
+     * nearest JDK ancestor, or as the JDK type they imitate.
+     */
+    public Class<?> reportedClass(Object value) {
+        if (value instanceof dev.javabyte.model.GuestProxy) {
+            // The class of a real proxy is generated and extends Proxy; this is the nearest
+            // honest answer, and Proxy.isProxyClass recognises it.
+            return java.lang.reflect.Proxy.class;
+        }
+        if (value instanceof GuestLambda) {
+            return Object.class;
+        }
+        if (value instanceof PhantomObject phantom) {
+            Class<?> host = vm.host.findClass(phantom.type);
+            return host != null ? host : Object.class;
+        }
         Class<?> imitated = imitatedClass(value);
-        return (imitated != null ? imitated : value.getClass()).getName();
+        if (imitated != null) {
+            return imitated;
+        }
+        if (value instanceof StandIn) {
+            return Object.class; // stands for a class this JDK lacks
+        }
+        Class<?> cls = value.getClass();
+        while (cls.getName().startsWith("dev.javabyte.")) {
+            cls = cls.getSuperclass();
+        }
+        return cls;
     }
 
     /**
@@ -209,9 +248,5 @@ public final class TypeSystem {
 
     public String internalNameOf(Object mirror) {
         return mirror instanceof GuestClass guest ? guest.name : Type.getInternalName((Class<?>) mirror);
-    }
-
-    public boolean isGuestInstance(Object value) {
-        return value instanceof GuestInstance;
     }
 }

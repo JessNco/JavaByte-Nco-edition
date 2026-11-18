@@ -18,6 +18,12 @@
 pub mod artifacts;
 /// Settings as YAML, edited in place.
 pub mod config;
+/// Runs with no network, on Linux.
+#[cfg(target_os = "linux")]
+pub mod isolation;
+/// The bundled runtime, jar and bridge, and the preferences that choose between them.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod setup;
 /// Paging and filtering events.
 pub mod events;
 /// Events from a `report.json`.

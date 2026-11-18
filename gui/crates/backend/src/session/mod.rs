@@ -77,6 +77,13 @@ impl Session {
         Self { launcher, runs_root, recent_file, active: None, report: None, settings: None, schema: None }
     }
 
+    /// Uses another engine and output folder, after the preferences changed. A run in
+    /// progress keeps the engine it started with.
+    pub fn reconfigure(&mut self, launcher: Result<Launcher, String>, runs_root: PathBuf) {
+        self.launcher = launcher;
+        self.runs_root = runs_root;
+    }
+
     /// Whether analyses can run, and if not, why.
     pub fn engine(&self) -> EngineStatus {
         match &self.launcher {

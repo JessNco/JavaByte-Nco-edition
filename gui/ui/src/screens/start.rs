@@ -4,7 +4,7 @@ use crate::app::{ErrorBox, Screen, flow, open_report, report_error, show};
 use crate::bridge;
 use crate::util::{announcer, fmt_num};
 use javabyte_gui_protocol::t;
-use javabyte_gui_protocol::views::{EngineStatus, RecentRun, SampleChoice};
+use javabyte_gui_protocol::views::{EngineStatus, RecentRun, SampleChoice, SetupStatus};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
@@ -28,9 +28,11 @@ pub fn StartScreen() -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let show_notice = RwSignal::new(!notice_read());
+    let setup = RwSignal::new(None::<SetupStatus>);
 
     spawn_local(async move {
         engine.set(Some(bridge::engine_status().await));
+        setup.set(bridge::setup_status().await.ok());
         recent.set(bridge::recent_runs().await);
     });
     // Refresh the recent list whenever this screen is shown again.
@@ -109,6 +111,15 @@ pub fn StartScreen() -> impl IntoView {
                 <h3 id="notice-heading">{t!("notice-heading")}</h3>
                 <p>{t!("notice-emulated")}</p>
                 <p>{t!("notice-live")}</p>
+                // What this computer adds or lacks: network isolation on Linux, none on Windows.
+                {move || setup.get().map(|s| {
+                    let text = if s.isolation.available && s.preferences.isolate {
+                        t!("notice-isolated")
+                    } else {
+                        s.isolation.problem.unwrap_or_default()
+                    };
+                    view! { <p>{text}</p> }
+                })}
                 <button
                     type="button"
                     on:click=move |_| {
@@ -156,7 +167,8 @@ pub fn StartScreen() -> impl IntoView {
         {move || {
             let runs = recent.get();
             if runs.is_empty() {
-                view! { <p>{t!("recent-none")}</p> }.into_any()
+                let folder = setup.with(|s| s.as_ref().map(|s| s.output_folder.clone()).unwrap_or_default());
+                view! { <p>{t!("recent-none", folder = folder)}</p> }.into_any()
             } else {
                 view! {
                     <div class="table-wrap" tabindex="0" role="region" aria-labelledby="recent-heading">

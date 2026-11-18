@@ -397,7 +397,7 @@
       "path" : "python",
       "type" : "string",
       "default" : "python3",
-      "description" : "The Python interpreter that has speakeasy-emulator installed."
+      "description" : "The Python interpreter that has speakeasy-emulator installed. Default: JAVABYTE_BRIDGE_PYTHON if set, else python3."
     } ]
   }, {
     "id" : "test-native",

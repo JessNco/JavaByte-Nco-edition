@@ -1,0 +1,95 @@
+# A version tag (v0.1.0) builds both editions for Windows and Linux, tests them as on every
+# push, writes SHA256SUMS, signs it when a GPG key is stored as a secret, and creates a DRAFT
+# release with everything. A person reviews the draft and publishes it. See
+# docs/gui/RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches every version in the repository
+        run: gui/packaging/version.sh "$GITHUB_REF_NAME"
+
+  installers:
+    needs: versions
+    uses: ./.github/workflows/installers.yml
+    with:
+      bridge: true
+
+  draft:
+    needs: installers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      # Signed only when the repository has the secrets GPG_PRIVATE_KEY (an armoured private
+      # key) and GPG_PASSPHRASE. Without them the release is unsigned and says so.
+      - name: Sign the checksums
+        id: sign
+        working-directory: release
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "No signing key stored: the release is unsigned."
+            exit 0
+          fi
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign SHA256SUMS
+          gpg --armor --export > javabyte-signing-key.asc
+          gpg --verify SHA256SUMS.asc SHA256SUMS
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "JavaByte $version for Windows and Linux. Installing and checking a download: see docs/INSTALL.md."
+            echo
+            echo "| Download | For |"
+            echo "| --- | --- |"
+            echo "| JavaByte-$version-windows-x86_64.msi | Windows 10 and 11 |"
+            echo "| JavaByte-$version-windows-x86_64-portable.zip | Windows, without installing |"
+            echo "| JavaByte-$version-linux-x86_64.deb | Ubuntu 22.04 and later, Debian 12 and later |"
+            echo "| JavaByte-$version-linux-x86_64.AppImage | Other Linux systems, without installing (no network isolation on Ubuntu 24.04) |"
+            echo
+            echo "Files ending in -with-native-bridge also analyse a sample's Windows native libraries (DLLs). They are larger."
+            echo
+            echo "The Windows installer is not signed yet, so Windows SmartScreen will warn when you run it."
+            echo "docs/INSTALL.md shows what you will see and how to check the file first."
+            echo
+            if [ "${{ steps.sign.outputs.signed }}" = true ]; then
+              echo "SHA256SUMS is signed (SHA256SUMS.asc); the public key is javabyte-signing-key.asc."
+            else
+              echo "SHA256SUMS lists the checksum of every file. It is not signed in this release."
+            fi
+            echo
+            # The changelog's section for this version, or "Unreleased" if it has none yet.
+            heading="$(grep -m1 -E "^## \[?$version\]?( |$)" CHANGELOG.md || echo "## Unreleased")"
+            awk -v h="$heading" '$0 == h {on = 1; next} on && /^## / {exit} on' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "JavaByte ${GITHUB_REF_NAME#v}" --notes-file notes.md release/*

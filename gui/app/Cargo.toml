@@ -30,3 +30,6 @@ tauri = { version = "2.12", features = [] }
 # The system's own file picker, opened from Rust. The screens cannot call it directly: the
 # window's capabilities grant no plugin permissions.
 tauri-plugin-dialog = "2.8"
+# The data and documents folders for `--self-check`, which runs without a window. Tauri uses
+# the same crate for its own paths.
+dirs = "7"

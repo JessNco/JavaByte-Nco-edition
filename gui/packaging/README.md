@@ -1,0 +1,30 @@
+# Packaging
+
+Builds the installers (docs/gui/PHASE5-PLAN.md). From `gui/`, after `mvn package` at the
+repository root, with `JAVA_HOME` set to a Java 21 JDK:
+
+```bash
+packaging/build.sh
+```
+
+```bash
+packaging/build.sh --bridge
+```
+
+The installers land in `gui/target/installers/`. CI does the same on every push (standard
+installers) and on a version tag (both editions, as a draft release).
+
+| File | What |
+| --- | --- |
+| `version.sh` | Prints the version after checking `pom.xml`, `app/tauri.conf.json` and `Cargo.toml` agree (and, given a tag, that it matches) |
+| `stage.sh` | Puts what an installer bundles in `gui/target/bundle-input/`: the jar, a jlink runtime, the notices, and with `--bridge` a standalone Python with the native bridge's packages |
+| `build.sh` | Runs `stage.sh`, then the Tauri bundler, and names the results |
+| `tauri.bundle.conf.json` | Added to `app/tauri.conf.json` when bundling: the resources and the per-system installer settings. Kept apart because the resources exist only after staging, and a plain `cargo build` checks every listed resource |
+| `tauri.bridge.conf.json` | Added for the "with native bridge" edition: the same resources plus `bridge/` |
+| `linux/javabyte-gui.desktop` | The desktop entry: `%f` and the Java MIME types put JavaByte under "Open with" for `.jar` files without making it the default |
+| `linux/apparmor-profile`, `linux/postinst`, `linux/postrm` | Ubuntu 24.04 allows user namespaces (which network isolation needs) only to programs with a profile that permits them. The `.deb` installs this profile where AppArmor 4 is present |
+| `windows/open-with.wxs` | A WiX fragment adding JavaByte to `.jar`'s "Open with" list, leaving the default program alone |
+| `THIRD-PARTY-NOTICES.txt` | The licences of what is bundled; installed beside the app |
+
+To check an installed app, run it with `--self-check`: it prints what it found and whether the
+tool runs, and exits with 0 when it does.

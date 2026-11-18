@@ -561,6 +561,63 @@ pub struct EngineStatus {
     pub problem: Option<String>,
 }
 
+/// The preferences that change how analyses run. The app keeps them in its data folder,
+/// because the backend needs them; display preferences stay in the window's storage.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppPreferences {
+    /// Where runs are saved, one folder each. None: Documents/JavaByte.
+    pub output_folder: Option<String>,
+    /// A Java 17+ executable to use instead of the bundled runtime. None: the bundled one.
+    pub java: Option<String>,
+    /// Linux: start each run with no network (a new network namespace).
+    pub isolate: bool,
+    /// Linux: ask before a run when isolation is on but the system does not allow it.
+    pub ask_without_isolation: bool,
+}
+
+impl Default for AppPreferences {
+    fn default() -> Self {
+        Self { output_folder: None, java: None, isolate: true, ask_without_isolation: true }
+    }
+}
+
+/// What the app found on this computer, for the Preferences screen and `--self-check`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetupStatus {
+    /// The app's version, which is also the tool's.
+    pub version: String,
+    /// `windows`, `linux` or `macos`.
+    pub os: String,
+    /// The Java executable in use.
+    pub java: String,
+    /// True when it is the runtime that came with the app.
+    pub java_bundled: bool,
+    /// What `java -version` says, such as `21.0.5`; None when it did not answer.
+    pub java_version: Option<String>,
+    /// The JavaByte tool's jar.
+    pub jar: String,
+    /// The folder runs are saved in.
+    pub output_folder: String,
+    /// The native bridge's Python, when one came with the app.
+    pub bridge: Option<String>,
+    /// The network isolation for runs: available, or why not.
+    pub isolation: Isolation,
+    /// The preferences these come from.
+    pub preferences: AppPreferences,
+}
+
+/// Whether runs can start without network.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Isolation {
+    /// The system offers isolation at all (Linux only).
+    pub supported: bool,
+    /// The app can create an isolated run right now.
+    pub available: bool,
+    /// When not available: why, in plain words, and what to do.
+    pub problem: Option<String>,
+}
+
 #[cfg(test)]
 mod follow_up_tests {
     use super::*;

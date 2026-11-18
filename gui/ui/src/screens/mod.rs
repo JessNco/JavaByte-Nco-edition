@@ -3,6 +3,7 @@
 
 pub mod compare;
 pub mod overview;
+pub mod preferences;
 pub mod report;
 pub mod report_more;
 pub mod running;

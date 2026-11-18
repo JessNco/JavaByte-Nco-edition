@@ -1,0 +1,226 @@
+# Builds the installers and tests them on clean systems (docs/gui/PHASE5-PLAN.md). On every push
+# the standard edition is built and tested; the release workflow calls this with bridge: true to
+# build the "with native bridge" edition as well.
+name: Installers
+
+on:
+  push:
+    branches-ignore: ['dependabot/**']
+    paths: ['gui/**', 'src/**', 'pom.xml', 'scripts/native-bridge-requirements.txt', '.github/workflows/installers.yml']
+  workflow_dispatch:
+    inputs:
+      bridge:
+        description: Also build the "with native bridge" edition
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      bridge:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    # Built on the oldest supported Ubuntu, so the packages also run on newer ones.
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        edition: ${{ fromJSON(inputs.bridge && '["standard", "with-native-bridge"]' || '["standard"]') }}
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: gui
+          key: installers
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev patchelf file libfuse2 \
+            libxtst6 libxi6 libxrender1 libasound2 libfreetype6
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build the command-line tool
+        working-directory: .
+        run: mvn --batch-mode --no-transfer-progress -q package -DskipTests
+      - name: Install Trunk
+        run: cargo install --locked trunk@0.22.1
+      - name: Build the installers
+        run: packaging/build.sh ${{ matrix.edition == 'with-native-bridge' && '--bridge' || '' }}
+      # The package's own copy of the app, run from where dpkg would put it, before any install.
+      - name: Self-check the packaged app
+        run: |
+          deb="$(ls target/installers/*.deb)"
+          dpkg-deb -I "$deb"
+          mkdir "$RUNNER_TEMP/unpacked" && dpkg-deb -x "$deb" "$RUNNER_TEMP/unpacked"
+          "$RUNNER_TEMP/unpacked/usr/bin/javabyte-gui" --self-check | tee "$RUNNER_TEMP/self-check.txt"
+          grep -q "bundled: yes" "$RUNNER_TEMP/self-check.txt"
+          if [ "${{ matrix.edition }}" = with-native-bridge ]; then grep -q "Speakeasy imports: yes" "$RUNNER_TEMP/self-check.txt"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-linux-${{ matrix.edition }}
+          path: gui/target/installers/*
+          if-no-files-found: error
+
+  # Fresh Ubuntu images: apt must find every dependency the package declares, and the app must
+  # work with nothing else installed (no Java, no Python).
+  linux-clean-install:
+    needs: linux
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: ['ubuntu:22.04', 'ubuntu:24.04']
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: installers-linux-standard
+      - name: Install the .deb
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./*.deb
+          ! command -v java
+      - name: Self-check the installed app
+        run: |
+          javabyte-gui --self-check | tee check.txt
+          grep -q "The engine works." check.txt
+      - name: Self-check the AppImage
+        run: |
+          chmod +x ./*.AppImage
+          ./*.AppImage --appimage-extract-and-run --self-check | tee check.txt
+          grep -q "The engine works." check.txt
+      - name: Remove the .deb
+        run: apt-get remove -y java-byte && test ! -e /usr/bin/javabyte-gui
+
+  # The installed .deb on a real Ubuntu 24.04: its AppArmor profile must let analyses run
+  # without network, and a whole analysis must work through the real window with only the
+  # bundled parts.
+  linux-installed-app:
+    needs: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: installers-linux-standard
+          path: installers
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build the harmless test fixture
+        run: |
+          mvn --batch-mode --no-transfer-progress -q test-compile
+          jar --create --file "$RUNNER_TEMP/http-rat.jar" --main-class dev.javabyte.guest.sim.HttpRat \
+            -C target/test-classes dev/javabyte/guest/sim/HttpRat.class
+      - name: Install the .deb and the accessibility tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ./installers/*.deb at-spi2-core python3-pyatspi xvfb dbus-x11
+          echo "kernel.apparmor_restrict_unprivileged_userns: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)"
+          ls -l /etc/apparmor.d/javabyte-gui
+      - name: Self-check, with isolation
+        run: |
+          javabyte-gui --self-check | tee check.txt
+          grep -q "Network isolation for analyses: available." check.txt
+      - name: A whole analysis through the accessibility bus
+        env:
+          JAVABYTE_EXPECT_ISOLATION: '1'
+        run: PYTHON=/usr/bin/python3 gui/tests/atspi/run.sh /usr/bin/javabyte-gui --sample "$RUNNER_TEMP/http-rat.jar" --print
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        edition: ${{ fromJSON(inputs.bridge && '["standard", "with-native-bridge"]' || '["standard"]') }}
+    defaults:
+      run:
+        working-directory: gui
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: gui
+          key: installers
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build the command-line tool
+        working-directory: .
+        run: mvn --batch-mode --no-transfer-progress -q package -DskipTests
+      - name: Install Trunk
+        run: cargo install --locked trunk@0.22.1
+      - name: Build the installers
+        run: packaging/build.sh ${{ matrix.edition == 'with-native-bridge' && '--bridge' || '' }}
+      # A silent install, then the installed app checks itself, the "Open with" entry is there
+      # without taking over .jar files, and uninstalling removes everything.
+      - name: Install, self-check and uninstall the MSI
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem target/installers/*.msi).FullName
+          $before = (Get-ItemProperty -Path 'Registry::HKEY_CLASSES_ROOT\.jar' -ErrorAction SilentlyContinue).'(default)'
+          $p = Start-Process msiexec -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', "$env:RUNNER_TEMP\install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.log" -Tail 60; throw "install failed: $($p.ExitCode)" }
+          $exe = Get-ChildItem -Path "$env:ProgramFiles\JavaByte", "${env:ProgramFiles(x86)}\JavaByte", "$env:LOCALAPPDATA\JavaByte" -Filter javabyte-gui.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw "javabyte-gui.exe not found after install" }
+          Write-Host "Installed at $($exe.FullName)"
+          $check = Start-Process $exe.FullName -ArgumentList '--self-check' -Wait -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\check.txt"
+          Get-Content "$env:RUNNER_TEMP\check.txt"
+          if ($check.ExitCode -ne 0) { throw "self-check failed" }
+          if (-not (Select-String -Path "$env:RUNNER_TEMP\check.txt" -Pattern 'bundled: yes' -Quiet)) { throw "not using the bundled Java" }
+          if ('${{ matrix.edition }}' -eq 'with-native-bridge' -and -not (Select-String -Path "$env:RUNNER_TEMP\check.txt" -Pattern 'Speakeasy imports: yes' -Quiet)) { throw "the bridge does not work" }
+          $openWith = Get-ItemProperty -Path 'Registry::HKEY_CLASSES_ROOT\.jar\OpenWithProgids' -Name 'JavaByte.jar' -ErrorAction SilentlyContinue
+          if (-not $openWith) { throw "JavaByte is not under Open with for .jar files" }
+          $after = (Get-ItemProperty -Path 'Registry::HKEY_CLASSES_ROOT\.jar' -ErrorAction SilentlyContinue).'(default)'
+          if ($after -ne $before) { throw ".jar's default program changed from '$before' to '$after'" }
+          $p = Start-Process msiexec -ArgumentList '/x', "`"$msi`"", '/qn' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
+          if (Test-Path $exe.FullName) { throw "the app is still there after uninstalling" }
+      - name: Self-check the portable edition
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem target/installers/*-portable.zip).FullName
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\portable"
+          $exe = Get-ChildItem "$env:RUNNER_TEMP\portable" -Filter javabyte-gui.exe -Recurse | Select-Object -First 1
+          $check = Start-Process $exe.FullName -ArgumentList '--self-check' -Wait -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\portable-check.txt"
+          Get-Content "$env:RUNNER_TEMP\portable-check.txt"
+          if ($check.ExitCode -ne 0) { throw "portable self-check failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-windows-${{ matrix.edition }}
+          path: gui/target/installers/*
+          if-no-files-found: error

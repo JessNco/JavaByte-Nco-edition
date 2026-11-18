@@ -165,6 +165,20 @@ def main():
     if not press(app, "push button", "Analyse with these settings"):
         missing.append(("push button", "Analyse with these settings (to press)"))
         return report(missing)
+    # Where the system does not allow network namespaces (GitHub's Ubuntu 24.04 runners, for a
+    # build that is not installed with its AppArmor profile), the app asks first. With
+    # JAVABYTE_EXPECT_ISOLATION=1 (the installed .deb) the question must not come.
+    nodes = wait_until(app, lambda r, n: r == "push button" and n in ("View the report", "Analyse without isolation"), 120)
+    if any(r == "push button" and n == "Analyse without isolation" for _, r, n, _ in nodes):
+        show(nodes, "the question before an analysis that cannot be isolated", printing, 60)
+        print("the app asked before running without network isolation")
+        if os.environ.get("JAVABYTE_EXPECT_ISOLATION") == "1":
+            missing.append(("isolation", "runs isolated without asking (the installed .deb allows it)"))
+        if not any(r == "alert" or r == "dialog" for _, r, _, _ in nodes):
+            missing.append(("dialog", "the question is exposed as a dialog"))
+        press(app, "push button", "Analyse without isolation")
+    else:
+        print("the run started without asking: isolation available")
     nodes = wait_for(app, "push button", "View the report", 120)
     show(nodes, "running, finished", printing, 120)
     # The run used the settings as shown: each run keeps them beside its report.

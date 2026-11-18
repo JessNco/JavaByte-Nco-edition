@@ -35,13 +35,19 @@ pub mod exit_code {
     pub const LIMIT_REACHED: i32 = 3;
 }
 
-/// How to start the tool: which Java, and which JavaByte jar.
+/// How to start the tool: which Java, which JavaByte jar, and how.
 #[derive(Clone, Debug)]
 pub struct Launcher {
     /// The Java runtime to start.
     pub java: PathBuf,
     /// The JavaByte tool's jar.
     pub jar: PathBuf,
+    /// Start runs with no network (Linux; see `crate::isolation`). Short commands such as
+    /// `inspect` and `schema` only read the sample as data and start without it.
+    pub isolate: bool,
+    /// The native bridge's Python, passed as `JAVABYTE_BRIDGE_PYTHON` so the `native-bridge`
+    /// plugin uses it when the settings name no other.
+    pub bridge_python: Option<PathBuf>,
 }
 
 /// What to analyse and how.
@@ -58,8 +64,13 @@ pub struct RunRequest {
 }
 
 impl Launcher {
+    /// Uses the given Java and jar, without isolation or bridge.
+    pub fn new(java: impl Into<PathBuf>, jar: impl Into<PathBuf>) -> Self {
+        Self { java: java.into(), jar: jar.into(), isolate: false, bridge_python: None }
+    }
+
     /// Uses the given jar, and finds Java: `JAVABYTE_JAVA`, then `JAVA_HOME`, then `java` on the
-    /// path. The installed app will name its bundled runtime instead (phase 5).
+    /// path. For development and tests; the installed app uses the runtime it bundles.
     pub fn find(jar: impl Into<PathBuf>) -> Result<Self, String> {
         let jar = jar.into();
         if !jar.is_file() {
@@ -71,13 +82,16 @@ impl Launcher {
             .or_else(|| std::env::var_os("JAVA_HOME").map(|home| PathBuf::from(home).join("bin").join(executable)))
             .filter(|path| path.is_file())
             .unwrap_or_else(|| PathBuf::from(executable));
-        Ok(Self { java, jar })
+        Ok(Self::new(java, jar))
     }
 
     /// `java -jar <jar> <args>`, without a console window on Windows.
     fn command(&self, args: &[&std::ffi::OsStr]) -> Command {
         let mut command = Command::new(&self.java);
         command.arg("-jar").arg(&self.jar).args(args);
+        if let Some(python) = &self.bridge_python {
+            command.env("JAVABYTE_BRIDGE_PYTHON", python);
+        }
         #[cfg(windows)]
         {
             // No console window flashing up behind the app for each run.
@@ -167,8 +181,12 @@ impl Launcher {
             args.push("-s".as_ref());
             args.push(override_.as_ref());
         }
-        let mut child = self
-            .command(&args)
+        let mut command = self.command(&args);
+        #[cfg(target_os = "linux")]
+        if self.isolate {
+            crate::isolation::isolate(&mut command);
+        }
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

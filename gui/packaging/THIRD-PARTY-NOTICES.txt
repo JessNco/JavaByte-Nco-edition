@@ -1,0 +1,27 @@
+JavaByte bundles the following software. Each keeps its own licence.
+
+Java runtime (runtime/)
+  Eclipse Temurin, an OpenJDK build by the Eclipse Adoptium project.
+  Licence: GNU General Public License, version 2, with the Classpath Exception.
+  The full licence texts of every module are in runtime/legal/.
+  Source: https://github.com/adoptium/jdk21u
+
+JavaByte's own Java libraries (inside javabyte.jar)
+  ASM (BSD 3-Clause), Jackson (Apache 2.0), SnakeYAML (Apache 2.0), picocli (Apache 2.0).
+
+The desktop app
+  Tauri and its dependencies (MIT or Apache 2.0), Leptos (MIT), and other Rust crates under
+  MIT, Apache 2.0 or similar licences. The full list is in the app's source: gui/Cargo.lock.
+
+Only in the "with native bridge" edition (bridge/python/)
+  CPython, built by the python-build-standalone project.
+    Licence: Python Software Foundation License. Source: https://github.com/python/cpython
+  Speakeasy, by Mandiant. Licence: MIT. Source: https://github.com/mandiant/speakeasy
+  Unicorn CPU emulator. Licence: GNU General Public License, version 2.
+    Source: https://github.com/unicorn-engine/unicorn
+    The bridge runs Unicorn in a separate process; JavaByte talks to it only through a pipe.
+  Other Python packages Speakeasy needs; their licences are in each package's folder under
+  bridge/python/.
+
+Under the GPL, you may ask for the source of the GPL-licensed parts exactly as bundled. The
+links above lead to it; the versions are those named in each package's metadata.

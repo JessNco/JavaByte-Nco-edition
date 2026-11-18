@@ -1,0 +1,36 @@
+{
+  "bundle": {
+    "active": true,
+    "resources": {
+      "../target/bundle-input/javabyte.jar": "javabyte.jar",
+      "../target/bundle-input/runtime/": "runtime/",
+      "../target/bundle-input/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
+    },
+    "linux": {
+      "deb": {
+        "desktopTemplate": "../packaging/linux/javabyte-gui.desktop",
+        "files": {
+          "/usr/share/javabyte-gui/apparmor-profile": "../packaging/linux/apparmor-profile"
+        },
+        "postInstallScript": "../packaging/linux/postinst",
+        "postRemoveScript": "../packaging/linux/postrm"
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "wix": {
+        "fragmentPaths": [
+          "../packaging/windows/open-with.wxs"
+        ],
+        "componentRefs": [
+          "JavaByteOpenWith"
+        ]
+      }
+    }
+  }
+}

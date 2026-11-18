@@ -3,7 +3,7 @@
 error-unreadable-line = Unreadable line from the tool: { $detail }
 error-jar-missing = The JavaByte program was not found at { $path }.
 error-java-start = Java could not be started ({ $path }): { $detail }
-error-java-missing = Java 17 or later is needed and was not found. Install it, or set JAVA_HOME to it. (The installer will include it.)
+error-java-missing = Java did not start. Reinstall JavaByte to restore the Java that comes with it, or choose a Java 17 or later in Preferences.
 error-tool-failed = The JavaByte tool failed (exit code { $code }): { $detail }
 error-tool-output = Unexpected output from the JavaByte tool: { $detail }
 error-stop-not-sent = The stop request could not be sent: { $detail }
@@ -33,7 +33,7 @@ run-ended = The analysis tool ended unexpectedly.
 error-backend-missing = The desktop backend is not available.
 error-backend-call = The app could not call its backend: { $detail }
 error-backend-reply = Unexpected reply from the backend: { $detail }
-error-engine-missing = The analysis engine (javabyte.jar) was not found. Set JAVABYTE_JAR to its location, or build it with 'mvn package' in the JavaByte folder.
+error-engine-missing = The analysis engine (javabyte.jar) was not found. Reinstall JavaByte. (In a build from source: set JAVABYTE_JAR, or run 'mvn package' in the JavaByte folder.)
 
 ## Problems editing the settings. $path is a setting's name, such as network.http[2].url.
 
@@ -57,3 +57,7 @@ error-save = The copy could not be saved: { $detail }
 error-save-sample-folder = Choose another folder: copies are never saved next to the sample.
 error-disasm = The class could not be shown as instructions: { $detail }
 error-sample-moved = The sample is no longer at { $path }. Choose it again from the Start screen.
+error-java-chosen-start = The Java at { $path } did not start. Choose the 'java' program of a Java 17 or later installation (in its 'bin' folder).
+error-java-chosen-old = That Java is version { $version }. JavaByte needs Java 17 or later.
+error-preferences-save = The preferences could not be saved: { $detail }
+error-isolation-unconfirmed = This run cannot be isolated from the network, and that needs your agreement first. Start it again from the Analyse button.

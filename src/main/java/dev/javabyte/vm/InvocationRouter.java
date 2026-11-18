@@ -486,10 +486,12 @@ public final class InvocationRouter {
 
     /**
      * A JDK method declared to take a class loader would ask that loader for classes or
-     * resources from inside host code, where no stub sees the request. A real loader the guest
-     * holds (its own subclass of {@code ClassLoader}, say) would then fetch from its URLs or
-     * hand classes to the JDK to construct. {@code ResourceBundle.Control.newBundle} is one
-     * such method. Calls the stubs handle are unaffected, since stubs run before this check.
+     * resources from inside host code, where no stub sees the request, and might hand classes
+     * to the JDK to construct. {@code ResourceBundle.Control.newBundle} is one such method.
+     * Every loader the guest can hold is simulated and answers such requests only from the
+     * guest's world (see {@link dev.javabyte.shell.ShellFactory}'s simulated bases); this
+     * check is the second line of defence, so the request is not made at all. Calls the stubs
+     * handle are unaffected, since stubs run before this check.
      */
     private static boolean passesClassLoader(String owner, String desc) {
         return desc.substring(0, desc.indexOf(')')).contains("Ljava/lang/ClassLoader;")

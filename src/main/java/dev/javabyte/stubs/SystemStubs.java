@@ -302,11 +302,13 @@ final class SystemStubs {
      * {@code getClass()} for values that are not instances of interpreted classes. Emulator
      * objects report the JDK class they stand for, never their own class or a generated proxy
      * class. Used for every {@code getClass()} call, whichever class or interface the call names.
-     * The answer is {@link dev.javabyte.vm.TypeSystem#reportedClass}, the same rule that names
-     * classes in exception text, so the two always agree.
+     * The answer is {@link dev.javabyte.vm.TypeSystem#reportedMirror}, which follows the same
+     * imitation rules that name classes in exception text, so the two always agree; for a
+     * class the analysis JDK lacks, such as Java 8's {@code sun.misc.Launcher$AppClassLoader},
+     * it is a modelled class object with the real name and superclass.
      */
     static Object classOf(VirtualMachine vm, Object value) {
-        return vm.types.reportedClass(value);
+        return vm.types.reportedMirror(value);
     }
 
     /**
@@ -331,7 +333,34 @@ final class SystemStubs {
             String bean = ManagementStubs.imitatedClass(value);
             return bean == null ? null : new String[] {bean};
         });
+        // The built-in loaders are URLClassLoaders, as Java 8's are; on a newer advertised Java
+        // the class they imitate is not one, and casts and instanceof must say so.
+        vm.types.addImitation(value -> imitatedLoader(vm, value), true);
         vm.types.addImitation(value -> imitatedBySimulation(vm, value));
+        // Java 8's loader classes do not exist on the analysis JDK. Modelled, getClass() on the
+        // loaders shows their real names and superclass. Both are static nested classes.
+        vm.types.modelAbsentClass("sun/misc/Launcher$AppClassLoader", "java/net/URLClassLoader",
+                "sun/misc/Launcher", org.objectweb.asm.Opcodes.ACC_STATIC);
+        vm.types.modelAbsentClass("sun/misc/Launcher$ExtClassLoader", "java/net/URLClassLoader",
+                "sun/misc/Launcher", org.objectweb.asm.Opcodes.ACC_STATIC);
+    }
+
+    /**
+     * The class a built-in loader imitates, best first; null for any other value. Java 8 has
+     * {@code sun.misc.Launcher}'s loaders, both {@code URLClassLoader}s; Java 9 and later have
+     * {@code jdk.internal.loader}'s, which are not. These candidates also decide type checks
+     * on the loaders (see {@link dev.javabyte.vm.TypeSystem#addImitation(java.util.function.Function, boolean)}).
+     */
+    private static String[] imitatedLoader(VirtualMachine vm, Object value) {
+        if (value instanceof SimClassLoader) {
+            return legacyJava(vm.env) ? new String[] {"sun/misc/Launcher$AppClassLoader", "java/net/URLClassLoader"}
+                    : new String[] {"jdk/internal/loader/ClassLoaders$AppClassLoader", "java/lang/ClassLoader"};
+        }
+        if (value instanceof SimPlatformClassLoader) {
+            return legacyJava(vm.env) ? new String[] {"sun/misc/Launcher$ExtClassLoader", "java/net/URLClassLoader"}
+                    : new String[] {"jdk/internal/loader/ClassLoaders$PlatformClassLoader", "java/lang/ClassLoader"};
+        }
+        return null;
     }
 
     /**
@@ -374,15 +403,6 @@ final class SystemStubs {
             return "jar".equals(connection.getURL().getProtocol())
                     ? new String[] {"sun/net/www/protocol/jar/JarURLConnection"}
                     : new String[] {"sun/net/www/protocol/file/FileURLConnection"};
-        }
-        // The built-in loaders: Java 8 has sun.misc.Launcher's, Java 9 and later jdk.internal.loader's.
-        if (value instanceof SimClassLoader) {
-            return legacyJava(env) ? new String[] {"sun/misc/Launcher$AppClassLoader", "java/lang/ClassLoader"}
-                    : new String[] {"jdk/internal/loader/ClassLoaders$AppClassLoader", "java/lang/ClassLoader"};
-        }
-        if (value instanceof SimPlatformClassLoader) {
-            return legacyJava(env) ? new String[] {"sun/misc/Launcher$ExtClassLoader", "java/lang/ClassLoader"}
-                    : new String[] {"jdk/internal/loader/ClassLoaders$PlatformClassLoader", "java/lang/ClassLoader"};
         }
         return null;
     }

@@ -1,7 +1,5 @@
 package dev.javabyte.env;
 
-import dev.javabyte.shell.ShellInstance;
-import dev.javabyte.vm.VirtualMachine;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -34,8 +32,13 @@ import java.util.stream.Stream;
  * this class instead of the real one. Its public constructors therefore have the shapes of
  * {@code URLClassLoader}'s, so the sample's {@code super(...)} call finds a match. A stream
  * handler factory the sample passes is ignored, as nothing here ever opens a URL.
+ *
+ * <p>The built-in loaders extend it too ({@link SimClassLoader} and
+ * {@link SimPlatformClassLoader}), because on Java 8 the application and extension loaders
+ * are {@code URLClassLoader}s. On a newer advertised Java they are not, and the type system
+ * answers casts and {@code instanceof} from the class they imitate instead.
  */
-public class SimURLClassLoader extends URLClassLoader {
+public class SimURLClassLoader extends URLClassLoader implements SimulatedLoader {
 
     private final List<URL> urls;
     private final ClassLoader guestParent;
@@ -79,7 +82,8 @@ public class SimURLClassLoader extends URLClassLoader {
     }
 
     /** The parent the guest asked for; the real parent is always the bootstrap loader. */
-    public ClassLoader guestParent() {
+    @Override
+    public final ClassLoader guestParent() {
         return guestParent;
     }
 
@@ -87,7 +91,8 @@ public class SimURLClassLoader extends URLClassLoader {
      * True if the guest named no parent, so that {@code getParent} should report the
      * application class loader, which the stubs hold.
      */
-    public boolean hasDefaultParent() {
+    @Override
+    public final boolean hasDefaultParent() {
         return defaultParent;
     }
 
@@ -100,6 +105,18 @@ public class SimURLClassLoader extends URLClassLoader {
     /** The URLs the guest gave, plus any it added later. */
     @Override
     public URL[] getURLs() {
+        return guestURLs();
+    }
+
+    /**
+     * Only the URLs the guest gave or added. These are the archives the class-loader stubs
+     * read, from the virtual disk or the network simulator, when the guest asks this loader for
+     * a class; a real {@code URLClassLoader} likewise loads from its own list, whatever a
+     * subclass's {@code getURLs} says. The built-in loaders list more in {@code getURLs}, but
+     * those are the sample itself or exist only as names. Final, so a sample's subclass cannot
+     * have the stubs run its code here.
+     */
+    public final URL[] guestURLs() {
         synchronized (urls) {
             return urls.toArray(new URL[0]);
         }
@@ -108,14 +125,25 @@ public class SimURLClassLoader extends URLClassLoader {
     /**
      * Adds a URL on the guest's behalf. The stubs call this when the guest reaches the
      * protected {@link #addURL} by reflection, which samples do to extend a loader's path.
+     * Final, like the other methods only the stubs call, so that a shell never routes it to
+     * guest code.
      */
-    public void addGuestURL(URL url) {
-        addURL(url);
+    public final void addGuestURL(URL url) {
+        remember(url);
     }
 
     /** Remembers the URL, as a real loader would; nothing is fetched. */
     @Override
     protected void addURL(URL url) {
+        remember(url);
+    }
+
+    /**
+     * Adds to the list without calling {@link #addURL}, which a sample's subclass may override:
+     * its override calling {@code super.addURL} reaches the stubs, and from there
+     * {@link #addGuestURL}, which must not call back into the override.
+     */
+    private void remember(URL url) {
         if (url != null) {
             synchronized (urls) {
                 urls.add(url);
@@ -130,6 +158,20 @@ public class SimURLClassLoader extends URLClassLoader {
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
         return super.loadClass(name);
+    }
+
+    /**
+     * The real delegation, which reaches only JDK classes and then {@code findClass}. A
+     * sample's own {@code findClass} returns the interpreter's class object, which is not a
+     * host class, so JDK code is told the class was not found.
+     */
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+        try {
+            return super.loadClass(name, resolve);
+        } catch (ClassCastException interpretedOnly) {
+            throw new ClassNotFoundException(name);
+        }
     }
 
     /** Never looks at the URLs. */
@@ -187,20 +229,13 @@ public class SimURLClassLoader extends URLClassLoader {
      */
     @Override
     public String toString() {
-        String className = this instanceof ShellInstance shell && shell.javabyte$state() != null
-                ? shell.javabyte$state().type.dottedName() : "java.net.URLClassLoader";
-        return className + '@' + Integer.toHexString(hashCode());
+        return SimLoaderSupport.describe(this, "java.net.URLClassLoader");
     }
 
-    /**
-     * A per-run fixed stand-in for the identity hash (see
-     * {@link dev.javabyte.vm.TypeSystem#identityHash}), so the text above is the same in every
-     * run. Outside an emulator thread there is nothing to ask, and the real identity hash is used.
-     */
+    /** A per-run fixed stand-in for the identity hash; see {@link SimLoaderSupport#hash}. */
     @Override
     public int hashCode() {
-        VirtualMachine vm = VirtualMachine.current();
-        return vm != null ? vm.types.identityHash(this) : super.hashCode();
+        return SimLoaderSupport.hash(this);
     }
 
     /** Identity, as for every class loader. */

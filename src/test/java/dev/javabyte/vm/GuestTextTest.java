@@ -1,6 +1,7 @@
 package dev.javabyte.vm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,6 +63,21 @@ class GuestTextTest {
         assertEquals("jdk.internal.loader.ClassLoaders$AppClassLoader@1b6d3586", app17.toString());
         assertEquals(0x1b6d3586, app17.hashCode());
         assertEquals("jdk.internal.loader.ClassLoaders$AppClassLoader", modern.types.reportedClass(app17).getName());
+
+        // Java 8's application loader is a URLClassLoader; Java 9's and later are not.
+        assertTrue(java8.types.isInstance(app8, "java/net/URLClassLoader"));
+        assertTrue(java8.types.isInstance(app8, "sun/misc/Launcher$AppClassLoader"));
+        assertTrue(java8.types.isInstance(app8, "java/io/Closeable"));
+        assertEquals("sun.misc.Launcher$AppClassLoader",
+                ((dev.javabyte.model.GuestClass) java8.types.reportedMirror(app8)).dottedName());
+        assertFalse(modern.types.isInstance(app17, "java/net/URLClassLoader"));
+        assertFalse(modern.types.isInstance(app17, "java/io/Closeable"));
+        assertTrue(modern.types.isInstance(app17, "jdk/internal/loader/ClassLoaders$AppClassLoader"));
+        for (VirtualMachine vm : List.of(java8, modern)) {
+            assertTrue(vm.types.isInstance(vm.env.appLoader, "java/security/SecureClassLoader"));
+            assertTrue(vm.types.isInstance(vm.env.appLoader, "java/lang/ClassLoader"));
+            assertFalse(vm.types.isInstance(vm.env.appLoader, "java/lang/String"));
+        }
     }
 
     @Test

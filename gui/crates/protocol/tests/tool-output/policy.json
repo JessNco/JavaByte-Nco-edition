@@ -233,12 +233,17 @@
     "rule" : "java/lang/ClassLoader#<init>",
     "allow" : true,
     "section" : "core language types",
-    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs; <init> stays listed so a sample's own subclass can still extend the real class."
+    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs. <init> stays listed so that a sample's own subclass can be built, but on a simulated base, never on the real class: its real parent is the bootstrap loader and it answers JDK code only from the sample."
+  }, {
+    "rule" : "java/security/SecureClassLoader#<init>",
+    "allow" : true,
+    "section" : "core language types",
+    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs. <init> stays listed so that a sample's own subclass can be built, but on a simulated base, never on the real class: its real parent is the bootstrap loader and it answers JDK code only from the sample."
   }, {
     "rule" : "java/net/URLClassLoader#<init>,getURLs",
     "allow" : true,
     "section" : "core language types",
-    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs; <init> stays listed so a sample's own subclass can still extend the real class."
+    "note" : "Loading methods are stubs whatever the receiver. A JDK method that takes a loader is blocked by the router, because it would ask the loader for classes from inside host code. new URLClassLoader(...) is a stub that returns a loader which only remembers its URLs. <init> stays listed so that a sample's own subclass can be built, but on a simulated base, never on the real class: its real parent is the bootstrap loader and it answers JDK code only from the sample."
   }, {
     "rule" : "java/lang/ProcessBuilder#<init>,command,directory,redirectErrorStream,redirectInput,redirectOutput,redirectError,inheritIO",
     "allow" : true,

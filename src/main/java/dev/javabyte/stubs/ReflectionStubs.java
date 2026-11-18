@@ -320,9 +320,10 @@ final class ReflectionStubs {
             case "getResource":
                 return resourceUrl(vm, resolveResourceName(cls.name, ctx.stringArg(0)));
             case "getClassLoader":
-                return vm.env.appLoader;
+                // A modelled JDK class belongs to the bootstrap loader, reported as null.
+                return cls.isAbsentJdkClass() ? null : vm.env.appLoader;
             case "getProtectionDomain":
-                return sampleDomain(vm);
+                return cls.isAbsentJdkClass() ? new ProtectionDomain(null, null) : sampleDomain(vm);
             case "getSuperclass", "getGenericSuperclass":
                 if (cls.isInterface()) {
                     return null;
@@ -540,6 +541,12 @@ final class ReflectionStubs {
                 case "invoke": {
                     String owner = Type.getInternalName(real.getDeclaringClass());
                     String desc = Type.getMethodDescriptor(real);
+                    if (!Modifier.isStatic(real.getModifiers()) && ctx.arg(0) != null && !vm.types.isInstance(ctx.arg(0), owner)) {
+                        // As on a real JVM, which checks the receiver before calling. This is
+                        // how URLClassLoader.addURL, invoked by reflection on the application
+                        // loader, fails on Java 9 and later, where that loader is no URLClassLoader.
+                        throw ctx.raise(new IllegalArgumentException("object is not an instance of declaring class"));
+                    }
                     Object[] args = unboxAll((Object[]) ctx.arg(1), Type.getArgumentTypes(desc));
                     vm.events.addOnce("invoke:" + owner + real.getName() + desc, "reflect", "invoke",
                             "method", owner + '.' + real.getName() + desc);

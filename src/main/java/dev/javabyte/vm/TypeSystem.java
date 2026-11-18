@@ -33,6 +33,19 @@ public final class TypeSystem {
     private final java.util.List<java.util.function.Function<Object, String[]>> imitations =
             new java.util.concurrent.CopyOnWriteArrayList<>();
 
+    /**
+     * The imitation rules whose class also decides type checks; see
+     * {@link #addImitation(java.util.function.Function, boolean)}.
+     */
+    private final java.util.Set<java.util.function.Function<Object, String[]>> typeDeciding =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    /**
+     * Class objects for imitated JDK classes that the analysis JDK lacks, by internal name;
+     * see {@link #modelAbsentClass}.
+     */
+    private final java.util.Map<String, GuestClass> absentClasses = new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Hash codes handed out by {@link #identityHash}, so each object keeps its own. */
     private final java.util.Map<Object, Integer> identityHashes = new java.util.IdentityHashMap<>();
 
@@ -50,6 +63,43 @@ public final class TypeSystem {
      */
     public void addImitation(java.util.function.Function<Object, String[]> rule) {
         imitations.add(rule);
+    }
+
+    /**
+     * Adds an imitation rule, as {@link #addImitation(java.util.function.Function)} does,
+     * whose class may also decide casts, {@code instanceof} and {@code Class.isInstance}.
+     *
+     * <p>This is for emulator objects whose real class is wider than the class they imitate on
+     * some advertised Java versions. The built-in class loaders are {@code URLClassLoader}s,
+     * as Java 8's are, but on Java 9 and later the application loader is not one, and a sample
+     * casting it to {@code URLClassLoader} must fail as it would there. For such objects a type
+     * check asks whether the type is a supertype of the imitated class: the first candidate
+     * the analysis JDK has, or the class object {@link #modelAbsentClass} made for the first.
+     *
+     * @param decidesTypeChecks true if the imitated class, rather than the object's own
+     *                          class, answers type checks
+     */
+    public void addImitation(java.util.function.Function<Object, String[]> rule, boolean decidesTypeChecks) {
+        if (decidesTypeChecks) {
+            typeDeciding.add(rule);
+        }
+        imitations.add(rule);
+    }
+
+    /**
+     * Models a JDK class of the advertised Java that the analysis JDK lacks, so that
+     * {@code getClass()} on an object imitating it (see {@link #reportedMirror}) can return a
+     * class object with the right name and superclass rather than a nearer JDK class. The
+     * class object has no members of its own and cannot be found by name, loaded or
+     * instantiated; see {@link GuestClass#absentJdkClass}.
+     *
+     * @param name        internal name, for example {@code sun/misc/Launcher$AppClassLoader}
+     * @param superName   internal name of its superclass, which the analysis JDK must have
+     * @param outerName   for a nested class, the class it is declared in; else null
+     * @param innerAccess for a nested class, its modifiers, for example {@code ACC_STATIC}
+     */
+    public void modelAbsentClass(String name, String superName, String outerName, int innerAccess) {
+        absentClasses.computeIfAbsent(name, unused -> GuestClass.absentJdkClass(vm.classes, name, superName, outerName, innerAccess));
     }
 
     /**
@@ -81,6 +131,27 @@ public final class TypeSystem {
             }
         }
         return null;
+    }
+
+    /**
+     * For a value whose imitated class decides type checks, the candidate class names; null
+     * for every other value. The first rule that applies to a value decides, as in
+     * {@link #imitatedNames}.
+     */
+    private String[] typeDecidingNames(Object value) {
+        for (java.util.function.Function<Object, String[]> rule : imitations) {
+            String[] names = rule.apply(value);
+            if (names != null && names.length > 0) {
+                return typeDeciding.contains(rule) ? names : null;
+            }
+        }
+        return null;
+    }
+
+    /** The modelled class object for the first candidate, if the analysis JDK lacks that class. */
+    private GuestClass absentClassFor(String[] candidates) {
+        GuestClass absent = absentClasses.get(candidates[0]);
+        return absent != null && vm.host.findClass(candidates[0]) == null ? absent : null;
     }
 
     /**
@@ -127,6 +198,10 @@ public final class TypeSystem {
         if (value instanceof PendingInstance pending) {
             return type.equals(pending.hostClass);
         }
+        String[] deciding = typeDecidingNames(value);
+        if (deciding != null) {
+            return isImitatedInstance(deciding, type);
+        }
         Class<?> host = vm.host.findClass(type);
         if (host == null) {
             return false;
@@ -136,6 +211,36 @@ public final class TypeSystem {
             return host.isAssignableFrom(imitated);
         }
         return host.isInstance(value);
+    }
+
+    /**
+     * A type check answered by the imitated class alone: the modelled class object of an
+     * absent class and its superclass chain, or the first candidate the analysis JDK has.
+     */
+    private boolean isImitatedInstance(String[] candidates, String type) {
+        GuestClass absent = absentClassFor(candidates);
+        Class<?> imitated;
+        if (absent != null) {
+            if (absent.name.equals(type)) {
+                return true;
+            }
+            imitated = vm.host.findClass(absent.hostSuperName());
+        } else {
+            imitated = firstHostClass(candidates);
+        }
+        Class<?> host = vm.host.findClass(type);
+        return host != null && imitated != null && host.isAssignableFrom(imitated);
+    }
+
+    /** The first of the candidate classes that the analysis JDK has, or null. */
+    private Class<?> firstHostClass(String[] candidates) {
+        for (String candidate : candidates) {
+            Class<?> found = vm.host.findClass(candidate);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     /** For emulator objects that imitate a JDK type without extending it, the type they imitate. */
@@ -235,19 +340,34 @@ public final class TypeSystem {
             return Object.class; // stands for a class this JDK lacks
         }
         String[] candidates = imitatedNames(value);
-        if (candidates != null) {
-            for (String candidate : candidates) {
-                Class<?> found = vm.host.findClass(candidate);
-                if (found != null) {
-                    return found;
-                }
-            }
+        Class<?> found = candidates == null ? null : firstHostClass(candidates);
+        if (found != null) {
+            return found;
         }
         Class<?> cls = value.getClass();
         while (cls.getName().startsWith("dev.javabyte.")) {
             cls = cls.getSuperclass();
         }
         return cls;
+    }
+
+    /**
+     * The class object {@code getClass()} gives the guest for a value that is not an instance
+     * of an interpreted class: {@link #reportedClass}, except where an imitation rule names a
+     * class that the analysis JDK lacks and {@link #modelAbsentClass} has modelled it. Then
+     * it is that model, so that the name and superclass the guest reads are those of the
+     * advertised Java: {@code sun.misc.Launcher$AppClassLoader}, a {@code URLClassLoader},
+     * for Java 8's application loader, rather than the nearest class this JDK has.
+     */
+    public Object reportedMirror(Object value) {
+        if (value != null && !(value instanceof StandIn) && vm.stateOf(value) == null) {
+            String[] candidates = imitatedNames(value);
+            GuestClass absent = candidates == null ? null : absentClassFor(candidates);
+            if (absent != null) {
+                return absent;
+            }
+        }
+        return reportedClass(value);
     }
 
     /**

@@ -1,6 +1,7 @@
 package dev.javabyte.stubs;
 
 import dev.javabyte.env.SimFile;
+import dev.javabyte.env.SimPackage;
 import dev.javabyte.host.CallContext;
 import dev.javabyte.host.StubRegistry;
 import dev.javabyte.model.FieldRef;
@@ -27,7 +28,9 @@ import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.security.cert.Certificate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -86,9 +89,24 @@ final class ReflectionStubs {
         return name.equals("setAccessible") ? null : (Object) 1;
     }
 
+    /**
+     * The JDK frames that Java 8's {@code Class.newInstance} puts between the caller and the
+     * constructor, innermost first: those of {@code Constructor.newInstance}, which it calls,
+     * and its own.
+     */
+    static final List<StackTraceElement> CLASS_NEW_INSTANCE_FRAMES;
+
+    static {
+        List<StackTraceElement> frames = new ArrayList<>(VirtualMachine.CONSTRUCTOR_NEW_INSTANCE_FRAMES);
+        frames.add(new StackTraceElement("java.lang.Class", "newInstance", "Class.java", 442));
+        CLASS_NEW_INSTANCE_FRAMES = List.copyOf(frames);
+    }
+
+    /** Installs the reflection stubs, with one {@code Package} object per guest package for the run. */
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
-        stubs.onClass("java/lang/Class", ctx -> classOperation(vm, ctx));
+        Map<String, SimPackage> packages = new HashMap<>();
+        stubs.onClass("java/lang/Class", ctx -> classOperation(vm, ctx, packages));
         stubs.onClass("java/lang/reflect/Method", ctx -> methodOperation(vm, ctx));
         stubs.onClass("java/lang/reflect/Field", ctx -> fieldOperation(vm, ctx));
         stubs.onClass("java/lang/reflect/Constructor", ctx -> constructorOperation(vm, ctx));
@@ -167,7 +185,13 @@ final class ReflectionStubs {
 
     // ------------------------------------------------------------------ java.lang.Class
 
-    private static Object classOperation(VirtualMachine vm, CallContext ctx) throws Exception {
+    /**
+     * Answers a {@code java.lang.Class} method, on a guest class mirror or a real JDK class.
+     *
+     * @param packages the run's {@code Package} objects for guest packages, by package name
+     */
+    private static Object classOperation(VirtualMachine vm, CallContext ctx, Map<String, SimPackage> packages)
+            throws Exception {
         if (ctx.name.equals("forName")) {
             // forName(String) initialises; forName(String, boolean, ClassLoader) says whether to.
             boolean initialise = ctx.argCount() < 2 || !(ctx.arg(1) instanceof Integer flag) || flag != 0;
@@ -175,13 +199,14 @@ final class ReflectionStubs {
             return forName(vm, name, initialise);
         }
         if (ctx.receiver instanceof GuestClass guest) {
-            return guestClassOperation(vm, guest, ctx);
+            return guestClassOperation(vm, guest, ctx, packages);
         }
         Class<?> cls = (Class<?>) ctx.receiver;
         String internalName = cls.isArray() || cls.isPrimitive() ? null : Type.getInternalName(cls);
         switch (ctx.name) {
             case "newInstance":
-                return vm.instantiate(internalName, "()V", new Object[0]);
+                // Class.newInstance passes the constructor's exceptions on unwrapped.
+                return vm.callThroughJdk(CLASS_NEW_INSTANCE_FRAMES, () -> vm.instantiate(internalName, "()V", new Object[0]));
             case "getResourceAsStream":
                 return resourceStream(vm, resolveResourceName(internalName, ctx.stringArg(0)));
             case "getResource":
@@ -245,7 +270,15 @@ final class ReflectionStubs {
         return null;
     }
 
-    private static Object guestClassOperation(VirtualMachine vm, GuestClass cls, CallContext ctx) throws Exception {
+    /**
+     * Answers a {@code java.lang.Class} method on the mirror of an interpreted class.
+     *
+     * @param packages the run's {@code Package} objects for guest packages, by package name;
+     *                 a real JVM has one per package, so {@code getPackage()} on two classes
+     *                 of the same package gives the same object
+     */
+    private static Object guestClassOperation(VirtualMachine vm, GuestClass cls, CallContext ctx,
+            Map<String, SimPackage> packages) throws Exception {
         switch (ctx.name) {
             case "getName", "getTypeName", "getCanonicalName":
                 return cls.dottedName();
@@ -260,10 +293,11 @@ final class ReflectionStubs {
             case "getPackageName", "getPackage": {
                 String dotted = cls.dottedName();
                 String packageName = dotted.contains(".") ? dotted.substring(0, dotted.lastIndexOf('.')) : "";
-                return ctx.name.equals("getPackage") ? new dev.javabyte.env.SimPackage(packageName) : packageName;
+                return ctx.name.equals("getPackage") ? packages.computeIfAbsent(packageName, SimPackage::new) : packageName;
             }
             case "newInstance":
-                return vm.instantiate(cls.name, "()V", new Object[0]);
+                // Class.newInstance passes the constructor's exceptions on unwrapped.
+                return vm.callThroughJdk(CLASS_NEW_INSTANCE_FRAMES, () -> vm.instantiate(cls.name, "()V", new Object[0]));
             case "getMethod", "getDeclaredMethod":
                 return findMethod(vm, cls, ctx.stringArg(0), (Object[]) ctx.arg(1), ctx.name.equals("getDeclaredMethod"));
             case "getMethods", "getDeclaredMethods":
@@ -492,6 +526,11 @@ final class ReflectionStubs {
 
     // ------------------------------------------------------------------ Method
 
+    /**
+     * Answers a {@code java.lang.reflect.Method} method. {@code invoke} runs through the router
+     * as an ordinary call would, so stubs and policy apply, with Java 8's reflection frames on
+     * the stack while it runs.
+     */
     private static Object methodOperation(VirtualMachine vm, CallContext ctx) {
         if (isAccessCall(ctx.name)) {
             return accessAnswer(ctx.name);
@@ -504,7 +543,7 @@ final class ReflectionStubs {
                     Object[] args = unboxAll((Object[]) ctx.arg(1), Type.getArgumentTypes(desc));
                     vm.events.addOnce("invoke:" + owner + real.getName() + desc, "reflect", "invoke",
                             "method", owner + '.' + real.getName() + desc);
-                    return invokeReflectively(vm, () -> Modifier.isStatic(real.getModifiers())
+                    return invokeReflectively(vm, VirtualMachine.METHOD_INVOKE_FRAMES, () -> Modifier.isStatic(real.getModifiers())
                             ? vm.router.invokeStatic(owner, real.getName(), desc, args)
                             : vm.router.invokeVirtual(owner, real.getName(), desc, ctx.arg(0), args), Type.getReturnType(desc));
                 }
@@ -518,7 +557,7 @@ final class ReflectionStubs {
                 Object[] args = unboxAll((Object[]) ctx.arg(1), method.argTypes);
                 Object target = ctx.arg(0);
                 vm.events.addOnce("invoke:" + method.id, "reflect", "invoke", "method", method.id);
-                return invokeReflectively(vm, () -> {
+                return invokeReflectively(vm, VirtualMachine.METHOD_INVOKE_FRAMES, () -> {
                     if (method.isStatic) {
                         vm.ensureInitialised(method.owner);
                         return vm.router.callGuest(method, null, args);
@@ -549,10 +588,18 @@ final class ReflectionStubs {
         }
     }
 
-    /** Runs a reflective call, applying {@code Method.invoke}'s result boxing and exception wrapping. */
-    private static Object invokeReflectively(VirtualMachine vm, java.util.function.Supplier<Object> call, Type returnType) {
+    /**
+     * Runs a reflective call, applying {@code Method.invoke}'s result boxing and exception
+     * wrapping. Stack traces taken during the call show the JDK frames that reflection adds on
+     * a real Java 8, which stack-walking string decryptors count on.
+     *
+     * @param jdkFrames {@link VirtualMachine#METHOD_INVOKE_FRAMES} or
+     *                  {@link VirtualMachine#CONSTRUCTOR_NEW_INSTANCE_FRAMES}
+     */
+    private static Object invokeReflectively(VirtualMachine vm, List<StackTraceElement> jdkFrames,
+            java.util.function.Supplier<Object> call, Type returnType) {
         try {
-            return Values.box(call.get(), returnType);
+            return Values.box(vm.callThroughJdk(jdkFrames, call), returnType);
         } catch (GuestThrow thrown) {
             // Reflection reports the callee's exception wrapped, and samples catch exactly that.
             throw vm.raise(new InvocationTargetException(thrown.asThrowable()));
@@ -678,6 +725,11 @@ final class ReflectionStubs {
 
     // ------------------------------------------------------------------ Constructor
 
+    /**
+     * Answers a {@code java.lang.reflect.Constructor} method. {@code newInstance} constructs
+     * through the VM, so stubs and policy apply, with Java 8's reflection frames on the stack
+     * while the constructor runs.
+     */
     private static Object constructorOperation(VirtualMachine vm, CallContext ctx) {
         if (isAccessCall(ctx.name)) {
             return accessAnswer(ctx.name);
@@ -689,7 +741,8 @@ final class ReflectionStubs {
                 Object[] args = unboxAll((Object[]) ctx.arg(0), Type.getArgumentTypes(desc));
                 vm.events.addOnce("new:" + owner + desc, "reflect", "newInstance", "class", owner, "descriptor", desc);
                 // Going through instantiate() means stubs and policy apply to reflective construction.
-                return invokeReflectively(vm, () -> vm.instantiate(owner, desc, args), Type.getObjectType(owner));
+                return invokeReflectively(vm, VirtualMachine.CONSTRUCTOR_NEW_INSTANCE_FRAMES,
+                        () -> vm.instantiate(owner, desc, args), Type.getObjectType(owner));
             }
             return ctx.proceed();
         }
@@ -698,7 +751,8 @@ final class ReflectionStubs {
             case "newInstance": {
                 Object[] args = unboxAll((Object[]) ctx.arg(0), constructor.argTypes);
                 vm.events.addOnce("new:" + constructor.id, "reflect", "newInstance", "class", constructor.owner.dottedName());
-                return invokeReflectively(vm, () -> vm.instantiate(constructor.owner.name, constructor.desc, args),
+                return invokeReflectively(vm, VirtualMachine.CONSTRUCTOR_NEW_INSTANCE_FRAMES,
+                        () -> vm.instantiate(constructor.owner.name, constructor.desc, args),
                         Type.getObjectType(constructor.owner.name));
             }
             case "getName":

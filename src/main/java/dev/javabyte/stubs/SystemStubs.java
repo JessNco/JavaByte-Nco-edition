@@ -1,20 +1,19 @@
 package dev.javabyte.stubs;
 
 import dev.javabyte.env.GuestEnvironment;
+import dev.javabyte.env.SimClassLoader;
+import dev.javabyte.env.SimDataConnection;
+import dev.javabyte.env.SimFileChannel;
 import dev.javabyte.env.SimFuture;
 import dev.javabyte.env.SimHttpConnection;
 import dev.javabyte.env.SimPackage;
 import dev.javabyte.env.SimPath;
+import dev.javabyte.env.SimPlatformClassLoader;
 import dev.javabyte.env.SimProcess;
 import dev.javabyte.env.SimSslSocket;
 import dev.javabyte.env.SimSslSocketFactory;
-import dev.javabyte.host.HostBridge;
 import dev.javabyte.host.StandIn;
 import dev.javabyte.host.StubRegistry;
-import dev.javabyte.model.GuestClass;
-import dev.javabyte.model.GuestLambda;
-import dev.javabyte.model.Mirrors;
-import dev.javabyte.model.PhantomObject;
 import dev.javabyte.vm.EmulationAbort;
 import dev.javabyte.vm.VirtualMachine;
 import java.io.ByteArrayInputStream;
@@ -88,6 +87,7 @@ final class SystemStubs {
         ManagementStubs.install(vm);
         ScreenStubs.install(vm);
         installPackages(vm);
+        installImitations(vm);
 
         stubs.on("java/lang/Object", "getClass", ctx -> classOf(vm, ctx.receiver));
         // The no-argument form writes to the real System.err; send it to the guest's instead,
@@ -302,87 +302,87 @@ final class SystemStubs {
      * {@code getClass()} for values that are not instances of interpreted classes. Emulator
      * objects report the JDK class they stand for, never their own class or a generated proxy
      * class. Used for every {@code getClass()} call, whichever class or interface the call names.
+     * The answer is {@link dev.javabyte.vm.TypeSystem#reportedClass}, the same rule that names
+     * classes in exception text, so the two always agree.
      */
     static Object classOf(VirtualMachine vm, Object value) {
-        if (value instanceof GuestClass) {
-            return Class.class;
-        }
-        if (value instanceof Mirrors.MethodMirror) {
-            return java.lang.reflect.Method.class;
-        }
-        if (value instanceof Mirrors.FieldMirror) {
-            return java.lang.reflect.Field.class;
-        }
-        if (value instanceof Mirrors.ConstructorMirror) {
-            return java.lang.reflect.Constructor.class;
-        }
-        if (value instanceof dev.javabyte.model.GuestProxy) {
-            // The class of a real proxy is generated and extends Proxy; this is the nearest
-            // honest answer, and Proxy.isProxyClass recognises it.
-            return java.lang.reflect.Proxy.class;
-        }
-        if (value instanceof GuestLambda || value instanceof Mirrors.LookupMirror) {
-            return Object.class;
-        }
-        if (value instanceof PhantomObject phantom) {
-            Object mirror = vm.host.findClass(phantom.type);
-            return mirror != null ? mirror : Object.class;
-        }
-        if (value instanceof StandIn standIn) {
-            Class<?> imitated = vm.host.findClass(standIn.standsFor());
-            return imitated != null ? imitated : Object.class;
-        }
-        String bean = ManagementStubs.imitatedClass(value);
-        if (bean != null) {
-            Class<?> imitated = vm.host.findClass(bean);
-            return imitated != null ? imitated : Object.class;
-        }
-        Class<?> standsFor = imitatedBySimulation(vm, value);
-        if (standsFor != null) {
-            return standsFor;
-        }
-        Class<?> cls = value.getClass();
-        if (HostBridge.isSimulated(value)) {
-            while (cls.getName().startsWith("dev.javabyte.")) {
-                cls = cls.getSuperclass();
-            }
-        }
-        return cls;
+        return vm.types.reportedClass(value);
     }
 
     /**
-     * The JDK class a simulated object replaces, for simulations whose nearest JDK superclass
-     * is abstract or {@code Object} and so would give the emulator away. A real JVM returns
-     * the platform's implementation class; where the analysis JDK lacks it (a Windows class on
-     * a Linux host), the other platform's class is the nearest real answer. Null for anything
-     * else, which then reports its first JDK superclass.
+     * True when the guest environment advertises Java 8 or older. Read on each call: the
+     * properties are filled in after stubs are installed, and config can change them.
      */
-    private static Class<?> imitatedBySimulation(VirtualMachine vm, Object value) {
-        String[] candidates;
+    static boolean legacyJava(GuestEnvironment env) {
+        return env.properties.getProperty("java.specification.version", "1.8").startsWith("1.");
+    }
+
+    /**
+     * Tells the type system which concrete JDK class each simulated object replaces, for
+     * simulations whose nearest JDK superclass is abstract or {@code Object} and so would give
+     * the emulator away. A real JVM returns the platform's implementation class for the Java
+     * version the guest environment advertises. Where the analysis JDK lacks that class (a
+     * Windows class on a Linux host, or a Java 8 class on a newer JDK), the type system falls
+     * back to the next candidate, then to the first JDK superclass; exception text still names
+     * the advertised class.
+     */
+    private static void installImitations(VirtualMachine vm) {
+        vm.types.addImitation(value -> {
+            String bean = ManagementStubs.imitatedClass(value);
+            return bean == null ? null : new String[] {bean};
+        });
+        vm.types.addImitation(value -> imitatedBySimulation(vm, value));
+    }
+
+    /**
+     * The candidate JDK classes, best first, that a simulated object replaces; null for
+     * anything else. See {@link #installImitations}.
+     */
+    private static String[] imitatedBySimulation(VirtualMachine vm, Object value) {
+        GuestEnvironment env = vm.env;
         if (value instanceof SimPath) {
-            candidates = vm.env.windows ? new String[] {"sun/nio/fs/WindowsPath", "sun/nio/fs/UnixPath"}
+            return env.windows ? new String[] {"sun/nio/fs/WindowsPath", "sun/nio/fs/UnixPath"}
                     : new String[] {"sun/nio/fs/UnixPath", "sun/nio/fs/WindowsPath"};
-        } else if (value instanceof SimFuture<?>) {
-            candidates = new String[] {"java/util/concurrent/ScheduledThreadPoolExecutor$ScheduledFutureTask",
+        }
+        if (value instanceof SimFuture<?>) {
+            return new String[] {"java/util/concurrent/ScheduledThreadPoolExecutor$ScheduledFutureTask",
                 "java/util/concurrent/FutureTask"};
-        } else if (value instanceof SimProcess) {
-            candidates = new String[] {"java/lang/ProcessImpl"};
-        } else if (value instanceof SimSslSocket) {
-            candidates = new String[] {"sun/security/ssl/SSLSocketImpl"};
-        } else if (value instanceof SimSslSocketFactory) {
-            candidates = new String[] {"sun/security/ssl/SSLSocketFactoryImpl"};
-        } else if (value instanceof SimHttpConnection connection) {
-            candidates = "https".equals(connection.getURL().getProtocol())
+        }
+        if (value instanceof SimProcess) {
+            // Java 8 on Linux names its process class UNIXProcess; Windows and Java 9+ use ProcessImpl.
+            return !env.windows && legacyJava(env) ? new String[] {"java/lang/UNIXProcess", "java/lang/ProcessImpl"}
+                    : new String[] {"java/lang/ProcessImpl"};
+        }
+        if (value instanceof SimFileChannel) {
+            return new String[] {"sun/nio/ch/FileChannelImpl"};
+        }
+        if (value instanceof SimSslSocket) {
+            return new String[] {"sun/security/ssl/SSLSocketImpl"};
+        }
+        if (value instanceof SimSslSocketFactory) {
+            return new String[] {"sun/security/ssl/SSLSocketFactoryImpl"};
+        }
+        if (value instanceof SimHttpConnection connection) {
+            return "https".equals(connection.getURL().getProtocol())
                     ? new String[] {"sun/net/www/protocol/https/HttpsURLConnectionImpl"}
                     : new String[] {"sun/net/www/protocol/http/HttpURLConnection"};
-        } else {
-            return null;
         }
-        for (String candidate : candidates) {
-            Class<?> found = vm.host.findClass(candidate);
-            if (found != null) {
-                return found;
-            }
+        if (value instanceof SimHttpConnection.Plain) {
+            return new String[] {"sun/net/www/protocol/http/HttpURLConnection"};
+        }
+        if (value instanceof SimDataConnection connection) {
+            return "jar".equals(connection.getURL().getProtocol())
+                    ? new String[] {"sun/net/www/protocol/jar/JarURLConnection"}
+                    : new String[] {"sun/net/www/protocol/file/FileURLConnection"};
+        }
+        // The built-in loaders: Java 8 has sun.misc.Launcher's, Java 9 and later jdk.internal.loader's.
+        if (value instanceof SimClassLoader) {
+            return legacyJava(env) ? new String[] {"sun/misc/Launcher$AppClassLoader", "java/lang/ClassLoader"}
+                    : new String[] {"jdk/internal/loader/ClassLoaders$AppClassLoader", "java/lang/ClassLoader"};
+        }
+        if (value instanceof SimPlatformClassLoader) {
+            return legacyJava(env) ? new String[] {"sun/misc/Launcher$ExtClassLoader", "java/lang/ClassLoader"}
+                    : new String[] {"jdk/internal/loader/ClassLoaders$PlatformClassLoader", "java/lang/ClassLoader"};
         }
         return null;
     }

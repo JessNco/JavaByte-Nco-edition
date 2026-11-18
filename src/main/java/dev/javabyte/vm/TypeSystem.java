@@ -26,8 +26,61 @@ public final class TypeSystem {
 
     private final VirtualMachine vm;
 
+    /**
+     * Rules that name the concrete JDK class an emulator object stands for, such as
+     * {@code java.lang.ProcessImpl} for a simulated process; see {@link #addImitation}.
+     */
+    private final java.util.List<java.util.function.Function<Object, String[]>> imitations =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Hash codes handed out by {@link #identityHash}, so each object keeps its own. */
+    private final java.util.Map<Object, Integer> identityHashes = new java.util.IdentityHashMap<>();
+
     TypeSystem(VirtualMachine vm) {
         this.vm = vm;
+    }
+
+    /**
+     * Adds a rule naming the JDK class that a kind of emulator object stands for. The rule
+     * returns null for objects it does not cover, or candidate internal names, best first:
+     * the class the advertised machine would really have, then stand-ins for it on an analysis
+     * JDK that lacks it. {@link #reportedClass} takes the first candidate the host has, and
+     * {@link #nameOf} always names the first, so text matches the advertised machine even when
+     * no class object for it exists here.
+     */
+    public void addImitation(java.util.function.Function<Object, String[]> rule) {
+        imitations.add(rule);
+    }
+
+    /**
+     * A stand-in for {@code System.identityHashCode} in text the guest can read, such as the
+     * {@code @1b6d3586} in a class loader's {@code toString()}. A real identity hash differs
+     * between runs, so a report that showed one would never compare equal to the next. These
+     * are fixed by the order in which objects are first asked about: the same sample always
+     * gets the same values, and each looks like a typical HotSpot hash (31 bits, usually seven
+     * or eight hex digits).
+     */
+    public int identityHash(Object value) {
+        synchronized (identityHashes) {
+            return identityHashes.computeIfAbsent(value, unused -> {
+                long z = 0x9e3779b97f4a7c15L * (identityHashes.size() + 1) + 0x1b6d3586L;
+                z = (z ^ (z >>> 30)) * 0xbf58476d1ce4e5b9L;
+                z = (z ^ (z >>> 27)) * 0x94d049bb133111ebL;
+                int hash = (int) (z ^ (z >>> 31)) & 0x7fffffff;
+                return hash < 0x01000000 ? hash | 0x01000000 : hash;
+            });
+        }
+    }
+
+    /** The candidate class names the imitation rules give for a value, or null if none applies. */
+    private String[] imitatedNames(Object value) {
+        for (java.util.function.Function<Object, String[]> rule : imitations) {
+            String[] names = rule.apply(value);
+            if (names != null && names.length > 0) {
+                return names;
+            }
+        }
+        return null;
     }
 
     /**
@@ -142,6 +195,10 @@ public final class TypeSystem {
         if (value instanceof PhantomObject phantom) {
             return phantom.type.replace('/', '.');
         }
+        String[] imitated = value instanceof StandIn ? null : imitatedNames(value);
+        if (imitated != null) {
+            return imitated[0].replace('/', '.');
+        }
         return reportedClass(value).getName();
     }
 
@@ -153,7 +210,9 @@ public final class TypeSystem {
      * <p>Emulator objects must not reveal themselves: a simulated {@code File} is a
      * {@code dev.javabyte.env.SimFile} on the host, and a sample that found that package name in
      * a cast message would know it is being emulated. Such objects are reported as their
-     * nearest JDK ancestor, or as the JDK type they imitate.
+     * nearest JDK ancestor, or as the JDK type they imitate. Where an imitation rule (see
+     * {@link #addImitation}) names a concrete class, such as {@code java.lang.ProcessImpl},
+     * that class is reported if the host has it.
      */
     public Class<?> reportedClass(Object value) {
         if (value instanceof dev.javabyte.model.GuestProxy) {
@@ -174,6 +233,15 @@ public final class TypeSystem {
         }
         if (value instanceof StandIn) {
             return Object.class; // stands for a class this JDK lacks
+        }
+        String[] candidates = imitatedNames(value);
+        if (candidates != null) {
+            for (String candidate : candidates) {
+                Class<?> found = vm.host.findClass(candidate);
+                if (found != null) {
+                    return found;
+                }
+            }
         }
         Class<?> cls = value.getClass();
         while (cls.getName().startsWith("dev.javabyte.")) {

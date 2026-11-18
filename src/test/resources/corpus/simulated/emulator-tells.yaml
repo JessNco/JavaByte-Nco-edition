@@ -8,9 +8,9 @@ stages:
       stdout:
         - '^file cast java\.io\.File cannot be cast to java\.lang\.String$'
         - '^socket cast java\.net\.Socket cannot be cast to java\.lang\.String$'
-        - '^loader cast java\.lang\.ClassLoader cannot be cast to java\.lang\.String$'
-        - '^process cast java\.lang\.Process cannot be cast to java\.lang\.String$'
-        - '^loader text [A-Za-z$.]+@[0-9a-f]+$'
+        - '^loader cast sun\.misc\.Launcher\$AppClassLoader cannot be cast to java\.lang\.String$'
+        - '^process cast java\.lang\.ProcessImpl cannot be cast to java\.lang\.String$'
+        - '^loader text sun\.misc\.Launcher\$AppClassLoader@18b4aac2$'
         - '^npe message null$'
         - '^nfe top java\.lang\.NumberFormatException\.forInputString module null$'
       notPrinted:

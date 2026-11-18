@@ -19,7 +19,7 @@ Everything here also works for a person; it is just written as a procedure.
 1. **Inspect** (static, nothing runs):
 
    ```bash
-   java -jar target/javabyte-0.1.0.jar inspect --json SAMPLE
+   java -jar target/javabyte-0.2.0.jar inspect --json SAMPLE
    ```
 
    Read `mainClass`, `mainCandidates`, `classLoaders`, `nativeMethodCount` and
@@ -28,7 +28,7 @@ Everything here also works for a person; it is just written as a procedure.
 2. **First run** with defaults:
 
    ```bash
-   java -jar target/javabyte-0.1.0.jar run SAMPLE -o out/run1 --json > out/run1.json
+   java -jar target/javabyte-0.2.0.jar run SAMPLE -o out/run1 --json > out/run1.json
    ```
 
 3. **Read the report** (fields below), then decide whether another run would reveal more.
@@ -78,7 +78,7 @@ the report covers everything up to that point.
 ## Driving a run live
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run SAMPLE -o out/run1 --events jsonl --progress --control stdin
+java -jar target/javabyte-0.2.0.jar run SAMPLE -o out/run1 --events jsonl --progress --control stdin
 ```
 
 - `--events jsonl` writes one JSON object per line to standard output as the run happens; the

@@ -1,4 +1,4 @@
-# A version tag (v0.1.0) builds both editions for Windows and Linux, tests them as on every
+# A version tag (v0.2.0) builds both editions for Windows and Linux, tests them as on every
 # push, writes SHA256SUMS, signs it when a GPG key is stored as a secret, and creates a DRAFT
 # release with everything. A person reviews the draft and publishes it. See
 # docs/gui/RELEASING.md.

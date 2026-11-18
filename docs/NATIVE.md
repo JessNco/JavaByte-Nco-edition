@@ -48,7 +48,7 @@ plugins:
 or on the command line:
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run sample.jar -s 'plugins={native-bridge: {python: .venv-native-bridge/bin/python}}'
+java -jar target/javabyte-0.2.0.jar run sample.jar -s 'plugins={native-bridge: {python: .venv-native-bridge/bin/python}}'
 ```
 
 When `python` is not given, the plugin uses the interpreter named by the `JAVABYTE_BRIDGE_PYTHON`

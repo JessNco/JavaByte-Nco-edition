@@ -52,7 +52,7 @@ jobs:
       # (step "Configuration and guard tests" below).
       - name: Unit, format and runner tests
         env:
-          JAVABYTE_JAR: ${{ github.workspace }}/target/javabyte-0.1.0.jar
+          JAVABYTE_JAR: ${{ github.workspace }}/target/javabyte-0.2.0.jar
           JAVABYTE_TEST_CLASSES: ${{ github.workspace }}/target/test-classes
           JAVABYTE_RUNNER_TESTS_REQUIRED: '1'
         run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
@@ -131,7 +131,7 @@ jobs:
         run: cargo install --locked trunk@0.22.1
       - name: Unit, format and runner tests
         env:
-          JAVABYTE_JAR: ${{ github.workspace }}/target/javabyte-0.1.0.jar
+          JAVABYTE_JAR: ${{ github.workspace }}/target/javabyte-0.2.0.jar
           JAVABYTE_TEST_CLASSES: ${{ github.workspace }}/target/test-classes
           JAVABYTE_RUNNER_TESTS_REQUIRED: '1'
         run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend

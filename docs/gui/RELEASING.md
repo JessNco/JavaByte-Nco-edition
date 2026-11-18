@@ -11,17 +11,17 @@ The tool and the desktop app share one version number and are released together.
 
    `gui/packaging/version.sh` fails if they differ, and the release fails if the tag does not
    match them.
-2. In `CHANGELOG.md`, rename the "Unreleased" heading to `## <version>` (such as `## 0.1.0`)
+2. In `CHANGELOG.md`, rename the "Unreleased" heading to `## <version>` (such as `## 0.2.0`)
    and start a new, empty "Unreleased" above it. The release notes include that section.
 3. Merge to `main` and wait for CI.
 4. Tag and push:
 
    ```bash
-   git tag v0.1.0
+   git tag v0.2.0
    ```
 
    ```bash
-   git push origin v0.1.0
+   git push origin v0.2.0
    ```
 
 5. The **Release** workflow builds both editions on Windows and Linux, tests every installer
@@ -31,7 +31,7 @@ The tool and the desktop app share one version number and are released together.
    machine. Then press **Publish release**.
 
 Releases are never published by CI. A draft can be deleted and the tag pushed again after a
-fix (delete the tag first: `git push --delete origin v0.1.0`).
+fix (delete the tag first: `git push --delete origin v0.2.0`).
 
 ## Signing the Linux downloads with GPG
 

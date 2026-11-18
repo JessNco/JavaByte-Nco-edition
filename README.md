@@ -31,11 +31,11 @@ mvn -q package
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar inspect sample.jar
+java -jar target/javabyte-0.2.0.jar inspect sample.jar
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run sample.jar
+java -jar target/javabyte-0.2.0.jar run sample.jar
 ```
 
 `run` prints a summary and writes everything to `javabyte-out/`:
@@ -51,11 +51,11 @@ java -jar target/javabyte-0.1.0.jar run sample.jar
 To control a run, generate a config and edit it:
 
 ```bash
-java -jar target/javabyte-0.1.0.jar init sample.jar > sample.yaml
+java -jar target/javabyte-0.2.0.jar init sample.jar > sample.yaml
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run -c sample.yaml
+java -jar target/javabyte-0.2.0.jar run -c sample.yaml
 ```
 
 ## Desktop app

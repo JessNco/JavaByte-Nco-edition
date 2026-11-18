@@ -6,7 +6,7 @@
 
   <groupId>dev.javabyte</groupId>
   <artifactId>javabyte</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <packaging>jar</packaging>
   <name>JavaByte</name>
   <description>Config-driven JVM bytecode emulator for analysing untrusted Java code without running it on a real JVM.</description>

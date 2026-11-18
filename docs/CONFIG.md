@@ -6,14 +6,14 @@ either as `sample` or on the command line. Unknown keys are rejected.
 Print the built-in defaults at any time:
 
 ```bash
-java -jar target/javabyte-0.1.0.jar defaults
+java -jar target/javabyte-0.2.0.jar defaults
 ```
 
 Override single values without editing the file, using dotted paths. Values are parsed as YAML,
 so lists and numbers keep their types:
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run -c sample.yaml -s limits.maxSleeps=5 -s 'entryPoints=[{type: clinit-sweep}]'
+java -jar target/javabyte-0.2.0.jar run -c sample.yaml -s limits.maxSleeps=5 -s 'entryPoints=[{type: clinit-sweep}]'
 ```
 
 Class names may be written with dots or slashes. Method patterns use slashes, as in bytecode:

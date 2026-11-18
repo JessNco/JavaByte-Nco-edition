@@ -2034,7 +2034,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "javabyte-gui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dirs",
  "javabyte-gui-backend",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "javabyte-gui-backend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "javabyte-gui-protocol",
  "libc",
@@ -2062,7 +2062,7 @@ dependencies = [
 
 [[package]]
 name = "javabyte-gui-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "fluent-bundle",
  "serde",
@@ -2072,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "javabyte-gui-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "console_error_panic_hook",
  "javabyte-gui-backend",

@@ -18,7 +18,7 @@ MB_AUTH_KEY=<your key> scripts/fetch-sample.py <sha256>
 ```
 
 ```bash
-java -jar target/javabyte-0.1.0.jar run samples/<sha256>/<sha256>.jar -o out/<name>
+java -jar target/javabyte-0.2.0.jar run samples/<sha256>/<sha256>.jar -o out/<name>
 ```
 
 ## Results

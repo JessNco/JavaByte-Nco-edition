@@ -11,7 +11,7 @@
 # isolation as well, run the tool in a container with a read-only root and only the output
 # directory writable, for example:
 #   docker run --rm --network none --read-only -v "$PWD:/work" -w /work eclipse-temurin:21 \
-#       java -jar target/javabyte-0.1.0.jar run samples/x.jar -o out/x
+#       java -jar target/javabyte-0.2.0.jar run samples/x.jar -o out/x
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

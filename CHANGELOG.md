@@ -6,6 +6,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Desktop app, phase 6 (accessibility): checks for the WCAG 2.2 criteria axe does not test, run
+  on every screen in CI; a manual audit script for NVDA and Orca (docs/gui/PHASE6-AUDIT.md); an
+  accessibility statement (docs/ACCESSIBILITY.md), and where to report problems, in Preferences.
 - Desktop app: a Tools screen with the built-in policy and every option with its default, each
   searchable.
 - `javabyte policy --json`: each rule of the built-in policy with its effect (allow or block),
@@ -91,6 +94,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - The tool version comes from `pom.xml` only.
 
 ### Fixed
+- Desktop app: "Reset to default", "Move up", "Move down" and "Choose…" are now named starting
+  with their visible words, so voice control can press them (WCAG 2.5.3). The Tools tables can
+  be scrolled by keyboard at large text sizes.
 - Saved-file paths in the report (`artifacts`, `requestBodyFile`) use `/` on every system;
   on Windows they used `\\`, which broke reading a report made on another system.
 - Writing without end to one open file exhausted memory before `limits.maxWrittenBytes` applied.

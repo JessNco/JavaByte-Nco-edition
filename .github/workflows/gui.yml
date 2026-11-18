@@ -68,6 +68,7 @@ jobs:
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
           node run.mjs ../../ui/dist
+          node criteria.mjs ../../ui/dist
       - name: Build the desktop app
         run: cargo build --release -p javabyte-gui
       - name: Configuration and guard tests

@@ -1,147 +1,19 @@
-// Automated accessibility checks for the desktop app's screens.
+// Automated accessibility checks for the desktop app's screens, in Chromium.
 //
 // Usage:  node run.mjs [path-to-ui/dist]
-//
-// The screens are served from a local folder and opened in Chromium. There is no desktop shell
-// here: the screens notice that and use the in-page backend, with the same data.
-//
-// The browser build has no desktop backend; the screens use a stand-in that reads the committed
-// tool output and runs a pretend analysis, so the whole flow can be walked: start, sample
-// overview, running, report.
 //
 // What this covers: axe-core rules (WCAG 2.0-2.2 A and AA) on every screen, in every theme and
 // at large text; focus and titles when moving between screens; keyboard operation of tabs,
 // choices and the grid; reflow at 320 px; announcements during a run; hostile text shown as
-// text. What it cannot cover: how NVDA or Orca actually speak it. That is the manual script in
-// docs/gui/PHASE0-TESTING.md.
+// text; Preferences and the isolation question; the Tools screen.
 //
-// Set CHROMIUM_PATH to use a browser that is already installed.
+// The harness (server, browser, the walk through every screen) is in lib.mjs. The WCAG 2.2
+// criteria axe does not test are in criteria.mjs. What only a person can judge, with NVDA, Orca
+// and their own eyes, is the manual audit in docs/gui/PHASE6-AUDIT.md.
 
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize, resolve } from 'node:path';
-import { createRequire } from 'node:module';
-import { chromium } from 'playwright';
-
-const require = createRequire(import.meta.url);
-const axeSource = await readFile(require.resolve('axe-core/axe.min.js'), 'utf8');
-const dist = resolve(process.argv[2] ?? '../../ui/dist');
-
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.css': 'text/css' };
-const server = createServer(async (request, response) => {
-  const path = normalize(decodeURIComponent(new URL(request.url, 'http://x').pathname)).replace(/^([/\\])+/, '');
-  try {
-    const body = await readFile(join(dist, path || 'index.html'));
-    response.writeHead(200, { 'content-type': types[extname(path || 'index.html')] ?? 'application/octet-stream' });
-    response.end(body);
-  } catch {
-    response.writeHead(404).end();
-  }
-});
-await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
-const url = `http://127.0.0.1:${server.address().port}/`;
-
-const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
-const failures = [];
-let checks = 0;
-function check(condition, message) {
-  checks++;
-  if (!condition) failures.push(message);
-}
-
-async function section(name, body) {
-  try {
-    await body();
-  } catch (error) {
-    failures.push(`section "${name}" stopped: ${error.message.split('\n')[0]}`);
-  }
-}
-
-async function open(options = {}, query = '') {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, ...options });
-  const page = await context.newPage();
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(url + query);
-  await page.waitForSelector('#start-heading');
-  return { page, context, errors };
-}
-
-async function axe(page, label) {
-  await page.addScriptTag({ content: axeSource });
-  const result = await page.evaluate(async () =>
-    // eslint-disable-next-line no-undef
-    axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'] } }),
-  );
-  for (const v of result.violations) {
-    failures.push(`axe [${label}] ${v.id} (${v.impact}): ${v.help} — ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
-  }
-  checks++;
-  return result.violations.length;
-}
-
-/** Focus moves after the next frame is drawn, so wait for it rather than checking at once. */
-async function focusIs(page, id, timeout = 2000) {
-  await page.waitForFunction((wanted) => document.activeElement?.id === wanted, id, { timeout }).catch(() => {});
-  return (await page.evaluate(() => document.activeElement?.id)) === id;
-}
-
-async function showTab(page, name) {
-  await page.getByRole('tab', { name }).click();
-  await page.waitForTimeout(150);
-}
-
-
-/** Walks to a screen. Each step checks focus landed on the new screen's heading. */
-async function dismissNotice(page) {
-  const button = page.getByRole('button', { name: 'I understand' });
-  if (await button.isVisible()) await button.click();
-}
-
-async function toOverview(page) {
-  await dismissNotice(page);
-  await page.getByRole('button', { name: 'Choose a sample file…' }).click();
-  return focusIs(page, 'overview-heading', 5000);
-}
-
-async function toSettings(page) {
-  await page.getByRole('button', { name: 'Change settings first' }).click();
-  const ok = await focusIs(page, 'settings-heading', 5000);
-  // The forms appear once the schema has loaded.
-  await page.waitForSelector('#section-limits');
-  return ok;
-}
-
-/** Opens every "More settings" group and the presets, so what they hold is checked too. */
-async function openAllDisclosures(page) {
-  await page.evaluate(() => document.querySelectorAll('.disclosure-toggle[aria-expanded="false"]').forEach((b) => b.click()));
-  await page.waitForTimeout(100);
-}
-
-/** The YAML text as the YAML tab holds it. */
-function yamlText(page) {
-  return page.locator('#settings-yaml').inputValue();
-}
-
-async function toRunning(page) {
-  await toOverview(page);
-  await page.getByRole('button', { name: 'Analyse', exact: true }).click();
-  return focusIs(page, 'running-heading', 5000);
-}
-
-async function toReport(page) {
-  await toRunning(page);
-  await page.waitForTimeout(600);
-  await page.getByRole('button', { name: 'Stop analysis' }).click();
-  await page.getByRole('button', { name: 'View the report' }).click({ timeout: 10000 });
-  return focusIs(page, 'report-heading', 5000);
-}
-
-async function reportTab(page, name) {
-  await page.getByRole('tab', { name }).click();
-  await page.waitForTimeout(150);
-}
+import {
+  check, section, open, axe, focusIs, toOverview, toSettings, openAllDisclosures, yamlText, toRunning, toReport, reportTab, walkScreens, finish,
+} from './lib.mjs';
 
 // 1. axe on every screen, in each theme and at 200% text.
 for (const [theme, textSize] of [['light', 100], ['dark', 100], ['contrast', 100], ['light', 200]]) {
@@ -150,56 +22,7 @@ await section(`axe, ${theme}, ${textSize}%`, async () => {
   await page.evaluate(([t, s]) => localStorage.setItem('javabyte.preferences', JSON.stringify({ theme: t, text_size: s })), [theme, textSize]);
   await page.reload();
   await page.waitForSelector('#start-heading');
-  await axe(page, `start with notice, ${theme}, ${textSize}%`);
-  await toOverview(page);
-  await axe(page, `overview, ${theme}, ${textSize}%`);
-  await toSettings(page);
-  // Every folded group open, so the fields inside are checked too.
-  await openAllDisclosures(page);
-  await page.getByRole('button', { name: 'Add web answer' }).click();
-  // An answer needs an address; without one, Analyse would rightly refuse to start.
-  await page.locator('#field-network-http-0-url').fill('gate\\.example');
-  await page.keyboard.press('Tab');
-  await page.waitForTimeout(200);
-  await axe(page, `settings forms, ${theme}, ${textSize}%`);
-  await page.getByRole('tab', { name: /^YAML/ }).click();
-  await axe(page, `settings YAML, ${theme}, ${textSize}%`);
-  await page.getByRole('tab', { name: 'Forms' }).click();
-  await page.getByRole('button', { name: 'Back to the overview' }).click();
-  await page.getByRole('button', { name: 'Analyse', exact: true }).click();
-  await page.waitForTimeout(400);
-  await axe(page, `running, ${theme}, ${textSize}%`);
-  await page.getByRole('button', { name: 'Stop analysis' }).click();
-  await page.getByRole('button', { name: 'View the report' }).click({ timeout: 10000 });
-  for (const tab of ['Summary', 'Indicators', 'Events', 'Limits and gaps', 'Files', 'Settings used']) {
-    await reportTab(page, tab);
-    if (tab === 'Events') await page.waitForSelector('[role="gridcell"]');
-    if (tab === 'Files') {
-      await page.getByRole('button', { name: 'View stage.bin' }).click();
-      await page.waitForSelector('.file-view');
-    }
-    await openAllDisclosures(page);
-    await axe(page, `report ${tab}, ${theme}, ${textSize}%`);
-  }
-  await reportTab(page, 'Files');
-  await page.getByRole('button', { name: 'Save as is…' }).click();
-  await axe(page, `save-as-is warning, ${theme}, ${textSize}%`);
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Compare with another run' }).click();
-  await page.getByRole('button', { name: 'Compare', exact: true }).click();
-  await page.waitForSelector('#compare-result-heading');
-  await axe(page, `compare, ${theme}, ${textSize}%`);
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.waitForSelector('#tools-panel-policy table');
-  await axe(page, `tools policy, ${theme}, ${textSize}%`);
-  await page.getByRole('tab', { name: 'Options and defaults' }).click();
-  await page.waitForSelector('#tools-panel-defaults table');
-  await axe(page, `tools defaults, ${theme}, ${textSize}%`);
-  await page.getByRole('button', { name: 'Preferences' }).click();
-  await page.waitForSelector('#prefs-isolate');
-  await axe(page, `preferences, ${theme}, ${textSize}%`);
-  await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await axe(page, `start with recent list, ${theme}, ${textSize}%`);
+  await walkScreens(page, (label) => axe(page, `${label}, ${theme}, ${textSize}%`));
   check(errors.length === 0, `page errors (${theme}): ${errors.join('; ')}`);
   await context.close();
 });
@@ -299,7 +122,7 @@ await section('settings', async () => {
   await page.getByRole('button', { name: 'Analyse with these settings' }).click();
   check(await focusIs(page, 'settings-problems-title', 3000), 'analysing with problems focuses the summary');
   check((await page.title()) === 'Settings – JavaByte', 'analysing with problems stays on the settings');
-  await page.getByRole('button', { name: 'Reset Sleeps per thread to its default' }).click();
+  await page.getByRole('button', { name: 'Reset to default: Sleeps per thread' }).click();
   await page.waitForTimeout(1500);
   check((await page.locator('#settings-problems-title').count()) === 0, 'fixing the problem clears the summary');
   check(!(await yamlText(page)).includes('maxSleeps'), 'reset to default removes the setting');
@@ -318,9 +141,9 @@ await section('settings', async () => {
   await page.keyboard.press('Tab');
   await page.waitForTimeout(300);
   const after = await page.evaluate(() => ({ inEditor: !!document.activeElement?.closest('.item-editor'), label: document.activeElement?.getAttribute('aria-label') }));
-  check(after.inEditor && after.label === 'Reset Address pattern to its default', `after a change, Tab moves on inside the editor (focus: ${JSON.stringify(after)})`);
+  check(after.inEditor && after.label === 'Reset to default: Address pattern', `after a change, Tab moves on inside the editor (focus: ${JSON.stringify(after)})`);
   await page.getByRole('button', { name: 'Done' }).click();
-  await page.getByRole('button', { name: 'Move web answer 2 up' }).click();
+  await page.getByRole('button', { name: 'Move up: web answer 2' }).click();
   check(await focusIs(page, 'field-network-http-down-0'), 'after moving to the top, focus stays with the item');
   const yaml = await yamlText(page);
   check(yaml.indexOf('url: second') < yaml.indexOf("url: 'gate\\.example'"), `the move is in the YAML:\n${yaml}`);
@@ -716,8 +539,4 @@ await section('grid accessibility tree', async () => {
   await context.close();
 });
 
-await browser.close();
-server.close();
-console.log(`${checks} checks, ${failures.length} failed`);
-for (const f of failures) console.log(`FAIL ${f}`);
-process.exit(failures.length ? 1 : 0);
+await finish();

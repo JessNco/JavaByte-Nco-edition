@@ -116,8 +116,13 @@ The accessibility checks run the screens in Chromium:
 ```
 
 ```bash
-cd tests/a11y && npm install && npx playwright install chromium && node run.mjs ../../ui/dist
+cd tests/a11y && npm install && npx playwright install chromium && node run.mjs ../../ui/dist && node criteria.mjs ../../ui/dist
 ```
+
+`run.mjs` runs axe on every screen in every theme, and checks keyboard use, focus, reflow and
+announcements. `criteria.mjs` checks the WCAG 2.2 criteria axe does not (target size, focus not
+hidden, text spacing, contrast of controls, label in name, headings). Both walk the same screens
+(`lib.mjs`). The manual audit with NVDA and Orca is [docs/gui/PHASE6-AUDIT.md](../docs/gui/PHASE6-AUDIT.md).
 
 On Linux, the accessibility-bus check starts the real app on a virtual display. With
 `--sample`, the app opens that file and the check goes through a whole analysis to the event

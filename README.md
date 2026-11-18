@@ -229,6 +229,7 @@ The test suite is described in [docs/TESTING.md](docs/TESTING.md). In short:
 | [docs/SELFTEST.md](docs/SELFTEST.md) | Results against real malware |
 | [docs/TESTING.md](docs/TESTING.md) | The test suite: what it proves, how to run and extend it |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installing the desktop app, and checking a download |
+| [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | The desktop app's accessibility: target, status, limits, reporting problems |
 | [gui/README.md](gui/README.md) | The desktop app: building, testing, rules for its code |
 | [docs/GUI-PLAN.md](docs/GUI-PLAN.md) | The desktop app's design; each phase in [docs/gui/](docs/gui/) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Changing the code; upgrade procedures |

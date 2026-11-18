@@ -157,6 +157,9 @@ pub fn PreferencesScreen() -> impl IntoView {
             {isolation}
             {bridge_status}
             <p class="hint">{move || status.get().map(|s| t!("prefs-version", version = s.version))}</p>
+            // Where to report an accessibility problem: the app has no network, so the address is
+            // shown as text to copy, not as a link it would open.
+            <p>{t!("prefs-accessibility")}</p>
         </section>
         <section aria-label=t!("display-heading")>
             <prefs::DisplayPanel />

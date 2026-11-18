@@ -61,3 +61,4 @@ isolation-question-still-safe = JavaByte still imitates every network call the s
 isolation-question-dont-ask = Don't ask me again (you can change this in Preferences)
 isolation-question-cancel = Cancel
 isolation-question-run = Analyse without isolation
+prefs-accessibility = Something hard to use with your screen reader, keyboard or display settings? Please tell us at github.com/JessNco/JavaByte-Nco-edition/issues, with the label "accessibility".

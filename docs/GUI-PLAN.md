@@ -1,6 +1,6 @@
 # GUI plan
 
-Status: **phases 0 to 5 built; the accessibility audit (phase 6) is next.** This document plans a desktop
+Status: **phases 0 to 5 built; phase 6 (accessibility audit) has its automated checks, fixes and statement, and waits for the manual run with NVDA and Orca.** This document plans a desktop
 interface for JavaByte for people who are not comfortable with a command line. It records the
 decisions made, the design, the changes the command line needed, and the questions still open.
 The code is in [`gui/`](../gui/README.md); what each phase built, and how it was tested, is in
@@ -406,7 +406,7 @@ English is the only language at first, but nothing in the code holds user-visibl
 | 3. Config editor | Generated forms, YAML tab, validation, import/export, presets; see [gui/PHASE3-PLAN.md](gui/PHASE3-PLAN.md) | Parity test passes for every option |
 | 4. Full report | Events grid, limits and gaps, files viewer, compare; see [gui/PHASE4-PLAN.md](gui/PHASE4-PLAN.md) | Second user sessions |
 | 5. Packaging | jlink runtime, bundled bridge, installers, Linux isolation, GPG-signed Linux packages, unsigned-install instructions; see [gui/PHASE5-PLAN.md](gui/PHASE5-PLAN.md) | Clean install and first run on fresh Windows 11 and Ubuntu LTS machines |
-| 6. Accessibility audit | Full manual script, fixes, accessibility statement | No open AA issues |
+| 6. Accessibility audit | Full manual script, fixes, accessibility statement; see [gui/PHASE6-AUDIT.md](gui/PHASE6-AUDIT.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md) | No open AA issues |
 
 ## Testing
 

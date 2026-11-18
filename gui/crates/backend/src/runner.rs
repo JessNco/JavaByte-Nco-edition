@@ -35,6 +35,27 @@ pub mod exit_code {
     pub const LIMIT_REACHED: i32 = 3;
 }
 
+/// How an analysis is kept from the network (docs/gui/PHASE5-PLAN.md, WINDOWS-SANDBOX.md).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum RunIsolation {
+    /// Not isolated: the tool's own simulation of the network is the only layer.
+    #[default]
+    None,
+    /// Linux: a new user and network namespace (`crate::isolation`).
+    Namespace,
+    /// Windows: an AppContainer with no capabilities, through the sandbox add-on at this path.
+    AppContainer(PathBuf),
+    /// Windows: a fresh Windows Sandbox, through the sandbox add-on at this path.
+    WindowsSandbox(PathBuf),
+}
+
+/// Where the Windows Sandbox add-on shows the run's folders inside the sandbox.
+const SANDBOX_RUNTIME: &str = r"C:\JavaByteRuntime";
+const SANDBOX_TOOL: &str = r"C:\JavaByteTool";
+const SANDBOX_BRIDGE: &str = r"C:\JavaByteBridge";
+const SANDBOX_RUN: &str = r"C:\JavaByteRun";
+const SANDBOX_SAMPLE: &str = r"C:\JavaByteSample";
+
 /// How to start the tool: which Java, which JavaByte jar, and how.
 #[derive(Clone, Debug)]
 pub struct Launcher {
@@ -42,9 +63,9 @@ pub struct Launcher {
     pub java: PathBuf,
     /// The JavaByte tool's jar.
     pub jar: PathBuf,
-    /// Start runs with no network (Linux; see `crate::isolation`). Short commands such as
-    /// `inspect` and `schema` only read the sample as data and start without it.
-    pub isolate: bool,
+    /// How runs are kept from the network. Short commands such as `inspect` and `schema` only
+    /// read the sample as data and always start without it.
+    pub isolation: RunIsolation,
     /// The native bridge's Python, passed as `JAVABYTE_BRIDGE_PYTHON` so the `native-bridge`
     /// plugin uses it when the settings name no other.
     pub bridge_python: Option<PathBuf>,
@@ -66,7 +87,7 @@ pub struct RunRequest {
 impl Launcher {
     /// Uses the given Java and jar, without isolation or bridge.
     pub fn new(java: impl Into<PathBuf>, jar: impl Into<PathBuf>) -> Self {
-        Self { java: java.into(), jar: jar.into(), isolate: false, bridge_python: None }
+        Self { java: java.into(), jar: jar.into(), isolation: RunIsolation::None, bridge_python: None }
     }
 
     /// Uses the given jar, and finds Java: `JAVABYTE_JAVA`, then `JAVA_HOME`, then `java` on the
@@ -85,10 +106,88 @@ impl Launcher {
         Ok(Self::new(java, jar))
     }
 
+    /// Whether runs go through Windows Sandbox, which takes a while to start.
+    pub fn uses_windows_sandbox(&self) -> bool {
+        matches!(self.isolation, RunIsolation::WindowsSandbox(_))
+    }
+
+    /// The same engine with an AppContainer instead of Windows Sandbox, for when the sandbox
+    /// could not start and the person agreed to the lighter isolation.
+    pub fn without_windows_sandbox(&self) -> Launcher {
+        let mut lighter = self.clone();
+        if let RunIsolation::WindowsSandbox(helper) = &self.isolation {
+            lighter.isolation = RunIsolation::AppContainer(helper.clone());
+        }
+        lighter
+    }
+
+    /// The folder holding Java's `bin` folder.
+    fn java_home(&self) -> PathBuf {
+        self.java.parent().and_then(Path::parent).map_or_else(|| self.java.clone(), Path::to_path_buf)
+    }
+
     /// `java -jar <jar> <args>`, without a console window on Windows.
     fn command(&self, args: &[&std::ffi::OsStr]) -> Command {
         let mut command = Command::new(&self.java);
         command.arg("-jar").arg(&self.jar).args(args);
+        self.prepare(&mut command);
+        command
+    }
+
+    /// `java -jar <jar> <args>` for an analysis, isolated as the launcher says. Through the
+    /// sandbox add-on, the files the run needs are named for it: the runtime, the tool and the
+    /// bridge to read, the sample to read (copied into Windows Sandbox when it is a file), and
+    /// the run's folder to write.
+    fn run_command(&self, request: &RunRequest, args: &[&std::ffi::OsStr]) -> Command {
+        let (helper, sandbox) = match &self.isolation {
+            RunIsolation::AppContainer(helper) => (helper, false),
+            RunIsolation::WindowsSandbox(helper) => (helper, true),
+            #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+            other => {
+                #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+                let mut command = self.command(args);
+                #[cfg(target_os = "linux")]
+                if *other == RunIsolation::Namespace {
+                    crate::isolation::isolate(&mut command);
+                }
+                return command;
+            }
+        };
+        let mut command = Command::new(helper);
+        let bridge_root = self.bridge_python.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf);
+        let tool_dir = self.jar.parent().map_or_else(|| self.jar.clone(), Path::to_path_buf);
+        if sandbox {
+            let map = |host: &Path, guest: &str, writable: bool| {
+                let mut value = host.as_os_str().to_owned();
+                value.push(format!("={guest}{}", if writable { ":rw" } else { "" }));
+                value
+            };
+            command.arg("windows-sandbox");
+            command.arg("--map").arg(map(&self.java_home(), SANDBOX_RUNTIME, false));
+            command.arg("--map").arg(map(&tool_dir, SANDBOX_TOOL, false));
+            if let Some(root) = &bridge_root {
+                command.arg("--map").arg(map(root, SANDBOX_BRIDGE, false));
+            }
+            command.arg("--map").arg(map(&request.output, SANDBOX_RUN, true));
+            if request.sample.is_dir() {
+                command.arg("--map").arg(map(&request.sample, SANDBOX_SAMPLE, false));
+            } else {
+                command.arg("--stage").arg(&request.sample);
+            }
+        } else {
+            command.arg("appcontainer");
+            for path in [Some(self.java_home()), Some(self.jar.clone()), bridge_root, Some(request.sample.clone())].into_iter().flatten() {
+                command.arg("--read").arg(path);
+            }
+            command.arg("--write").arg(&request.output);
+        }
+        command.arg("--").arg(&self.java).arg("-jar").arg(&self.jar).args(args);
+        self.prepare(&mut command);
+        command
+    }
+
+    /// The environment and window settings every command shares.
+    fn prepare(&self, command: &mut Command) {
         if let Some(python) = &self.bridge_python {
             command.env("JAVABYTE_BRIDGE_PYTHON", python);
         }
@@ -99,7 +198,6 @@ impl Launcher {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             command.creation_flags(CREATE_NO_WINDOW);
         }
-        command
     }
 
     /// Runs a short command that prints one JSON document, and reads it.
@@ -143,6 +241,11 @@ impl Launcher {
         self.json_command(&["schema".as_ref(), "--json".as_ref()], &[exit_code::OK])
     }
 
+    /// The built-in host policy, rule by rule (`javabyte policy --json`).
+    pub fn policy(&self) -> Result<javabyte_gui_protocol::tools::PolicyListing, String> {
+        self.json_command(&["policy".as_ref(), "--json".as_ref()], &[exit_code::OK])
+    }
+
     /// Every problem with a config file and overrides. An invalid config is an answer, not an error.
     pub fn validate(&self, config: Option<&Path>, overrides: &[String]) -> Result<Validation, String> {
         let mut args: Vec<&std::ffi::OsStr> = vec!["validate".as_ref(), "--json".as_ref()];
@@ -181,11 +284,7 @@ impl Launcher {
             args.push("-s".as_ref());
             args.push(override_.as_ref());
         }
-        let mut command = self.command(&args);
-        #[cfg(target_os = "linux")]
-        if self.isolate {
-            crate::isolation::isolate(&mut command);
-        }
+        let mut command = self.run_command(request, &args);
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -443,4 +542,55 @@ fn last_lines(text: &str, count: usize) -> String {
     let java_notice = "Picked up JAVA_TOOL_OPTIONS"; // not-ui-text: matches Java's own output
     let lines: Vec<_> = text.lines().filter(|l| !l.starts_with(java_notice)).collect();
     lines[lines.len().saturating_sub(count)..].join(" / ")
+}
+
+#[cfg(test)]
+mod isolation_tests {
+    use super::*;
+
+    fn launcher(isolation: RunIsolation) -> Launcher {
+        let mut launcher = Launcher::new("/opt/jb/runtime/bin/java", "/opt/jb/javabyte.jar");
+        launcher.bridge_python = Some(PathBuf::from("/opt/jb/bridge/python/python.exe"));
+        launcher.isolation = isolation;
+        launcher
+    }
+
+    fn args(command: &Command) -> Vec<String> {
+        command.get_args().map(|a| a.to_string_lossy().into_owned()).collect()
+    }
+
+    fn request() -> RunRequest {
+        RunRequest { sample: PathBuf::from("/samples/x.jar"), output: PathBuf::from("/runs/one"), config: None, overrides: vec![] }
+    }
+
+    #[test]
+    fn an_appcontainer_run_names_what_it_may_read_and_write() {
+        let command = launcher(RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into())).run_command(&request(), &["run".as_ref()]);
+        assert_eq!(command.get_program(), "/opt/jb/sandbox/javabyte-sandbox.exe");
+        let args = args(&command);
+        let reads: Vec<&str> = args.windows(2).filter(|w| w[0] == "--read").map(|w| w[1].as_str()).collect();
+        assert_eq!(reads, ["/opt/jb/runtime", "/opt/jb/javabyte.jar", "/opt/jb/bridge/python", "/samples/x.jar"]);
+        assert!(args.windows(2).any(|w| w == ["--write", "/runs/one"]));
+        let program = &args[args.iter().position(|a| a == "--").unwrap() + 1..];
+        assert_eq!(program, ["/opt/jb/runtime/bin/java", "-jar", "/opt/jb/javabyte.jar", "run"]);
+    }
+
+    #[test]
+    fn a_windows_sandbox_run_maps_folders_and_stages_the_sample() {
+        let sandbox = launcher(RunIsolation::WindowsSandbox("/opt/jb/sandbox/javabyte-sandbox.exe".into()));
+        let args = args(&sandbox.run_command(&request(), &["run".as_ref()]));
+        assert_eq!(args[0], "windows-sandbox");
+        let maps: Vec<&str> = args.windows(2).filter(|w| w[0] == "--map").map(|w| w[1].as_str()).collect();
+        assert_eq!(maps, [r"/opt/jb/runtime=C:\JavaByteRuntime", r"/opt/jb=C:\JavaByteTool", r"/opt/jb/bridge/python=C:\JavaByteBridge", r"/runs/one=C:\JavaByteRun:rw"]);
+        assert!(args.windows(2).any(|w| w == ["--stage", "/samples/x.jar"]), "a sample file is copied in, not mapped");
+        assert!(sandbox.uses_windows_sandbox());
+        let lighter = sandbox.without_windows_sandbox();
+        assert_eq!(lighter.isolation, RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into()));
+    }
+
+    #[test]
+    fn without_isolation_java_starts_directly() {
+        let command = launcher(RunIsolation::None).run_command(&request(), &["run".as_ref()]);
+        assert_eq!(command.get_program(), "/opt/jb/runtime/bin/java");
+    }
 }

@@ -9,6 +9,7 @@ use javabyte_gui_protocol::inspect::Inspection;
 use javabyte_gui_protocol::report::{Report, SCHEMA_VERSION, describe_outcome};
 use javabyte_gui_protocol::schema::Schema;
 use javabyte_gui_protocol::stream::{STREAM_VERSION, StreamRecord, parse_line};
+use javabyte_gui_protocol::tools::{PolicyListing, default_rows};
 use javabyte_gui_protocol::validate::Validation;
 
 fn sample(name: &str) -> String {
@@ -86,4 +87,21 @@ fn every_outcome_has_plain_words() {
         "stopped", "no-entry-point", "config-error", "internal-error"] {
         assert!(!describe_outcome(outcome).contains("does not know"), "{outcome}");
     }
+}
+
+#[test]
+fn the_policy_and_the_defaults_read() {
+    let policy: PolicyListing = serde_json::from_str(&sample("policy.json")).unwrap();
+    assert!(policy.rules.len() > 100, "{} rules", policy.rules.len());
+    assert!(policy.rules.iter().any(|r| r.rule == "java/lang/String" && r.allow));
+    let timer = policy.rules.iter().find(|r| r.rule == "java/util/Timer").unwrap();
+    assert!(!timer.allow);
+    assert!(timer.matches("starts threads"));
+
+    let schema: Schema = serde_json::from_str(&sample("schema.json")).unwrap();
+    let rows = default_rows(&schema);
+    let timeout = rows.iter().find(|r| r.path == "limits.timeoutSeconds").unwrap();
+    assert_eq!(timeout.default, "120");
+    assert!(rows.iter().any(|r| r.path == "plugins.native-bridge.python"), "plugin settings are listed too");
+    assert!(rows.iter().filter(|r| r.matches("timeout")).count() >= 1);
 }

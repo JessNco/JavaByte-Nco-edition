@@ -31,3 +31,8 @@ run-progress = { $seconds } seconds, { $events ->
         [one] 1 event
        *[other] { $events } events
     }, including { $network } network, { $programs } programs started and { $classes } classes created.
+running-starting-sandbox = Starting Windows Sandbox (usually 20 to 40 seconds). It opens in its own window; JavaByte closes it when the analysis ends. You can stop at any time.
+running-isolation-failed = Windows Sandbox could not start: { $detail }
+running-isolation-failed-heading = The analysis did not start
+running-isolation-fallback-question = You can analyse in an AppContainer instead. It also has no network, but it is a lighter separation than a whole Windows Sandbox.
+running-isolation-fallback = Analyse in an AppContainer instead

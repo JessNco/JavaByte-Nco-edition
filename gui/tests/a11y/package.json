@@ -4,7 +4,7 @@
   "description": "Automated accessibility checks for the JavaByte GUI screens, run in Chromium against the browser build.",
   "type": "module",
   "scripts": {
-    "test": "node run.mjs"
+    "test": "node run.mjs && node criteria.mjs"
   },
   "devDependencies": {
     "axe-core": "4.11.0",

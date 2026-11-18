@@ -1,7 +1,8 @@
 //! Running: live progress of the analysis, a way to stop it, and the way to its report.
 //!
 //! The numbers on screen update about four times a second. Screen readers are told much less:
-//! a short summary at the interval chosen under Display settings, and how it ended.
+//! a short summary at the interval chosen in Preferences, and how it ended. Windows Sandbox,
+//! which takes a while to start, adds a starting stage, and a way on if it cannot start.
 
 use crate::app::{Screen, flow, open_report};
 use crate::bridge;
@@ -39,8 +40,16 @@ pub fn RunningScreen() -> impl IntoView {
                         last_announced_ms.set_value(now.elapsed_ms);
                         announcer().say(progress_sentence(&now));
                     }
+                    // Windows Sandbox takes a while to start: said once, when it begins.
+                    if let Some(starting) = &now.starting
+                        && status.with_untracked(|s| s.starting.is_none()) {
+                            announcer().say(starting.clone());
+                        }
                 } else if before == RunState::Running && now.state == RunState::Finished {
-                    announcer().say(t!("run-finished-announce", ended = now.ended.clone().unwrap_or_default()));
+                    match &now.isolation_failed {
+                        Some(problem) => announcer().say(problem.clone()),
+                        None => announcer().say(t!("run-finished-announce", ended = now.ended.clone().unwrap_or_default())),
+                    }
                 }
                 status.set(now);
             });
@@ -68,6 +77,20 @@ pub fn RunningScreen() -> impl IntoView {
             stop();
         }
     });
+
+    // After Windows Sandbox failed to start: the same analysis in an AppContainer, which the
+    // person chose here; never done without asking (docs/gui/WINDOWS-SANDBOX.md).
+    let fallback = move |_| {
+        spawn_local(async move {
+            match bridge::start_run_without_sandbox().await {
+                Ok(()) => {
+                    status.set(RunStatus::default());
+                    crate::util::focus_id("running-heading".into());
+                }
+                Err(message) => announcer().say(message),
+            }
+        });
+    };
 
     let view_report = move |_| {
         opening.set(true);
@@ -98,7 +121,16 @@ pub fn RunningScreen() -> impl IntoView {
                 String::new()
             }}
         </p>
-        <Show when=move || status.with(|s| s.state == RunState::Finished)>
+        {move || status.with(|s| s.starting.clone()).map(|starting| view! { <p class="starting">{starting}</p> })}
+        {move || status.with(|s| s.isolation_failed.clone()).map(|problem| view! {
+            <div class="error-summary" role="region" aria-labelledby="isolation-failed-heading">
+                <h3 id="isolation-failed-heading">{t!("running-isolation-failed-heading")}</h3>
+                <p>{problem}</p>
+                <p>{t!("running-isolation-fallback-question")}</p>
+                <button type="button" on:click=fallback>{t!("running-isolation-fallback")}</button>
+            </div>
+        })}
+        <Show when=move || status.with(|s| s.state == RunState::Finished && s.isolation_failed.is_none())>
             <div class="outcome" role="region" aria-labelledby="outcome-heading">
                 <h3 id="outcome-heading">{t!("run-finished-heading")}</h3>
                 <p>{move || status.with(|s| s.ended.clone().unwrap_or_default())}</p>

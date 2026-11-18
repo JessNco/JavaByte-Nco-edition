@@ -321,6 +321,19 @@ class ContractTest {
         Cli policy = cli("policy");
         assertEquals(0, policy.exitCode());
         assertTrue(policy.out().contains("java/lang/String"), "the allow-list should be printed");
+
+        // The JSON form lists every rule of the text form, with its effect, section and note.
+        var rules = cli("policy", "--json").json().get("rules");
+        long ruleLines = policy.out().lines().map(String::strip).filter(l -> !l.isEmpty() && !l.startsWith("#")).count();
+        assertEquals(ruleLines, rules.size());
+        var string = rules.get(1);
+        assertEquals("java/lang/String", string.get("rule").asText());
+        assertTrue(string.get("allow").asBoolean());
+        assertEquals("core language types", string.get("section").asText());
+        var timer = java.util.stream.StreamSupport.stream(rules.spliterator(), false)
+                .filter(r -> r.get("rule").asText().equals("java/util/Timer")).findFirst().orElseThrow();
+        assertFalse(timer.get("allow").asBoolean(), "a ! rule is a deny");
+        assertTrue(timer.get("note").asText().startsWith("Exceptions to the java/util tree"), timer.toString());
     }
 
     // ------------------------------------------------------------------ determinism

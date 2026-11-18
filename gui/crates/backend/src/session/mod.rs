@@ -33,6 +33,9 @@ const NOTABLE: &[&str] = &["process", "net", "class", "native"];
 /// Fixed order for the live per-category table, so rows do not jump around.
 const CATEGORY_ORDER: &[&str] = &["process", "net", "file", "class", "native", "crypto", "string", "reflect", "thread", "console", "policy", "gap"];
 const RECENT_LIMIT: usize = 20;
+/// The sandbox add-on's exit code when the isolation could not start (gui/sandbox).
+const ISOLATION_FAILED: i32 = 70;
+
 /// How long a run gets to honour a stop request before its process is ended.
 const STOP_GRACE: Duration = Duration::from_secs(15);
 
@@ -52,6 +55,8 @@ pub struct Session {
 
 struct Active {
     run: Run,
+    /// Started through Windows Sandbox, which takes a while before the analysis begins.
+    sandboxed: bool,
     sample: SampleChoice,
     output: PathBuf,
     started: Instant,
@@ -120,6 +125,16 @@ impl Session {
 
     /// Starts an analysis of the chosen sample with its settings. Refused while another runs.
     pub fn start(&mut self) -> Result<(), String> {
+        self.start_with(false)
+    }
+
+    /// Starts the analysis again in an AppContainer, after Windows Sandbox could not start and
+    /// the person agreed to the lighter isolation for this run.
+    pub fn start_without_sandbox(&mut self) -> Result<(), String> {
+        self.start_with(true)
+    }
+
+    fn start_with(&mut self, without_sandbox: bool) -> Result<(), String> {
         if self.active.as_ref().is_some_and(|a| a.ended.is_none()) {
             return Err(t!("error-already-running"));
         }
@@ -136,9 +151,11 @@ impl Session {
             // The chosen sample, whatever the settings say: they may come from another sample.
             overrides: vec![sample_override(&sample)],
         };
-        let run = self.launcher()?.start(&request)?;
+        let launcher = if without_sandbox { self.launcher()?.without_windows_sandbox() } else { self.launcher()?.clone() };
+        let run = launcher.start(&request)?;
         self.active = Some(Active {
             run,
+            sandboxed: launcher.uses_windows_sandbox(),
             sample,
             output,
             started: Instant::now(),
@@ -211,6 +228,11 @@ impl Session {
             entry: progress.map(|p| p.entry).unwrap_or_default(),
             ended: active.ended.as_ref().map(|e| e.summary.clone()),
             report_ready: self.report.is_some() && active.ended.is_some(),
+            starting: (active.ended.is_none() && active.sandboxed && tally.start.is_none()).then(|| t!("running-starting-sandbox")),
+            // The add-on's exit code when the isolation itself failed, before the tool began.
+            isolation_failed: active.ended.as_ref().filter(|e| e.exit_code == Some(ISOLATION_FAILED) && e.tally.start.is_none()).map(|e| {
+                t!("running-isolation-failed", detail = e.stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim_start_matches("javabyte-sandbox: "))
+            }),
         }
     }
 

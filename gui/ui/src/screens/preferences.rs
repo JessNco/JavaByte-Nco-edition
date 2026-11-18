@@ -107,6 +107,10 @@ pub fn PreferencesScreen() -> impl IntoView {
             let unavailable = !i.available;
             let isolate = s.preferences.isolate;
             let ask = s.preferences.ask_without_isolation;
+            let windows = s.os == "windows"; // not-ui-text: an operating system id
+            let strongest = s.preferences.strongest_isolation;
+            let strongest_available = i.strongest_available;
+            let strongest_problem = i.strongest_problem.clone();
             view! {
                 <h4 id="isolation-heading">{t!("prefs-isolation-heading")}</h4>
                 <p id="isolation-state">{state}</p>
@@ -119,6 +123,28 @@ pub fn PreferencesScreen() -> impl IntoView {
                     <label for="prefs-isolate">{t!("prefs-isolate")}</label>
                 </div>
                 <p class="hint" id="prefs-isolate-hint">{t!("prefs-isolate-hint")}</p>
+                // Windows with the add-on: how to isolate. Windows Sandbox is offered only where it
+                // works, and says why not otherwise.
+                <Show when=move || windows && isolate>
+                    <fieldset>
+                        <legend>{t!("prefs-isolation-method")}</legend>
+                        <div class="choice">
+                            <input type="radio" name="isolation-method" id="isolation-appcontainer" prop:checked=!strongest
+                                on:change=move |_| change(PreferenceChange::Strongest(false), t!("prefs-isolation-appcontainer-on")) />
+                            <label for="isolation-appcontainer">{t!("prefs-isolation-appcontainer")}</label>
+                        </div>
+                        <div class="choice">
+                            <input type="radio" name="isolation-method" id="isolation-windows-sandbox" prop:checked=strongest
+                                disabled=!strongest_available && !strongest
+                                aria-describedby=(!strongest_available).then_some("isolation-windows-sandbox-why")
+                                on:change=move |_| change(PreferenceChange::Strongest(true), t!("prefs-isolation-windows-sandbox-on")) />
+                            <label for="isolation-windows-sandbox">{t!("prefs-isolation-windows-sandbox")}</label>
+                        </div>
+                        {strongest_problem.clone().filter(|_| !strongest_available).map(|problem| view! {
+                            <p class="hint" id="isolation-windows-sandbox-why">{t!("prefs-isolation-windows-sandbox-unavailable", detail = problem)}</p>
+                        })}
+                    </fieldset>
+                </Show>
                 <Show when=move || unavailable && isolate>
                     <div class="choice">
                         <input type="checkbox" id="prefs-ask" prop:checked=ask
@@ -157,6 +183,9 @@ pub fn PreferencesScreen() -> impl IntoView {
             {isolation}
             {bridge_status}
             <p class="hint">{move || status.get().map(|s| t!("prefs-version", version = s.version))}</p>
+            // Where to report an accessibility problem: the app has no network, so the address is
+            // shown as text to copy, not as a link it would open.
+            <p>{t!("prefs-accessibility")}</p>
         </section>
         <section aria-label=t!("display-heading")>
             <prefs::DisplayPanel />

@@ -2,12 +2,13 @@
 #
 # Crates: protocol (data shared by screens and backend, text resources), backend (everything
 # that is not drawing: running the tool, settings, reports), app (the Tauri window and the
-# commands the screens may call), ui (the screens, built to WebAssembly). See README.md here.
+# commands the screens may call), ui (the screens, built to WebAssembly), sandbox (the Windows
+# isolation add-on, a separate download). See README.md here.
 [workspace]
 resolver = "3"
-members = ["crates/protocol", "crates/backend", "app", "ui"]
+members = ["crates/protocol", "crates/backend", "app", "ui", "sandbox"]
 # The screens compile to WebAssembly with Trunk, not with a plain `cargo build`.
-default-members = ["crates/protocol", "crates/backend", "app"]
+default-members = ["crates/protocol", "crates/backend", "app", "sandbox"]
 
 [workspace.package]
 version = "0.2.0"

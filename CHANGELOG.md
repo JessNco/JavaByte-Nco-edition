@@ -6,6 +6,17 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Added
+- Windows sandbox add-on, a separate download: each analysis runs with no network, in an
+  AppContainer (every edition, the default) or in a fresh Windows Sandbox (Pro and up, chosen in
+  Preferences). The Running screen shows Windows Sandbox starting; if it cannot start, the app
+  says why and asks before using an AppContainer instead. See docs/gui/WINDOWS-SANDBOX.md.
+- Desktop app, phase 6 (accessibility): checks for the WCAG 2.2 criteria axe does not test, run
+  on every screen in CI; a manual audit script for NVDA and Orca (docs/gui/PHASE6-AUDIT.md); an
+  accessibility statement (docs/ACCESSIBILITY.md), and where to report problems, in Preferences.
+- Desktop app: a Tools screen with the built-in policy and every option with its default, each
+  searchable.
+- `javabyte policy --json`: each rule of the built-in policy with its effect (allow or block),
+  section and the explanation written above it.
 - JavaByte is free software under the GNU General Public License, version 3 or later (LICENSE).
   The installers carry the licence beside the app, and Preferences says so.
 - Desktop app, phase 5: installers. MSI and portable zip for Windows, .deb and AppImage for
@@ -87,6 +98,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - The tool version comes from `pom.xml` only.
 
 ### Fixed
+- Desktop app: "Reset to default", "Move up", "Move down" and "Choose…" are now named starting
+  with their visible words, so voice control can press them (WCAG 2.5.3). The Tools tables can
+  be scrolled by keyboard at large text sizes.
 - Saved-file paths in the report (`artifacts`, `requestBodyFile`) use `/` on every system;
   on Windows they used `\\`, which broke reading a report made on another system.
 - Writing without end to one open file exhausted memory before `limits.maxWrittenBytes` applied.

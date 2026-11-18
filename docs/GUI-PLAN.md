@@ -1,6 +1,6 @@
 # GUI plan
 
-Status: **phases 0 to 5 built; the accessibility audit (phase 6) is next.** This document plans a desktop
+Status: **phases 0 to 5 built; phase 6 (accessibility audit) has its automated checks, fixes and statement, and waits for the manual run with NVDA and Orca.** This document plans a desktop
 interface for JavaByte for people who are not comfortable with a command line. It records the
 decisions made, the design, the changes the command line needed, and the questions still open.
 The code is in [`gui/`](../gui/README.md); what each phase built, and how it was tested, is in
@@ -34,7 +34,7 @@ Not goals: replacing the command line, downloading samples, running the test cor
 | Samples | Local files only; no MalwareBazaar download, no corpus runner |
 | Saving dropped files | Password-protected zip (`infected`) by default; saving as is only after a very clear warning |
 | Code signing | No certificate yet; release unsigned at first with honest install instructions, and obtain signing before a wide release (see [Code signing](#code-signing)) |
-| Isolation on Windows | A virtual machine is the standard guidance. A built-in sandbox is explored as an optional add-on, not shipped as standard (see [Future: Windows sandbox add-on](#future-windows-sandbox-add-on)) |
+| Isolation on Windows | A separate sandbox add-on: an AppContainer on every edition, Windows Sandbox where available. Without it, a virtual machine is the guidance (see [Windows sandbox add-on](#windows-sandbox-add-on)) |
 | Runs at once | One analysis at a time |
 | Languages | English first; every piece of text in resource files so translations can be added |
 
@@ -193,7 +193,10 @@ indicator. Runs are repeatable (seeded randomness, fixed clock), so differences 
 
 ### 6. Tools
 
-Not built yet. Read-only viewers for `javabyte policy` (the allow-list) and `javabyte defaults`, with search.
+Read-only viewers for the host policy (`javabyte policy --json`: each rule, whether it allows or
+blocks, its group and the policy file's explanation) and every option with its default, type and
+meaning (from `javabyte schema --json`, which also covers plugin settings). Each has a search that
+matches every typed word in any column, with a live count.
 
 ### 7. Preferences
 
@@ -213,7 +216,7 @@ spacing, and the isolation setting on Linux (below).
 | `inspect [--json]` | Sample overview; Save as JSON |
 | `init SAMPLE` | Settings → Start from this sample's suggestions; Export |
 | `defaults [--json]` | Tools → Defaults |
-| `policy` | Tools → Policy |
+| `policy [--json]` | Tools → Policy |
 | `disasm FILE [--class NAME]` | Report → Files → a saved class, shown as bytecode |
 | exit codes 0/1/2/3 | Outcome shown in words; 1 is shown as a tool fault with a "copy details" button |
 | `scripts/run-isolated.sh` | Linux: Preferences → "Run without network access" (on by default) |
@@ -311,9 +314,10 @@ neither eyes nor screen readers are misled.
   folders.
 - **Linux isolation**: runs start in a network namespace with no network by default, as
   `scripts/run-isolated.sh` does today. The setting can be turned off, with an explanation.
-- **Windows** has no equivalent that works without administrator rights. The GUI says so
-  plainly on the first run and in Preferences, and recommends running JavaByte inside a
-  virtual machine. A built-in sandbox may come later as an add-on (see below).
+- **Windows** has no equivalent without administrator rights or an extra part. The sandbox
+  add-on, a separate download, adds one: each analysis in an AppContainer with no network, or
+  in Windows Sandbox where available (see below). Without it, the GUI says so plainly on the
+  first run and in Preferences, and recommends a virtual machine.
 
 ### Saving files a sample produced
 
@@ -403,7 +407,7 @@ English is the only language at first, but nothing in the code holds user-visibl
 | 3. Config editor | Generated forms, YAML tab, validation, import/export, presets; see [gui/PHASE3-PLAN.md](gui/PHASE3-PLAN.md) | Parity test passes for every option |
 | 4. Full report | Events grid, limits and gaps, files viewer, compare; see [gui/PHASE4-PLAN.md](gui/PHASE4-PLAN.md) | Second user sessions |
 | 5. Packaging | jlink runtime, bundled bridge, installers, Linux isolation, GPG-signed Linux packages, unsigned-install instructions; see [gui/PHASE5-PLAN.md](gui/PHASE5-PLAN.md) | Clean install and first run on fresh Windows 11 and Ubuntu LTS machines |
-| 6. Accessibility audit | Full manual script, fixes, accessibility statement | No open AA issues |
+| 6. Accessibility audit | Full manual script, fixes, accessibility statement; see [gui/PHASE6-AUDIT.md](gui/PHASE6-AUDIT.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md) | No open AA issues |
 
 ## Testing
 
@@ -430,11 +434,11 @@ English is the only language at first, but nothing in the code holds user-visibl
 | An analyst exports a dropped file and runs it | Encrypted zip by default; "save as is" only after an explicit warning; the GUI never opens saved files |
 | Unsigned installer puts off new users | Clear install instructions with published hashes now; signing before a wide release |
 
-## Future: Windows sandbox add-on
+## Windows sandbox add-on
 
-Not part of the first release. On Windows the standard guidance stays "run JavaByte in a
-virtual machine". This section records what an optional add-on could look like, so that the
-first release leaves room for it.
+**Built**: [gui/WINDOWS-SANDBOX.md](gui/WINDOWS-SANDBOX.md) records the decisions (AppContainer
+everywhere as the default, Windows Sandbox as the strongest choice where available, a separate
+download) and how it works. What follows is the exploration that led to it.
 
 **What it would add.** On Linux, runs already have no network. The add-on would give Windows a
 comparable second layer: if the emulator ever had a flaw, the Java process still could not

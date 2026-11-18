@@ -79,6 +79,10 @@ In the desktop app, also:
   has no network.
 - **Accessibility is part of done.** A new screen or control passes `gui/tests/a11y`, works by
   keyboard alone, and announces changes through the shared announcer.
+- **Changing how analyses are isolated** (Linux namespaces, the Windows add-on) needs its
+  end-to-end tests to keep passing: the isolated run in `tests/runner.rs`, the installed `.deb`
+  check, and the AppContainer network and grant tests in the Installers workflow. Windows
+  Sandbox has a manual check in `docs/gui/WINDOWS-SANDBOX.md`.
 - **Public items in `protocol` and `backend` are documented**: both crates warn on
   `missing_docs`, and CI's lint step (`cargo clippy -- -D warnings`) fails on any warning.
 - **Shared page state** (the flow, the settings, the announcer) lives in `thread_local` cells
@@ -170,6 +174,10 @@ For the Java ones: Raise the version property in
   run `cargo test`. A new Tauri minor version needs the egress test (Linux, root):
   see [gui/README.md](gui/README.md#testing). Keep `tauri` and `tauri-build` on matching
   minor versions.
+- **WiX 5** builds the sandbox add-on's MSI; its version is pinned in
+  `.github/workflows/installers.yml` ("Install WiX"). The add-on's isolation code uses
+  `windows-sys`; it compiles only on Windows, so check it locally with
+  `cargo clippy -p javabyte-sandbox --target x86_64-pc-windows-msvc` and let CI run it.
 - **Trunk** is pinned in `.github/workflows/gui.yml`, `.github/workflows/installers.yml` and
   `gui/README.md`; change all three. The Tauri CLI used for bundling is pinned in
   `gui/packaging/build.sh`; keep it on the same minor version as the `tauri` crate.

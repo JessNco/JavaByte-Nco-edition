@@ -351,3 +351,6 @@ dialog.alert::backdrop { background: rgb(0 0 0 / 0.6); }
 button.primary:disabled { background: var(--bg); color: var(--muted); border-color: var(--border); }
 .simple-table button, .simple-table thead th { white-space: nowrap; }
 .simple-table td.hash { white-space: nowrap; word-break: normal; }
+
+/* Tools: the policy's effect, in words first; the colour only repeats them. */
+.effect-block { color: var(--error); font-weight: 600; }

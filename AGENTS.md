@@ -101,6 +101,9 @@ java -jar target/javabyte-0.2.0.jar run SAMPLE -o out/run1 --events jsonl --prog
 - `javabyte schema --json` describes every option: `path`, `type`, `default`, `allowed`,
   `description`, and under `plugins` each plugin's `id`, `description` and `settings`. Use it
   to build a config rather than guessing key names.
+- `javabyte policy --json` returns `{rules: [{rule, allow, section, note}]}`: the built-in
+  allow-list in order, `allow: false` for a block (which always wins). Use it to tell whether a
+  `policy.blocked` event was expected.
 
 Event categories: `process`, `file`, `net`, `class`, `resource`, `reflect`, `crypto`, `string`,
 `native`, `thread`, `system`, `console`, `policy`, `hook`, `gap`, `lifecycle`.

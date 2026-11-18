@@ -354,10 +354,21 @@ public final class Main {
             description = "Print the built-in list of JDK members guest code may call for real.")
     static final class Policy implements Callable<Integer> {
 
+        @Option(names = "--json", description = "Print each rule with its effect, section and explanation, as JSON.")
+        boolean json;
+
         @Override
         public Integer call() throws Exception {
+            String text;
             try (InputStream in = Main.class.getResourceAsStream("/dev/javabyte/default-policy.txt")) {
-                System.out.print(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            if (json) {
+                java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+                out.put("rules", dev.javabyte.host.PolicyListing.read(text));
+                System.out.println(ConfigLoader.json().writeValueAsString(out));
+            } else {
+                System.out.print(text);
             }
             return EXIT_OK;
         }

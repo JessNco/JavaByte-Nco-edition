@@ -72,6 +72,7 @@ jobs:
             echo "| JavaByte-$version-windows-x86_64-portable.zip | Windows, without installing |"
             echo "| JavaByte-$version-linux-x86_64.deb | Ubuntu 22.04 and later, Debian 12 and later |"
             echo "| JavaByte-$version-linux-x86_64.AppImage | Other Linux systems, without installing (no network isolation on Ubuntu 24.04) |"
+            echo "| JavaByte-$version-windows-x86_64-sandbox-addon.msi (and .zip for the portable edition) | Windows: run each analysis with no network, in an AppContainer or Windows Sandbox |"
             echo
             echo "Files ending in -with-native-bridge also analyse a sample's Windows native libraries (DLLs). They are larger."
             echo

@@ -574,11 +574,14 @@ pub struct AppPreferences {
     pub isolate: bool,
     /// Linux: ask before a run when isolation is on but the system does not allow it.
     pub ask_without_isolation: bool,
+    /// Windows, with the sandbox add-on: use Windows Sandbox (strongest, slower to start)
+    /// instead of an AppContainer.
+    pub strongest_isolation: bool,
 }
 
 impl Default for AppPreferences {
     fn default() -> Self {
-        Self { output_folder: None, java: None, isolate: true, ask_without_isolation: true }
+        Self { output_folder: None, java: None, isolate: true, ask_without_isolation: true, strongest_isolation: false }
     }
 }
 
@@ -609,13 +612,19 @@ pub struct SetupStatus {
 
 /// Whether runs can start without network.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Isolation {
-    /// The system offers isolation at all (Linux only).
+    /// Isolation exists here at all: on Linux always; on Windows with the sandbox add-on.
     pub supported: bool,
-    /// The app can create an isolated run right now.
+    /// The app can create an isolated run right now (Linux: a network namespace; Windows: an
+    /// AppContainer).
     pub available: bool,
     /// When not available: why, in plain words, and what to do.
     pub problem: Option<String>,
+    /// Windows: Windows Sandbox can be used, as the strongest choice.
+    pub strongest_available: bool,
+    /// Windows: why Windows Sandbox cannot be used, when it cannot.
+    pub strongest_problem: Option<String>,
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@
 //! app, or the `target/` folder of a source checkout, and to `JAVABYTE_JAVA`, `JAVA_HOME` or
 //! `java` on the path.
 
-use crate::runner::Launcher;
+use crate::runner::{Launcher, RunIsolation};
 use javabyte_gui_protocol::t;
 use javabyte_gui_protocol::views::{AppPreferences, Isolation, SetupStatus};
 use std::path::{Path, PathBuf};
@@ -96,8 +96,49 @@ impl Setup {
         candidates.into_iter().find(|p| p.is_file())
     }
 
+    /// The Windows sandbox add-on's helper, when installed: with the app's resources, in
+    /// `Program Files\JavaByte\sandbox` (where the add-on's installer puts it), or next to a
+    /// portable copy of the app.
+    pub fn sandbox_helper(&self) -> Option<PathBuf> {
+        if !cfg!(windows) {
+            return None;
+        }
+        let name = "javabyte-sandbox.exe";
+        let mut candidates = vec![self.resources.join("sandbox").join(name)];
+        candidates.extend(std::env::var_os("ProgramFiles").map(|p| PathBuf::from(p).join("JavaByte").join("sandbox").join(name)));
+        candidates.extend(self.exe_dir.as_ref().map(|d| d.join("sandbox").join(name)));
+        candidates.into_iter().find(|p| p.is_file())
+    }
+
+    /// Whether analyses can be isolated from the network here. Takes a moment (it starts a
+    /// process), so the app checks once at start.
+    pub fn isolation_status(&self) -> Isolation {
+        #[cfg(target_os = "linux")]
+        {
+            match crate::isolation::check() {
+                Ok(()) => Isolation { supported: true, available: true, ..Isolation::default() },
+                Err(error) => {
+                    // The AppImage cannot carry the AppArmor profile that Ubuntu 24.04 asks for.
+                    let problem = if std::env::var_os("APPIMAGE").is_some() {
+                        t!("isolation-unavailable-appimage", detail = error.to_string())
+                    } else {
+                        t!("isolation-unavailable", detail = error.to_string())
+                    };
+                    Isolation { supported: true, available: false, problem: Some(problem), ..Isolation::default() }
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            match self.sandbox_helper() {
+                Some(helper) => windows_isolation(&helper),
+                None => Isolation { problem: Some(t!("isolation-not-on-this-system")), ..Isolation::default() },
+            }
+        }
+    }
+
     /// The engine as the preferences ask for it, or why it cannot be used. `isolation` is the
-    /// result of [`isolation_status`], checked once at start.
+    /// result of [`Setup::isolation_status`], checked once at start.
     pub fn launcher(&self, preferences: &AppPreferences, isolation: &Isolation) -> Result<Launcher, String> {
         let jar = self.jar().ok_or_else(|| t!("error-engine-missing"))?;
         let mut launcher = match (&preferences.java, self.bundled_java()) {
@@ -109,7 +150,16 @@ impl Setup {
         if java_version(&launcher.java).is_none() {
             return Err(t!("error-java-missing"));
         }
-        launcher.isolate = preferences.isolate && isolation.available;
+        launcher.isolation = match self.sandbox_helper() {
+            // Windows with the add-on. Windows Sandbox is used whenever it was chosen, even if
+            // it looks unavailable now: the add-on then says why, and the app asks before using
+            // an AppContainer instead, rather than quietly giving weaker isolation.
+            Some(helper) if preferences.isolate && preferences.strongest_isolation => RunIsolation::WindowsSandbox(helper),
+            Some(helper) if preferences.isolate && isolation.available => RunIsolation::AppContainer(helper),
+            Some(_) => RunIsolation::None,
+            None if cfg!(target_os = "linux") && preferences.isolate && isolation.available => RunIsolation::Namespace,
+            None => RunIsolation::None,
+        };
         launcher.bridge_python = self.bundled_bridge();
         Ok(launcher)
     }
@@ -133,28 +183,28 @@ impl Setup {
     }
 }
 
-/// Whether runs can be isolated from the network on this system. Takes a moment (it starts a
-/// process), so the app checks once at start.
-pub fn isolation_status() -> Isolation {
-    #[cfg(target_os = "linux")]
+/// Asks the add-on which kinds of isolation work here (`javabyte-sandbox check`).
+#[cfg(not(target_os = "linux"))]
+fn windows_isolation(helper: &Path) -> Isolation {
+    let mut command = Command::new(helper);
+    command.arg("check").stdin(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
     {
-        match crate::isolation::check() {
-            Ok(()) => Isolation { supported: true, available: true, problem: None },
-            Err(error) => {
-                // The AppImage cannot carry the AppArmor profile that Ubuntu 24.04 asks for.
-                let problem = if std::env::var_os("APPIMAGE").is_some() {
-                    t!("isolation-unavailable-appimage", detail = error.to_string())
-                } else {
-                    t!("isolation-unavailable", detail = error.to_string())
-                };
-                Isolation { supported: true, available: false, problem: Some(problem) }
-            }
-        }
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    #[cfg(not(target_os = "linux"))]
-    {
-        Isolation { supported: false, available: false, problem: Some(t!("isolation-not-on-this-system")) }
-    }
+    let answer: Option<serde_json::Value> = command.output().ok().and_then(|o| serde_json::from_slice(&o.stdout).ok());
+    let Some(answer) = answer else {
+        return Isolation { supported: true, problem: Some(t!("isolation-addon-check-failed")), ..Isolation::default() };
+    };
+    let part = |name: &str| {
+        let entry = &answer[name];
+        let problem = entry["problem"].as_str().map(|p| t!("isolation-addon-problem", detail = p));
+        (entry["available"].as_bool().unwrap_or(false), problem)
+    };
+    let (available, problem) = part("appcontainer");
+    let (strongest_available, strongest_problem) = part("windowsSandbox");
+    Isolation { supported: true, available, problem, strongest_available, strongest_problem }
 }
 
 /// What `java -version` reports, such as `21.0.5`; None when it does not start.

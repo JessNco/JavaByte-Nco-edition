@@ -60,11 +60,23 @@ To use it without installing, unpack `JavaByte-<version>-windows-x86_64-portable
 JavaByte appears under **Open with** for `.jar` files. It never becomes the default program for
 them, so double-clicking a jar does what it did before.
 
-**Network isolation:** Windows has no way to turn off the network for one program without
-administrator rights, so on Windows JavaByte relies on its own simulation of the network. Use a
-virtual machine without network for live malware.
+**Network isolation:** Windows cannot turn off the network for one program without
+administrator rights or an extra part. Install the **sandbox add-on**
+(`JavaByte-<version>-windows-x86_64-sandbox-addon.msi`, from the same release) after JavaByte,
+and each analysis runs with no network:
 
-To uninstall: Settings, Apps, JavaByte, Uninstall. Your analyses stay in Documents\JavaByte.
+- in an **AppContainer** (the default), Windows' own app sandbox, on every edition of Windows 10
+  and 11, starting at once;
+- or, chosen in Preferences, in **Windows Sandbox**: a fresh, throwaway Windows for each
+  analysis. The strongest choice, but it takes 20 to 40 seconds to start and needs Windows Pro,
+  Enterprise or Education with the "Windows Sandbox" feature turned on.
+
+For the portable edition, unpack the add-on's zip so that its `sandbox` folder sits next to
+`javabyte-gui.exe`. Without the add-on, JavaByte relies on its own simulation of the network:
+use a virtual machine without network for live malware.
+
+To uninstall: Settings, Apps, JavaByte, Uninstall (and "JavaByte sandbox add-on", if
+installed). Your analyses stay in Documents\JavaByte.
 
 ## Ubuntu and Debian
 

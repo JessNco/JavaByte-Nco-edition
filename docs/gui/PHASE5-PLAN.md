@@ -75,7 +75,8 @@ with **Run without isolation**, **Cancel** (focused), and **Don't ask again**. P
 shows the same status and the setting.
 
 Windows has no equivalent without administrator rights. The start screen says so once, on
-first run, and recommends a virtual machine; Preferences says it permanently.
+first run, and recommends a virtual machine; Preferences says it permanently. (Since then, the
+sandbox add-on gives Windows the same: [WINDOWS-SANDBOX.md](WINDOWS-SANDBOX.md).)
 
 ## Opening `.jar` files
 

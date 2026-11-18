@@ -16,12 +16,30 @@ public final class SimTimer implements StandIn {
         return "java/util/Timer";
     }
 
-    private static void enqueue(TimerTask task, boolean periodic) {
+    /**
+     * Queues the runs of a task. The first is due after {@code delayMillis}, and for a repeating
+     * task each further run (up to {@code threads.periodicRuns}) one period later. Each run waits
+     * for its due time in virtual time, so the sample sees the clock where a real timer would
+     * have left it, without the run taking that long.
+     *
+     * @param periodMillis 0 for a task that runs once
+     */
+    private static void enqueue(TimerTask task, long delayMillis, long periodMillis) {
         VirtualMachine vm = VirtualMachine.current();
-        int runs = periodic ? Math.max(1, vm.config.threads.periodicRuns) : 1;
+        int runs = periodMillis > 0 ? Math.max(1, vm.config.threads.periodicRuns) : 1;
+        long start = vm.env.clock.peekMillis();
         for (int i = 0; i < runs; i++) {
-            vm.scheduler.submit("timer", task, () -> runTask(task));
+            long due = start + Math.max(delayMillis, 0) + i * periodMillis;
+            vm.scheduler.submit("timer", task, () -> {
+                vm.scheduler.awaitFor(() -> false, due - vm.env.clock.peekMillis(), "timer delay");
+                runTask(task);
+            });
         }
+    }
+
+    /** The delay until {@code time}, in virtual time; a time in the past means "now". */
+    private static long until(Date time) {
+        return time.getTime() - VirtualMachine.current().env.clock.peekMillis();
     }
 
     /**
@@ -38,12 +56,12 @@ public final class SimTimer implements StandIn {
         }
     }
 
-    public void schedule(TimerTask task, long delay) { enqueue(task, false); }
-    public void schedule(TimerTask task, Date time) { enqueue(task, false); }
-    public void schedule(TimerTask task, long delay, long period) { enqueue(task, true); }
-    public void schedule(TimerTask task, Date firstTime, long period) { enqueue(task, true); }
-    public void scheduleAtFixedRate(TimerTask task, long delay, long period) { enqueue(task, true); }
-    public void scheduleAtFixedRate(TimerTask task, Date firstTime, long period) { enqueue(task, true); }
+    public void schedule(TimerTask task, long delay) { enqueue(task, delay, 0); }
+    public void schedule(TimerTask task, Date time) { enqueue(task, until(time), 0); }
+    public void schedule(TimerTask task, long delay, long period) { enqueue(task, delay, period); }
+    public void schedule(TimerTask task, Date firstTime, long period) { enqueue(task, until(firstTime), period); }
+    public void scheduleAtFixedRate(TimerTask task, long delay, long period) { enqueue(task, delay, period); }
+    public void scheduleAtFixedRate(TimerTask task, Date firstTime, long period) { enqueue(task, until(firstTime), period); }
     public void cancel() { }
     public int purge() { return 0; }
 }

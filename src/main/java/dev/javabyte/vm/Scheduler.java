@@ -56,7 +56,13 @@ public final class Scheduler {
         int hostDepth;
         /** Set by notify(); cleared when the waiter resumes. */
         boolean notified;
+        /** The guest's {@code Thread.currentThread()} object for this carrier, made on first use. */
         Object guestThread;
+        /**
+         * While the carrier is in a timed wait: the virtual time, in nanoseconds since the run
+         * started, at which the wait ends. {@code Long.MAX_VALUE} otherwise.
+         */
+        long deadlineNanos = Long.MAX_VALUE;
 
         Carrier(String label, Object key, Runnable body) {
             this.label = label;
@@ -118,11 +124,95 @@ public final class Scheduler {
      * the guest can name it or read its properties without touching a carrier.
      */
     public Object currentThread() {
+        if (current == main) {
+            return mainThread();
+        }
         if (current.guestThread == null) {
             current.guestThread = current.key instanceof Thread thread ? thread
-                    : new Thread(current == main ? "main" : "pool-1-thread-" + all.size());
+                    : new Thread("pool-1-thread-" + all.size());
         }
         return current.guestThread;
+    }
+
+    /**
+     * The guest's main thread object, made on first use from whichever guest thread asks.
+     *
+     * <p>It is created on a carrier, which is a daemon host thread, so it would inherit
+     * daemon status; a real main thread is not a daemon, and samples check. Its id, text form
+     * and the like are presented by {@code ThreadStubs}.
+     */
+    public Object mainThread() {
+        if (main.guestThread == null) {
+            Thread thread = new Thread("main");
+            thread.setDaemon(false);
+            thread.setPriority(Thread.NORM_PRIORITY);
+            main.guestThread = thread;
+        }
+        return main.guestThread;
+    }
+
+    /** True if {@code thread} is the guest thread object of the carrier running now. */
+    public boolean isCurrent(Object thread) {
+        return thread != null && (thread == current.key || thread == current.guestThread
+                || (current == main && thread == mainThread()));
+    }
+
+    /**
+     * The guest thread objects that are alive, in a fixed order: main first, then the others in
+     * the order they were started. Used for {@code Thread.getAllStackTraces()} and
+     * {@code Thread.activeCount()}, which on a real JVM always include the caller.
+     */
+    public List<Object> liveThreads() {
+        List<Object> live = new ArrayList<>();
+        live.add(mainThread());
+        for (Carrier carrier : all) {
+            Object thread = carrier.key instanceof Thread ? carrier.key : carrier.guestThread;
+            if (!carrier.finished && thread != null && !live.contains(thread)) {
+                live.add(thread);
+            }
+        }
+        Object me = currentThread();
+        if (!live.contains(me)) {
+            live.add(me);
+        }
+        return live;
+    }
+
+    /**
+     * The guest call stack of another live guest thread, innermost frame first, as
+     * {@code Thread.getStackTrace()} on that thread would give it. Empty for a thread that has
+     * not started, has finished, or is not a guest thread.
+     */
+    public StackTraceElement[] stackOf(Object thread) {
+        Carrier carrier = thread != null && thread == main.guestThread ? main : find(thread);
+        if (carrier == null || !carrier.started || carrier.finished) {
+            return new StackTraceElement[0];
+        }
+        List<Frame> frames = carrier.frames;
+        StackTraceElement[] trace = new StackTraceElement[frames.size()];
+        for (int i = 0; i < trace.length; i++) {
+            Frame frame = frames.get(frames.size() - 1 - i);
+            dev.javabyte.model.GuestMethod method = frame.method;
+            int line = method.lines.length == 0 ? -1 : method.lines[Math.min(frame.pc, method.lines.length - 1)];
+            trace[i] = new StackTraceElement(method.owner.dottedName(), method.name, method.owner.node.sourceFile, line);
+        }
+        return trace;
+    }
+
+    /**
+     * The state a real JVM would report for a guest thread object: NEW before it is started,
+     * TERMINATED after it ends, and RUNNABLE in between (the emulator does not track finer
+     * states for threads other than the caller).
+     */
+    public Thread.State stateOf(Object thread) {
+        if (isCurrent(thread) || (thread != null && thread == main.guestThread)) {
+            return Thread.State.RUNNABLE;
+        }
+        Carrier carrier = find(thread);
+        if (carrier == null) {
+            return Thread.State.NEW;
+        }
+        return carrier.finished ? Thread.State.TERMINATED : Thread.State.RUNNABLE;
     }
 
     // ------------------------------------------------------------------ creating tasks
@@ -153,17 +243,35 @@ public final class Scheduler {
         shutdownHooks.add(new Carrier(label, key, body));
     }
 
+    /**
+     * The carrier for a task, found by the guest object that represents it or by the thread
+     * object its code saw as {@code Thread.currentThread()}. Main is not included.
+     */
     private Carrier find(Object key) {
+        if (key == null) {
+            return null;
+        }
         for (Carrier carrier : all) {
             if (carrier.key == key) {
+                return carrier;
+            }
+        }
+        for (Carrier carrier : all) {
+            if (carrier.guestThread == key) {
                 return carrier;
             }
         }
         return null;
     }
 
-    /** True while the task for {@code key} has not finished; the basis of Thread.isAlive(). */
+    /**
+     * True while the task for {@code key} has not finished; the basis of Thread.isAlive(). The
+     * main thread is alive for the whole run, as it is while a real program runs.
+     */
     public boolean isAlive(Object key) {
+        if (key != null && key == main.guestThread) {
+            return true;
+        }
         Carrier carrier = find(key);
         return carrier != null && !carrier.finished;
     }
@@ -174,6 +282,20 @@ public final class Scheduler {
         if (target != null && target != current) {
             blockUntil(() -> target.finished, "join " + target.label);
         }
+    }
+
+    /**
+     * {@code Thread.join(millis)}: waits for the task for {@code key} to finish, but for no more
+     * than {@code timeoutMillis} of virtual time.
+     *
+     * @return true if the task has finished (or was never started), false if the time ran out
+     */
+    public boolean join(Object key, long timeoutMillis) {
+        Carrier target = find(key);
+        if (target == null || target == current) {
+            return target == null || target.finished;
+        }
+        return awaitFor(() -> target.finished, timeoutMillis, "join " + target.label);
     }
 
     /** Withdraws a task that has not started yet (Future.cancel, TimerTask.cancel). */
@@ -335,7 +457,9 @@ public final class Scheduler {
      */
     public void blockUntil(BooleanSupplier ready, String what) {
         while (!ready.getAsBoolean()) {
-            if (runnable.isEmpty() || ++fruitlessPolls > 2 * (runnable.size() + 1)) {
+            // A thread in a timed wait will move virtual time on when everyone is stuck, which
+            // may unblock this one, so "forever" is only certain when there is none.
+            if (runnable.isEmpty() || (++fruitlessPolls > 2 * (runnable.size() + 1) && !anyTimedWaiter())) {
                 fruitlessPolls = 0;
                 throw new EmulationAbort(EmulationAbort.Reason.BLOCKED, what + " would block forever");
             }
@@ -344,21 +468,149 @@ public final class Scheduler {
         fruitlessPolls = 0;
     }
 
+    /** True if a runnable carrier is in a timed wait. */
+    private boolean anyTimedWaiter() {
+        for (Carrier carrier : runnable) {
+            if (carrier.deadlineNanos != Long.MAX_VALUE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
-     * Implements a guest sleep: virtual time moves forward instantly and other threads run.
+     * Timed waits ({@code wait(millis)}, {@code join(millis)}, {@code parkNanos}, a delayed
+     * executor task, ...): suspends the calling guest thread until {@code ready} holds or
+     * {@code timeoutMillis} of virtual time has passed, whichever is first.
+     *
+     * @return the final value of {@code ready}: false means the wait timed out
+     * @see #awaitForNanos
+     */
+    public boolean awaitFor(BooleanSupplier ready, long timeoutMillis, String what) {
+        long nanos = timeoutMillis <= 0 ? 0 : timeoutMillis > Long.MAX_VALUE / 1_000_000L ? Long.MAX_VALUE : timeoutMillis * 1_000_000L;
+        return awaitForNanos(ready, nanos, what);
+    }
+
+    /**
+     * Like {@link #awaitFor}, with the timeout in nanoseconds.
+     *
+     * <p>Other threads run while the caller waits. Their work moves virtual time on (executed
+     * instructions cost time, and their sleeps jump it forward), so a notify, an unpark or a
+     * finishing task that comes in time ends the wait early, with only the time really used
+     * gone from the clock, as on a real JVM. When no other thread can make progress, or the
+     * caller has waited {@link #PATIENT_TURNS} turns, the clock jumps to the caller's deadline
+     * (or to another waiter's, if that comes first): the wait times out at no real cost. Only a
+     * jump to the caller's own deadline counts against the sleep budget
+     * ({@code limits.maxSleeps}), so a loop that waits on nothing is still ended, while a wait
+     * cut short by a notify is free.
+     */
+    public boolean awaitForNanos(BooleanSupplier ready, long timeoutNanos, String what) {
+        return timedWait(ready, timeoutNanos, PATIENT_TURNS, true, what);
+    }
+
+    /**
+     * Turns a timed wait lets the other threads have before it gives up on them and lets its
+     * time pass. Enough for a notify that needs a few million instructions of work first; a
+     * thread that computes for longer then sees the waiter time out, as if it were slow.
+     */
+    private static final int PATIENT_TURNS = 64;
+
+    /**
+     * The common core of sleeps and timed waits.
+     *
+     * <p>Every waiting carrier records its deadline, so that the clock never jumps past one: a
+     * thread jumps only to its own deadline when that is the nearest, or, when every thread is
+     * stuck, to the nearest deadline overall, and the thread that is due then runs. A sleep of
+     * 100 s and a join of 30 s therefore end in the right order, at the right virtual times,
+     * and a sleeping thread never cuts short another thread's wait that a notify could end.
+     *
+     * @param patience   turns to give the other threads before jumping although they are busy
+     * @param countJump  whether jumping to the caller's own deadline counts as a sleep
+     * @return the final value of {@code ready}
+     */
+    private boolean timedWait(BooleanSupplier ready, long timeoutNanos, int patience, boolean countJump, String what) {
+        dev.javabyte.env.VirtualClock clock = vm.env.clock;
+        Carrier me = current;
+        long start = clock.elapsedNanos();
+        long deadline = start + Math.max(timeoutNanos, 0);
+        if (deadline < start || deadline == Long.MAX_VALUE) {
+            deadline = Long.MAX_VALUE - 1; // saturate; MAX_VALUE itself means "not waiting"
+        }
+        me.deadlineNanos = deadline;
+        int turns = 0;
+        try {
+            while (!ready.getAsBoolean()) {
+                long now = clock.elapsedNanos();
+                if (now >= deadline) {
+                    return false;
+                }
+                boolean stuck = runnable.isEmpty() || ++fruitlessPolls > 2 * (runnable.size() + 1);
+                if (stuck || turns >= patience) {
+                    // Out of patience, a thread may only let its own time pass, and only if no
+                    // other deadline comes first: that other waiter decides for itself. When
+                    // everyone is stuck, the nearest deadline overall is the one to reach.
+                    long other = nearestOtherDeadline();
+                    long target = stuck ? Math.min(deadline, other) : deadline <= other ? deadline : now;
+                    if (target > now) {
+                        // Nothing will happen before the target: let that much time pass.
+                        clock.advanceNanos(target - now);
+                        fruitlessPolls = 0;
+                        if (target == deadline) {
+                            if (countJump) {
+                                countSleep();
+                            }
+                            return ready.getAsBoolean();
+                        }
+                    }
+                }
+                turns++;
+                yieldToOthers(what);
+            }
+            fruitlessPolls = 0;
+            return true;
+        } finally {
+            me.deadlineNanos = Long.MAX_VALUE;
+        }
+    }
+
+    /** The nearest deadline of the runnable carriers that are waiting, or {@code Long.MAX_VALUE}. */
+    private long nearestOtherDeadline() {
+        long nearest = Long.MAX_VALUE;
+        for (Carrier carrier : runnable) {
+            nearest = Math.min(nearest, carrier.deadlineNanos);
+        }
+        return nearest;
+    }
+
+    /**
+     * Implements a guest sleep: virtual time moves forward at once and other threads run.
      *
      * <p>Sleeping never waits in real time. That defeats "sleep through the sandbox" evasion
      * and lets beacon loops be observed quickly; the per-thread sleep budget then ends them.
+     * The other threads get one turn first, and the clock never jumps past another thread's
+     * deadline (see {@link #timedWait}), so threads still wake in the order their times say.
+     * A busy thread does not hold a sleeper back.
      */
     public void sleep(long millis) {
-        vm.env.clock.advance(Math.max(millis, 0));
+        countSleep();
+        // A sleeping thread is making progress in virtual time, so blocked threads keep waiting.
+        fruitlessPolls = 0;
+        if (millis <= 0) {
+            yieldToOthers("sleep");
+            return;
+        }
+        long nanos = millis > Long.MAX_VALUE / 1_000_000L ? Long.MAX_VALUE : millis * 1_000_000L;
+        timedWait(() -> false, nanos, 1, false, "sleep");
+        fruitlessPolls = 0;
+        yieldToOthers("sleep");
+    }
+
+    /** Charges one sleep to the current thread's budget, ending the thread when it is spent. */
+    private void countSleep() {
         if (++current.sleeps > vm.config.limits.maxSleeps) {
             throw new EmulationAbort(EmulationAbort.Reason.SLEEP_BUDGET,
                     "task slept " + vm.config.limits.maxSleeps + " times");
         }
-        // A sleeping thread is making progress in virtual time, so blocked threads keep waiting.
-        fruitlessPolls = 0;
-        yieldToOthers("sleep");
     }
 
     /** Runs until no guest thread is left. Called on main after each entry point returns. */
@@ -456,7 +708,8 @@ public final class Scheduler {
 
     /**
      * {@code Object.wait}: releases the monitor, suspends until notified (or, with a timeout,
-     * until virtual time has passed), then takes the monitor back.
+     * until that much virtual time has passed, whichever comes first), then takes the monitor
+     * back.
      *
      * @param timeoutMillis 0 for no timeout
      */
@@ -471,8 +724,10 @@ public final class Scheduler {
         waiters.computeIfAbsent(object, key -> new ArrayList<>()).add(me);
         try {
             if (timeoutMillis > 0) {
-                // A timed wait behaves like a sleep that a notify can cut short.
-                sleep(timeoutMillis);
+                // A notify ends the wait early, and only the time actually waited passes on
+                // the clock. A wait that times out counts against the sleep budget only when
+                // the clock had to jump for it (see awaitForNanos).
+                awaitFor(() -> me.notified, timeoutMillis, "Object.wait");
             } else {
                 blockUntil(() -> me.notified, "Object.wait");
             }

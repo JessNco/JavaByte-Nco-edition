@@ -385,10 +385,11 @@ class ContractTest {
         assertEquals(seven.get(2), entropy.get(2));
         assertEquals(seven.get(6), eight.get(6), "the clock does not depend on the seed");
         // clockStart plus the 90 simulated seconds, on every clock the JDK offers. The virtual
-        // clock moves a millisecond each time it is read, hence the small tolerances.
+        // clock also moves on with each instruction and each read, hence the small tolerances
+        // (and a whole second prints without a fraction).
         assertTrue(seven.get(6).matches("time 17092836900\\d\\d slept 900\\d\\d"), seven.get(6));
         assertTrue(seven.get(7).matches("date \\d{1,2} calendar \\d{1,2} gregorian \\d{1,2} instant \\d{1,2} clock \\d{1,2} zoned \\d{1,2}"
-                + " utc-date 2024-03-01 utc-time 2024-03-01T09:01:30\\.0\\d\\d"), seven.get(7));
+                + " utc-date 2024-03-01 utc-time 2024-03-01T09:01:30(\\.0\\d\\d)?"), seven.get(7));
         assertTrue(seven.get(5).matches("uuid [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"), seven.get(5));
         assertTrue(seven.get(4).matches("thread-local 1\\d\\d -?\\d+"), "bounds must still be honoured: " + seven.get(4));
     }

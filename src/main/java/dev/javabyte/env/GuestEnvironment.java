@@ -23,6 +23,8 @@ public final class GuestEnvironment {
 
     public final boolean windows;
     public final VirtualClock clock;
+    /** The guest's time zone and locale; the host's own are never shown to the sample. */
+    public final GuestRegion region;
     public final VirtualFileSystem files;
     public final NetworkSimulator network;
     public final Properties properties = new Properties();
@@ -40,6 +42,7 @@ public final class GuestEnvironment {
         this.windows = "windows".equals(config.os);
         long start = config.clockStart == null ? System.currentTimeMillis() : Instant.parse(config.clockStart).toEpochMilli();
         this.clock = new VirtualClock(start);
+        this.region = GuestRegion.of(config);
         this.files = new VirtualFileSystem(windows, vm.events, vm.config.limits.maxWrittenBytes, start);
         this.network = new NetworkSimulator(vm.config.network, vm.events, vm.artifacts);
         this.stdout = consoleStream("stdout");
@@ -81,8 +84,9 @@ public final class GuestEnvironment {
         put("user.name", user);
         put("user.home", home);
         put("user.dir", files.parent(samplePath));
-        put("user.language", "en");
-        put("user.country", "US");
+        put("user.language", region.locale.getLanguage());
+        put("user.country", region.locale.getCountry());
+        put("user.timezone", region.zone.getId());
         put("file.separator", String.valueOf(files.separator()));
         put("path.separator", windows ? ";" : ":");
         put("line.separator", windows ? "\r\n" : "\n");
@@ -118,7 +122,7 @@ public final class GuestEnvironment {
             variables.put("SHELL", "/bin/bash");
             variables.put("HOSTNAME", config.hostName);
             variables.put("PATH", "/usr/local/bin:/usr/bin:/bin");
-            variables.put("LANG", "en_US.UTF-8");
+            variables.put("LANG", region.locale + ".UTF-8");
         }
         variables.putAll(config.env);
 

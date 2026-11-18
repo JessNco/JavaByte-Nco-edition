@@ -217,6 +217,8 @@ public final class ConfigLoader {
                         + "2024-03-01T09:00:00Z, found '" + config.environment.clockStart + "'"));
             }
         }
+        timeZone(found, config.environment.timeZone);
+        locale(found, config.environment.locale);
         for (int i = 0; i < config.network.http.size(); i++) {
             pattern(found, "network.http[" + i + "].url", config.network.http.get(i).url);
         }
@@ -232,6 +234,40 @@ public final class ConfigLoader {
     private static void positive(List<Problem> found, String key, long value) {
         if (value <= 0) {
             found.add(new Problem(key, key + " must be more than 0, found " + value));
+        }
+    }
+
+    /**
+     * The guest's time zone must be a zone the JDK knows. A fixed offset such as +02:00 is
+     * accepted too, though a region name looks more like a real desktop.
+     */
+    private static void timeZone(List<Problem> found, String zone) {
+        String key = "environment.timeZone";
+        if (zone == null || zone.isBlank()) {
+            found.add(new Problem(key, key + " is required, for example America/New_York"));
+            return;
+        }
+        try {
+            java.time.ZoneId.of(zone);
+        } catch (java.time.DateTimeException e) {
+            found.add(new Problem(key, key + " must be a time zone such as America/New_York or Europe/London, found '" + zone + "'"));
+        }
+    }
+
+    /** The guest's locale must be a well-formed language tag with at least a language. */
+    private static void locale(List<Problem> found, String tag) {
+        String key = "environment.locale";
+        if (tag == null || tag.isBlank()) {
+            found.add(new Problem(key, key + " is required, for example en-US"));
+            return;
+        }
+        try {
+            java.util.Locale locale = new java.util.Locale.Builder().setLanguageTag(tag).build();
+            if (locale.getLanguage().isEmpty()) {
+                throw new java.util.IllformedLocaleException("no language");
+            }
+        } catch (java.util.IllformedLocaleException e) {
+            found.add(new Problem(key, key + " must be a language tag such as en-US or de-DE, found '" + tag + "'"));
         }
     }
 

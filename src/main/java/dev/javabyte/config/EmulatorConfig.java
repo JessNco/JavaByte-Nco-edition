@@ -136,6 +136,22 @@ public final class EmulatorConfig {
         @ConfigDoc("When the pretend clock starts, as an ISO-8601 time such as 2024-03-01T09:00:00Z. Empty means now.")
         public String clockStart;
 
+        /**
+         * The guest's time zone. Without it the sample would see the analysis computer's own
+         * zone, which tells it where the sandbox is and changes the report from one computer to
+         * the next. The default matches the simulated en-US Windows desktop.
+         */
+        @ConfigDoc("The pretend computer's time zone, as a region name such as America/New_York or Europe/London.")
+        public String timeZone = "America/New_York";
+
+        /**
+         * The guest's language and region. Like {@link #timeZone}, it keeps the analysis
+         * computer's own settings away from the sample, and it decides the user.language and
+         * user.country properties.
+         */
+        @ConfigDoc("The pretend computer's language and region, as a language tag such as en-US or de-DE.")
+        public String locale = "en-US";
+
         @ConfigDoc("Seed for random numbers the sample does not seed itself, so that runs are repeatable. Empty means truly random.")
         public Long randomSeed = 0x4A617661L;
     }

@@ -286,6 +286,8 @@
       "files" : [ ],
       "directories" : [ ],
       "clockStart" : "2024-03-01T09:00:00Z",
+      "timeZone" : "America/New_York",
+      "locale" : "en-US",
       "randomSeed" : 7
     },
     "network" : {

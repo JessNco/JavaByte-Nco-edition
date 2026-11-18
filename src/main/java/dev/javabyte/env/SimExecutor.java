@@ -8,6 +8,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -29,12 +30,29 @@ public final class SimExecutor extends ScheduledThreadPoolExecutor {
     }
 
     private <V> SimFuture<V> enqueue(Callable<V> task, String kind) {
-        SimFuture<V> future = new SimFuture<>(task);
+        return enqueue(task, kind, 0);
+    }
+
+    /**
+     * Queues a task that starts once {@code delayMillis} of virtual time has passed.
+     *
+     * <p>The delay is waited out in virtual time on the task's own guest thread, so a task
+     * scheduled an hour ahead finds the clock an hour on when it runs, as a sample timing it
+     * expects, yet the run does not take an hour.
+     */
+    private <V> SimFuture<V> enqueue(Callable<V> task, String kind, long delayMillis) {
         VirtualMachine vm = VirtualMachine.current();
         if (vm == null) {
-            throw new IllegalStateException("Executor used outside the emulator thread");
+            // Only reachable from host code; the wording is the JDK's, so nothing tells of the emulator.
+            throw new RejectedExecutionException("Task rejected");
         }
-        vm.scheduler.submit("executor:" + kind, future, future);
+        long due = delayMillis <= 0 ? Long.MIN_VALUE : vm.env.clock.peekMillis() + delayMillis;
+        SimFuture<V> future = new SimFuture<>(task, due);
+        Runnable body = delayMillis <= 0 ? future : () -> {
+            vm.scheduler.awaitFor(future::isCancelled, due - vm.env.clock.peekMillis(), "scheduled delay");
+            future.run();
+        };
+        vm.scheduler.submit("executor:" + kind, future, body);
         return future;
     }
 
@@ -43,34 +61,39 @@ public final class SimExecutor extends ScheduledThreadPoolExecutor {
     @Override public <T> Future<T> submit(Runnable task, T result) { return enqueue(Executors.callable(task, result), "submit"); }
     @Override public <T> Future<T> submit(Callable<T> task) { return enqueue(task, "submit"); }
 
-    // Delays are ignored: virtual time is not tied to the queue, and running the task is what
-    // reveals behaviour. Repeating tasks run once per submission (see Threads.periodicRuns).
+    // Delays pass in virtual time (see enqueue). Repeating tasks run threads.periodicRuns times,
+    // one period apart.
     @Override
     public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
-        return enqueue(Executors.callable(command), "schedule");
+        return enqueue(Executors.callable(command), "schedule", unit.toMillis(delay));
     }
 
     @Override
     public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
-        return enqueue(callable, "schedule");
+        return enqueue(callable, "schedule", unit.toMillis(delay));
     }
 
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-        return repeat(command);
+        return repeat(command, unit.toMillis(initialDelay), unit.toMillis(period));
     }
 
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
-        return repeat(command);
+        return repeat(command, unit.toMillis(initialDelay), unit.toMillis(delay));
     }
 
-    private ScheduledFuture<?> repeat(Runnable command) {
+    /**
+     * Queues the runs of a repeating task, the n-th one due at {@code initial + n * period}.
+     * Each run is its own task, so the sleep budget and task limit apply as for any other.
+     */
+    private ScheduledFuture<?> repeat(Runnable command, long initialMillis, long periodMillis) {
         VirtualMachine vm = VirtualMachine.current();
         int runs = vm == null ? 1 : Math.max(1, vm.config.threads.periodicRuns);
         SimFuture<Object> last = null;
         for (int i = 0; i < runs; i++) {
-            last = enqueue(Executors.callable(command), "periodic");
+            long delay = Math.max(initialMillis, 0) + (long) i * Math.max(periodMillis, 0);
+            last = enqueue(Executors.callable(command), "periodic", delay);
         }
         return last;
     }

@@ -1,0 +1,18 @@
+description: 'Thread checks see a real Java 8 JVM: main has id 1 and is not a daemon, the thread list holds the caller and the JVM system threads but no debugger thread, and other threads report their own state and stack.'
+techniques: [anti-emulation, thread-enumeration, debugger-check]
+fixture: dev.javabyte.guest.sim.Timing
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [threads]}]
+    expect:
+      outcomes: [completed]
+      stdout:
+        - '^main id 1 daemon false text Thread\[main,5,main\]$'
+        - '^appended Thread\[main,5,main\]$'
+        - '^all threads include me: true size>=4: true jdwp: false$'
+        - '^system thread: true$'
+        - '^active 1$'
+        - '^new thread daemon false state NEW stack 0 id>10 true$'
+        - '^finished state TERMINATED text Thread\[worker,5,\]$'
+      maxGaps: 0

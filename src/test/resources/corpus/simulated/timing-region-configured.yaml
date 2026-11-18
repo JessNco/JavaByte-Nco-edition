@@ -1,0 +1,20 @@
+description: 'environment.timeZone and environment.locale change what the sample sees: zone, language properties, number formats and the text of dates.'
+techniques: [time-zone-check, locale-check, configuration]
+fixture: dev.javabyte.guest.sim.Timing
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [region]}]
+      environment: {clockStart: '2001-02-03T04:05:06Z', timeZone: Europe/Berlin, locale: de-DE}
+    expect:
+      outcomes: [completed]
+      stdout:
+        - '^zone Europe/Berlin Europe/Berlin property Europe/Berlin$'
+        - '^locale de_DE language de country DE$'
+        - '^format 1\.234,50$'
+        - '^date Sat Feb 03 05:05:0\d CET 2001$'
+        - '^built Sat Feb 03 05:05:0\d CET 2001$'
+        - '^year 2001 month 2001-02 local 2001-02-03$'
+        - '^calendars 2001 2001 Europe/Berlin$'
+        - '^epoch hour 1$'
+      maxGaps: 0

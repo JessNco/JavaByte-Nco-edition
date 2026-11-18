@@ -117,8 +117,10 @@ class VmInternalsTest {
         VirtualMachine vm = newVm();
         VirtualFileSystem files = new VirtualFileSystem(true, vm.events, 1000, 0);
         assertEquals("java.io.File", vm.types.nameOf(new SimFile(files, "C:\\a.txt")));
-        assertEquals("java.lang.ClassLoader", vm.types.nameOf(new SimClassLoader()));
-        assertEquals(ClassLoader.class, vm.types.reportedClass(new SimClassLoader()));
+        // Without the stubs' imitation rules, the nearest JDK superclass: the application
+        // loader is a URLClassLoader, as Java 8's is.
+        assertEquals("java.net.URLClassLoader", vm.types.nameOf(new SimClassLoader()));
+        assertEquals(java.net.URLClassLoader.class, vm.types.reportedClass(new SimClassLoader()));
     }
 
     @Test

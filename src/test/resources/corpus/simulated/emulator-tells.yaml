@@ -1,4 +1,4 @@
-description: The sample reads JVM-made exception messages and stack traces for signs of emulation, and finds what a real Java 8 runtime would show.
+description: The sample reads JVM-made exception messages, stack traces and its class loader's class for signs of emulation, and finds what a real Java 8 runtime would show.
 techniques: [anti-emulation, exception-message-check, stack-trace-check]
 fixture: dev.javabyte.guest.sim.EmulatorTells
 stages:
@@ -11,6 +11,7 @@ stages:
         - '^loader cast sun\.misc\.Launcher\$AppClassLoader cannot be cast to java\.lang\.String$'
         - '^process cast java\.lang\.ProcessImpl cannot be cast to java\.lang\.String$'
         - '^loader text sun\.misc\.Launcher\$AppClassLoader@18b4aac2$'
+        - '^loader class sun\.misc\.Launcher\$AppClassLoader extends java\.net\.URLClassLoader url loader true$'
         - '^npe message null$'
         - '^nfe top java\.lang\.NumberFormatException\.forInputString module null$'
       notPrinted:

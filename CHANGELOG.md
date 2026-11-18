@@ -18,6 +18,11 @@ Notable changes, newest first. The report's JSON layout has its own version,
   JDK methods that take a `ClassLoader`, such as `ResourceBundle.Control.newBundle`, are
   blocked. New events `class.url-loader` and `class.url-loader-add`; JDK code that tries to
   open a URL is reported as `policy.blocked` with `kind: url-open-by-jdk`.
+- A sample's own direct subclass of `ClassLoader` or `SecureClassLoader` is now built on a
+  simulated base too, as is `new SecureClassLoader()`. Its real parent used to be the
+  emulator's own application loader, so JDK code given the loader could reach the emulator's
+  class path and real resources. Now it sees only JDK classes, the sample's own `findClass`
+  and the sample's resources, and `getParent()` still reports the parent the sample passed.
 - What the sample writes to a launched process's standard input is now reported as
   `process.stdin` events and saved under `processes/`; it used to be thrown away.
 
@@ -47,6 +52,14 @@ Notable changes, newest first. The report's JSON layout has its own version,
   message, and a failed cast reads "X cannot be cast to Y". Cast and class-name messages,
   `getClass()` and loader text never name the emulator's own classes, and the application
   class loader prints as Java 8's and has a platform or extension parent.
+- On the Java 8 profile the application and extension loaders are `URLClassLoader`s, as on a
+  real Java 8: `getClass()` gives `sun.misc.Launcher$AppClassLoader` (or `$ExtClassLoader`)
+  with `java.net.URLClassLoader` as superclass, `getURLs()` lists the sample's class path, and
+  `addURL` called by reflection is reported as `class.url-loader-add` and only remembered. On
+  Java 9 and later profiles the cast to `URLClassLoader` fails with the JDK's own message, and
+  `Method.invoke` refuses a receiver that is not an instance of the method's class.
+- `loadClass` on a sample's loader now asks the JDK before the sample's own `findClass`, as
+  parent-first delegation does.
 - Exceptions thrown inside JDK methods, and methods called through reflection, keep their JDK
   frames in the stack trace.
 - `Package` metadata comes from the sample's `MANIFEST.MF`.

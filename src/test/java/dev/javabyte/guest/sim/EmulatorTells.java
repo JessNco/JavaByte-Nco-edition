@@ -6,7 +6,8 @@ import java.net.Socket;
 /**
  * Simulated anti-emulation probe: the sample provokes exceptions from JDK objects and the JVM
  * itself, then reads their messages and stack traces for anything a real Java 8 runtime would
- * not produce, such as an emulator's own package name.
+ * not produce, such as an emulator's own package name. It also checks that its loader has the
+ * class a Java 8 application loader has, which is a {@code URLClassLoader}.
  */
 public final class EmulatorTells {
 
@@ -16,6 +17,9 @@ public final class EmulatorTells {
         castToString("loader", EmulatorTells.class.getClassLoader());
         castToString("process", Runtime.getRuntime().exec("whoami"));
         System.out.println("loader text " + EmulatorTells.class.getClassLoader().toString());
+        ClassLoader loader = EmulatorTells.class.getClassLoader();
+        System.out.println("loader class " + loader.getClass().getName() + " extends " + loader.getClass().getSuperclass().getName()
+                + " url loader " + (loader instanceof java.net.URLClassLoader));
         String missing = null;
         try {
             System.out.println(missing.length());

@@ -134,7 +134,25 @@ own `loadClass`) before it is declared missing.
 the class-loader stubs read the archives it names from the virtual disk or the network
 simulator. A sample's own subclass of `URLClassLoader` gets a shell built on
 `SimURLClassLoader` instead of the real class, so JDK code that asks it for a class or resource
-cannot reach a real URL either.
+cannot reach a real URL either. In the same way a direct subclass of `ClassLoader` or
+`SecureClassLoader` gets a shell built on `SimBaseClassLoader` or `SimSecureClassLoader`.
+A real base would have a real parent, the emulator's own application loader, so JDK code calling
+the sample's loader directly could reach the emulator's class path. The simulated bases have the
+bootstrap loader as their real parent and answer JDK code only from the guest's world: JDK
+classes, the sample's own `findClass`, and the sample's resources on URLs that cannot be opened.
+`getParent()` still reports the parent the sample passed.
+
+The built-in loaders look like those of the advertised Java. On Java 8 the application and
+extension loaders are `URLClassLoader`s, so `SimClassLoader` and `SimPlatformClassLoader`
+extend `SimURLClassLoader`: `getURLs()` lists the sample's class path (or the usual extension
+jars), and `addURL` by reflection is recorded as `class.url-loader-add` and only remembered.
+`getClass()` returns a modelled class object for `sun.misc.Launcher$AppClassLoader` (or
+`$ExtClassLoader`), which the analysis JDK lacks, with the real name and superclass. On Java 9
+and later the type system answers casts and `instanceof` from the imitated
+`jdk.internal.loader` class instead, so casting the application loader to `URLClassLoader`
+fails with the JDK's own message. The modelled class has no members of its own and cannot be
+found with `Class.forName`, and its `getDeclaringClass()` is null rather than
+`sun.misc.Launcher`.
 
 ## Threads
 
@@ -223,12 +241,24 @@ What the design guarantees, assuming the allow-list is sound:
   literals still work, since the JDK answers them without a lookup.
 
 Objects the guest builds can reach the outside world through JDK code that runs on its behalf,
-where no stub sees the call. Three are made inert at creation: every URL gets
-`dev.javabyte.env.SimURLStreamHandler`, whose `hashCode`, `equals` and `sameFile` never resolve
-a host name; every security provider the guest can reach is a private copy (`SimProvider`),
-whose services always come from the real provider; and `new URLClassLoader` yields
-`SimURLClassLoader`, which only remembers its URLs. In addition, the router refuses any
-allow-listed JDK method whose parameters include a `ClassLoader`.
+where no stub sees the call. These are made inert at creation:
+
+- every URL gets `dev.javabyte.env.SimURLStreamHandler`, whose `hashCode`, `equals` and
+  `sameFile` never resolve a host name, and which refuses to open a connection;
+- every security provider the guest can reach is a private copy (`SimProvider`), whose services
+  always come from the real provider;
+- `new URLClassLoader` yields `SimURLClassLoader`, which only remembers its URLs, and
+  `new SecureClassLoader` yields `SimSecureClassLoader`;
+- a sample's own subclass of `ClassLoader`, `SecureClassLoader` or `URLClassLoader` is built on
+  `SimBaseClassLoader`, `SimSecureClassLoader` or `SimURLClassLoader`, whose real parent is the
+  bootstrap loader and which never look anything up on the emulator's class path, disk or
+  network;
+- the built-in application and platform loaders (`SimClassLoader`, `SimPlatformClassLoader`)
+  are simulated `URLClassLoader`s that never load anything.
+
+In addition, the router refuses any allow-listed JDK method whose parameters include a
+`ClassLoader`, and `SafetyTest` checks that the simulated loaders override every public lookup
+method and the protected ones `ClassLoader` itself calls.
 
 These properties are tested from the outside. `EscapeTest` runs a fixture that tries about
 eighty escape routes and then inspects the real machine: a canary file must not exist, a secret

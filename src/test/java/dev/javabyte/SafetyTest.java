@@ -91,6 +91,29 @@ class SafetyTest {
     }
 
     @Test
+    void simulatedLoaderBasesOverrideEveryLookup() throws Exception {
+        for (Class<?> sim : List.of(dev.javabyte.env.SimBaseClassLoader.class, dev.javabyte.env.SimSecureClassLoader.class,
+                dev.javabyte.env.SimURLClassLoader.class)) {
+            assertEquals(List.of(), notOverridden(ClassLoader.class, sim),
+                    "an inherited ClassLoader method could look something up for JDK code: " + sim.getSimpleName());
+            // The protected methods through which ClassLoader's own code looks things up.
+            sim.getDeclaredMethod("loadClass", String.class, boolean.class);
+            sim.getDeclaredMethod("findClass", String.class);
+            sim.getDeclaredMethod("findResource", String.class);
+            sim.getDeclaredMethod("findResources", String.class);
+        }
+        for (Class<?> sim : List.of(dev.javabyte.env.SimBaseClassLoader.class, dev.javabyte.env.SimSecureClassLoader.class)) {
+            sim.getDeclaredMethod("findClass", String.class, String.class);
+            sim.getDeclaredMethod("findResource", String.class, String.class);
+            sim.getDeclaredMethod("findLibrary", String.class);
+            assertNull(((ClassLoader) sim.getConstructor().newInstance()).getParent(),
+                    "the real parent of a simulated base is the bootstrap loader: " + sim.getSimpleName());
+        }
+        assertEquals(List.of(), notOverriddenIncludingProtected(java.security.SecureClassLoader.class,
+                dev.javabyte.env.SimSecureClassLoader.class));
+    }
+
+    @Test
     void simulatedProviderOverridesEveryMethod() {
         assertEquals(List.of(), notOverriddenIncludingProtected(java.security.Provider.class, dev.javabyte.env.SimProvider.class),
                 "an inherited Provider method could let a guest change reach the JDK's services");
@@ -138,6 +161,8 @@ class SafetyTest {
                 "a guest subclass of Provider would be a real provider");
         assertTrue(policy.allows("java/security/Provider", "getName", "()Ljava/lang/String;"));
         assertFalse(policy.allows("java/util/ResourceBundle$Control", "newBundle", null), "asks a loader for a class");
+        assertFalse(policy.allows("java/security/SecureClassLoader", "defineClass", null),
+                "only constructors are listed, for the simulated base of a sample's own loader");
         assertFalse(policy.allows("java/util/Timer", "<init>", "()V"));
         assertFalse(policy.allows("java/nio/file/Files", "write", null));
         assertFalse(policy.allows("java/lang/reflect/Method", "invoke", null));

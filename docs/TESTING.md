@@ -63,7 +63,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `FuzzTest` | 5 | About 1,350 mutated inputs by default: corrupted class files, invalid instruction streams, damaged archives, and corrupted class files given to the disassembler. None may end as `internal-error`, throw, or overrun its limits |
 | `EscapeTest` | 1 | About eighty escape attempts leave no file, process, thread or connection on the real machine |
 | `HostCallbackTest` | 8 | Runs the `HostCallbacks` fixture against a local listener. It checks URLs in collections, providers and loaders handed to JDK code, reverse lookups and the loader hierarchy for Java 8 and 17 profiles. Its provider-route test scans `java.base` for allow-listed methods returning a `Provider` and fails on any that has no stub |
-| `LoaderShellTest` | 4 | A sample's own subclass of `URLClassLoader` is built on the simulated loader, so neither the guest nor JDK code can make it fetch from its URL; the text of built-in loaders, concatenated dates and threads, and reflective stacks |
+| `LoaderShellTest` | 8 | A sample's own subclass of `URLClassLoader` is built on the simulated loader, so neither the guest nor JDK code can make it fetch from its URL; direct subclasses of `ClassLoader` and `SecureClassLoader` (the `OwnLoader` fixture) still define and load classes from bytes, while JDK code calling them, on a host or an emulator thread, sees no class or resource of the emulator's own class path; the application loader is a `URLClassLoader` with the sample's class path on the Java 8 profile and not one on Java 17 (the `SystemLoaderPath` fixture); the text of built-in loaders, concatenated dates and threads, and reflective stacks |
 | `MachineProfileTest` | 13 | The `Recon` fixture asks what anti-analysis code asks (management beans, `ProcessHandle`, the screen, network interfaces, recon commands, the disk); each answer looks like a real Windows desktop, and answers to the same question through different APIs agree |
 | `TimeTest` | 9 | The virtual clock on its own, validation of `timeZone` and `locale`, and that the host's own zone and locale never reach the report |
 | `WiringTest` | 8 | Parts built separately work together: process input reporting, the connection type for each URL scheme, config checks shared with the network simulator, and values the simulated machine gives in more than one place |
@@ -74,7 +74,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `nativebridge/NativeBridgeProtocolTest` | 6 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
 | `cli/InspectionTest` | 2 | `inspect` reads a sample with the same code as `run`, so the two agree |
 | `cli/HostLookupBackstopTest` | 2 | In a separate JVM: once the backstop is set, no host name reaches the system resolver, while `localhost` and address literals still work |
-| `SafetyTest` | 11 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
+| `SafetyTest` | 12 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
 | `NativeTest` | 5 | Native library description, plugin handlers, load failures |
 | `NativeBridgeTest` | 3 | A test DLL runs in the CPU emulator and calls back into Java. Needs `JAVABYTE_BRIDGE_PYTHON` |
 | `RealCorpusTest` | 10 | Nine MalwareBazaar samples behave as recorded. Needs `JAVABYTE_SAMPLES` |
@@ -136,7 +136,7 @@ wrong.
 | `anti-analysis-clean`, `-detected-user`, `-detected-tools`, `-hook-bypass` | Sandbox checks by user name, process list, MAC address, debugger and sleep timing; a config hook that defeats them. On the default machine the hardware, process list, network interfaces and built-in commands look like a desktop |
 | `anti-analysis-detected-debugger` | Debugger and CPU checks on the detected path: `jvmArguments` with a debugger agent and a single processor |
 | `anti-analysis-detected-hardware` | Memory and screen checks on the detected path, through the management bean and `java.awt.Toolkit` |
-| `emulator-tells` | JVM-made exception messages and stack traces read as a real Java 8 runtime's |
+| `emulator-tells` | JVM-made exception messages, stack traces and the application loader's class read as a real Java 8 runtime's |
 | `timing-clocks`, `timing-timed-waits` | One consistent virtual clock; delayed tasks, `parkNanos`, future timeouts, timed joins and waits take their full virtual time, and a notify still ends a wait early |
 | `timing-region-default`, `timing-region-configured` | The time zone and locale are the simulated desktop's, or those set in the config, never the analysis computer's; every date source follows `clockStart` |
 | `timing-threads` | Thread checks see a real Java 8 JVM: main has id 1, and the thread list holds the JVM's system threads but no debugger thread |

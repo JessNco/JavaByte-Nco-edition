@@ -2,6 +2,8 @@ package dev.javabyte.shell;
 
 import static org.objectweb.asm.Opcodes.*;
 
+import dev.javabyte.env.SimBaseClassLoader;
+import dev.javabyte.env.SimSecureClassLoader;
 import dev.javabyte.env.SimURLClassLoader;
 import dev.javabyte.host.HostBridge;
 import dev.javabyte.model.GuestClass;
@@ -204,12 +206,26 @@ public final class ShellFactory {
 
     /**
      * JDK classes that a shell never extends for real, mapped to the simulated class it extends
-     * instead. A real {@code URLClassLoader} fetches from its URLs whenever JDK code asks it for
-     * a class or resource, which no stub would see; {@link SimURLClassLoader} only remembers
+     * instead.
+     *
+     * <p>A real {@code URLClassLoader} fetches from its URLs whenever JDK code asks it for a
+     * class or resource, which no stub would see; {@link SimURLClassLoader} only remembers
      * them, and the class-loader stubs read the archives from the virtual disk or the network
      * simulator, as for {@code new URLClassLoader(...)}.
+     *
+     * <p>A real {@code ClassLoader} or {@code SecureClassLoader} has a real parent, by default
+     * the emulator's own application loader, so JDK code calling the sample's loader directly
+     * could reach the emulator's class path and real resources. {@link SimBaseClassLoader} and
+     * {@link SimSecureClassLoader} have the bootstrap loader as their real parent and answer
+     * only from the guest's virtual world.
+     *
+     * <p>Each simulated class has a public constructor for every shape of the JDK class's
+     * constructors, so the sample's {@code super(...)} call finds its match.
      */
-    private static final Map<String, Class<?>> SIMULATED_BASES = Map.of("java/net/URLClassLoader", SimURLClassLoader.class);
+    private static final Map<String, Class<?>> SIMULATED_BASES = Map.of(
+            "java/lang/ClassLoader", SimBaseClassLoader.class,
+            "java/security/SecureClassLoader", SimSecureClassLoader.class,
+            "java/net/URLClassLoader", SimURLClassLoader.class);
 
     /**
      * The JDK class a shell class stands in for as its superclass: the class the sample's

@@ -1,7 +1,10 @@
 package dev.javabyte.stubs;
 
+import dev.javabyte.env.SimLoaderSupport;
 import dev.javabyte.env.SimPlatformClassLoader;
+import dev.javabyte.env.SimSecureClassLoader;
 import dev.javabyte.env.SimURLClassLoader;
+import dev.javabyte.env.SimulatedLoader;
 import dev.javabyte.host.CallContext;
 import dev.javabyte.model.GuestClass;
 import dev.javabyte.model.GuestMethod;
@@ -34,9 +37,13 @@ import org.objectweb.asm.Type;
  * <p>The guest never holds a loader that fetches anything by itself. {@code new URLClassLoader}
  * yields a {@link SimURLClassLoader}, which only remembers its URLs; the archives they name are
  * read here, from the virtual disk or the network simulator. A sample's own subclass of
- * {@code URLClassLoader} is built on the same simulated loader (see
- * {@link dev.javabyte.shell.ShellFactory}). The application loader and its parent are
- * simulated too, and look like those of the Java version the guest environment advertises.
+ * {@code URLClassLoader}, {@code SecureClassLoader} or {@code ClassLoader} is built on a
+ * simulated loader too (see {@link dev.javabyte.shell.ShellFactory}), whose real parent is the
+ * bootstrap loader, so that JDK code calling it directly cannot reach the emulator's own class
+ * path. The application loader and its parent are simulated as well, and look like those of
+ * the Java version the guest environment advertises: on Java 8 both are
+ * {@code URLClassLoader}s, and {@code getURLs} lists the sample's class path and the usual
+ * extension jars.
  *
  * <p>Objects the JDK would make inert at creation, such as security providers, have their
  * own stubs in {@link InertObjectStubs}.
@@ -46,11 +53,12 @@ final class ClassLoaderStubs {
     private ClassLoaderStubs() {}
 
     /**
-     * Installs the class-loading stubs and makes the application loader's own text follow the
-     * advertised Java version.
+     * Installs the class-loading stubs, and makes the application loader's own text follow the
+     * advertised Java version and its URLs follow the guest's class path.
      */
     static void install(VirtualMachine vm) {
         vm.env.appLoader.followJavaVersion(() -> SystemStubs.legacyJava(vm.env));
+        vm.env.appLoader.followClassPath(() -> classPathUrls(vm));
         // Archives already mounted from URLClassLoader URLs, so each is read only once.
         Set<String> mountedArchives = new HashSet<>();
         BuiltinLoaders builtins = new BuiltinLoaders(vm);
@@ -61,6 +69,11 @@ final class ClassLoaderStubs {
         // (name, URL[], parent, factory); newInstance has the first two shapes.
         vm.stubs.on("java/net/URLClassLoader", "<init>", ctx -> urlLoader(vm, ctx));
         vm.stubs.on("java/net/URLClassLoader", "newInstance", ctx -> urlLoader(vm, ctx));
+        // SecureClassLoader, unlike ClassLoader, is not abstract, and policy lists its
+        // constructors so that a sample's subclass can be built on the simulated base. Bytecode
+        // that constructs one directly gets the same simulated loader, never a real one, whose
+        // parent would be the emulator's own application loader.
+        vm.stubs.on("java/security/SecureClassLoader", "<init>", ctx -> secureLoader(ctx));
 
         // sun.misc.Unsafe is never made available, but its class-defining methods are a common
         // way to load a payload without a class loader, so those calls are honoured.
@@ -71,6 +84,74 @@ final class ClassLoaderStubs {
             vm.stubs.on(unsafe, "defineAnonymousClass", ctx ->
                     vm.defineClass(null, (byte[]) ctx.arg(1), "Unsafe.defineAnonymousClass"));
         }
+    }
+
+    /**
+     * The guest's {@code java.class.path} as the URLs a Java 8 application loader reports: one
+     * {@code file:} URL per entry, with a trailing slash for a directory. They are built on a
+     * handler that refuses to open them, as they name paths on the virtual disk.
+     */
+    private static URL[] classPathUrls(VirtualMachine vm) {
+        return pathUrls(vm, vm.env.properties.getProperty("java.class.path", ""));
+    }
+
+    /** The jars a Java 8 extension directory holds, in the order a directory listing gives them. */
+    private static final List<String> WINDOWS_EXTENSION_JARS = List.of("access-bridge-64.jar", "cldrdata.jar",
+            "dnsns.jar", "jaccess.jar", "jfxrt.jar", "localedata.jar", "nashorn.jar", "sunec.jar",
+            "sunjce_provider.jar", "sunmscapi.jar", "sunpkcs11.jar", "zipfs.jar");
+    private static final List<String> LINUX_EXTENSION_JARS = List.of("cldrdata.jar", "dnsns.jar",
+            "icedtea-sound.jar", "jaccess.jar", "localedata.jar", "nashorn.jar", "sunec.jar",
+            "sunjce_provider.jar", "sunpkcs11.jar", "zipfs.jar");
+
+    /**
+     * The URLs of Java 8's extension loader: the usual jars of the first extension directory
+     * (the others normally do not exist). The jars are not on the virtual disk, just as the
+     * boot class path's jars are only names.
+     */
+    private static URL[] extensionUrls(VirtualMachine vm) {
+        String separator = vm.env.properties.getProperty("path.separator", vm.env.windows ? ";" : ":");
+        String first = vm.env.properties.getProperty("java.ext.dirs", "").split(java.util.regex.Pattern.quote(separator))[0];
+        if (first.isEmpty()) {
+            return new URL[0];
+        }
+        StringBuilder jars = new StringBuilder();
+        for (String jar : vm.env.windows ? WINDOWS_EXTENSION_JARS : LINUX_EXTENSION_JARS) {
+            jars.append(jars.length() == 0 ? "" : separator).append(vm.env.files.join(first, jar));
+        }
+        return pathUrls(vm, jars.toString());
+    }
+
+    /** One {@code file:} URL per entry of a search path, a directory's with a trailing slash. */
+    private static URL[] pathUrls(VirtualMachine vm, String path) {
+        String separator = vm.env.properties.getProperty("path.separator", vm.env.windows ? ";" : ":");
+        List<URL> urls = new java.util.ArrayList<>();
+        for (String entry : path.split(java.util.regex.Pattern.quote(separator))) {
+            if (entry.isEmpty()) {
+                continue;
+            }
+            try {
+                URL url = SimLoaderSupport.fileUrl(vm, entry);
+                if (vm.env.files.isDirectory(entry) && !url.getPath().endsWith("/")) {
+                    url = new URL(url, url.getPath() + '/');
+                }
+                urls.add(url);
+            } catch (java.net.MalformedURLException unrepresentable) {
+                // A real loader skips an entry it cannot turn into a URL.
+            }
+        }
+        return urls.toArray(new URL[0]);
+    }
+
+    /**
+     * A {@code SecureClassLoader} constructed directly, from {@code ()}, {@code (parent)} or
+     * {@code (name, parent)}: the simulated loader that a sample's own subclass extends.
+     */
+    private static SimSecureClassLoader secureLoader(CallContext ctx) {
+        return switch (ctx.argCount()) {
+            case 0 -> new SimSecureClassLoader();
+            case 1 -> new SimSecureClassLoader(ctx.arg(0) instanceof ClassLoader parent ? parent : null);
+            default -> new SimSecureClassLoader(ctx.stringArg(0), ctx.arg(1) instanceof ClassLoader parent ? parent : null);
+        };
     }
 
     /** Creates the guest's {@code URLClassLoader} from any constructor or {@code newInstance} overload. */
@@ -120,7 +201,8 @@ final class ClassLoaderStubs {
         SimPlatformClassLoader platform() {
             if (platform == null) {
                 platform = new SimPlatformClassLoader(java8() ? "sun.misc.Launcher$ExtClassLoader@7852e922"
-                        : "jdk.internal.loader.ClassLoaders$PlatformClassLoader@4e25154f");
+                        : "jdk.internal.loader.ClassLoaders$PlatformClassLoader@4e25154f",
+                        () -> java8() ? extensionUrls(vm) : new URL[0]);
             }
             return platform;
         }
@@ -181,8 +263,10 @@ final class ClassLoaderStubs {
                 if (builtins.isBuiltin(ctx.receiver)) {
                     return null;
                 }
-                return ctx.receiver instanceof SimURLClassLoader urlLoader && !urlLoader.hasDefaultParent()
-                        ? urlLoader.guestParent() : vm.env.appLoader;
+                // The parent the sample passed to its loader's constructor; the real parent of
+                // every simulated loader is the bootstrap loader.
+                return ctx.receiver instanceof SimulatedLoader loader && !loader.hasDefaultParent()
+                        ? loader.guestParent() : vm.env.appLoader;
             case "getName":
                 if (builtins.isBuiltin(ctx.receiver)) {
                     return builtins.name(ctx.receiver);
@@ -200,7 +284,8 @@ final class ClassLoaderStubs {
             case "getURLs":
                 return ctx.receiver instanceof URLClassLoader ? ctx.proceed() : new URL[0];
             case "addURL":
-                // Samples reach this protected method by reflection to extend a loader's path.
+                // Samples reach this protected method by reflection to extend a loader's path,
+                // classically the Java 8 application loader's. The URL is only remembered.
                 if (ctx.receiver instanceof SimURLClassLoader urlLoader && ctx.arg(0) instanceof URL url) {
                     urlLoader.addGuestURL(url);
                     vm.events.add("class", "url-loader-add", "url", url.toExternalForm());
@@ -272,7 +357,8 @@ final class ClassLoaderStubs {
 
     /**
      * Implements the loading methods with the JVM's delegation order: classes already known,
-     * then the loader's own {@code findClass} if the sample overrides it, then any archives a
+     * then, for {@code loadClass}, the JDK (which every parent chain reaches first) and the
+     * loader's own {@code findClass} if the sample overrides it, then any archives a
      * {@code URLClassLoader} points at, then the JDK.
      */
     private static Object load(VirtualMachine vm, CallContext ctx, Set<String> mountedArchives) throws Exception {
@@ -280,6 +366,11 @@ final class ClassLoaderStubs {
         String internalName = name.replace('.', '/');
         GuestClass guest = vm.classes.find(internalName);
         if (guest == null && ctx.name.equals("loadClass")) {
+            Class<?> jdk = vm.host.findClass(internalName);
+            if (jdk != null) {
+                // Parent first: a sample's findClass is never asked for a JDK class.
+                return jdk;
+            }
             InstanceState state = vm.stateOf(ctx.receiver);
             GuestMethod finder = state == null ? null
                     : state.type.findVirtual("findClass", "(Ljava/lang/String;)Ljava/lang/Class;");
@@ -288,7 +379,7 @@ final class ClassLoaderStubs {
                 return vm.router.callGuest(finder, ctx.receiver, new Object[] {name});
             }
         }
-        if (guest == null && ctx.receiver instanceof URLClassLoader urlLoader) {
+        if (guest == null && ctx.receiver instanceof SimURLClassLoader urlLoader) {
             mountArchives(vm, urlLoader, mountedArchives);
             guest = vm.classes.find(internalName);
         }
@@ -307,9 +398,13 @@ final class ClassLoaderStubs {
         return host;
     }
 
-    /** Reads the jars a {@code URLClassLoader} was given, from the virtual disk or simulated network. */
-    private static void mountArchives(VirtualMachine vm, URLClassLoader loader, Set<String> mounted) {
-        for (URL url : loader.getURLs()) {
+    /**
+     * Reads the jars a {@code URLClassLoader} was given or had added, from the virtual disk or
+     * simulated network. The built-in loaders' own path is not read: it is the sample itself,
+     * already loaded, and extension jars that exist only as names.
+     */
+    private static void mountArchives(VirtualMachine vm, SimURLClassLoader loader, Set<String> mounted) {
+        for (URL url : loader.guestURLs()) {
             if (!mounted.add(url.toExternalForm())) {
                 continue;
             }

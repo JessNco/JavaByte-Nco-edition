@@ -580,6 +580,14 @@ public final class ShellFactory {
         loadArguments(method, argTypes);
         method.visitMethodInsn(INVOKESPECIAL, owner, overridable.method().getName(),
                 Type.getMethodDescriptor(overridable.method()), viaInterface);
+        if (overridable.method().getName().equals("clone") && argTypes.length == 0 && returnType.getSort() == Type.OBJECT) {
+            // The JDK copied the shell, state field included; give the copy its own state.
+            method.visitVarInsn(ALOAD, 0);
+            method.visitInsn(SWAP);
+            method.visitMethodInsn(INVOKESTATIC, DISPATCH, "cloned",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
+            method.visitTypeInsn(CHECKCAST, returnType.getInternalName());
+        }
         if (overridable.method().getName().equals("toString") && argTypes.length == 0) {
             // Inherited toString() implementations print the runtime class name; swap the
             // shell's generated name for the guest's.

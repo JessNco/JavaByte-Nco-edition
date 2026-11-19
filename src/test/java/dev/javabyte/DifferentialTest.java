@@ -65,4 +65,24 @@ class DifferentialTest {
         assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
         assertTrue(expected.size() >= 14, "fixture self-check: " + expected);
     }
+
+    /**
+     * {@code Object.clone()} on plain guest objects, on guest classes that extend JDK classes and
+     * through reflection, and the three atomic field updaters with their error cases.
+     */
+    @Test
+    void cloneAndFieldUpdatersMatchRealJvm() throws Exception {
+        List<String> expected = Fixtures.realOutput(dev.javabyte.guest.CloneAndUpdaters.class);
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(),
+                dev.javabyte.guest.CloneAndUpdaters.class, Class.forName("dev.javabyte.guest.UpdaterOutsider"))));
+        assertEquals(String.join("\n", expected), String.join("\n", Fixtures.stdout(report)), Fixtures.outcomes(report));
+        assertEquals(List.of(), report.events().byCategory("gap"), "no emulation gaps expected");
+        // Fixture self-check: the lines that show each case really ran on the real JVM.
+        for (String line : List.of("sealed CloneNotSupportedException dev.javabyte.guest.CloneAndUpdaters$Sealed",
+                "outsider RuntimeException caused by IllegalAccessException", "nestmate 1",
+                "class java.util.concurrent.atomic.AtomicReferenceFieldUpdater$AtomicReferenceFieldUpdaterImpl true false",
+                "class java.util.concurrent.atomic.AtomicIntegerFieldUpdater$AtomicIntegerFieldUpdaterImpl true true")) {
+            assertTrue(expected.contains(line), "fixture self-check, missing \"" + line + "\": " + expected);
+        }
+    }
 }

@@ -108,6 +108,23 @@ public final class ShellDispatch {
                 ? inherited : inherited.replace(self.getClass().getName(), state.type.dottedName());
     }
 
+    /**
+     * Finishes a clone made by the JDK. {@code Object.clone()} copies the shell field by field,
+     * so the copy would share the original's guest state and the two objects would see each
+     * other's field writes. The copy gets a state of its own, with the same field values, as
+     * a real JVM's shallow copy has. Called after every JDK {@code clone()} a shell runs.
+     */
+    public static Object cloned(Object original, Object copy) {
+        if (copy != original && copy instanceof ShellInstance shell && original instanceof GuestInstance guest
+                && copy.getClass() == original.getClass()) {
+            InstanceState state = guest.javabyte$state();
+            if (state != null) {
+                shell.javabyte$bind(new InstanceState(state));
+            }
+        }
+        return copy;
+    }
+
     /** Throws any exception without declaring it; generated methods have no throws clauses. */
     @SuppressWarnings("unchecked")
     public static <T extends Throwable> RuntimeException sneakyThrow(Throwable throwable) throws T {

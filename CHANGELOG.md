@@ -65,6 +65,16 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - `Package` metadata comes from the sample's `MANIFEST.MF`.
 
 ### Fixes
+- `clone()` now works on every guest object. A class that implements `Cloneable` or extends a
+  JDK class used to stop with a gap, because the call went to the JDK's `Object.clone()`,
+  which is protected and native. The copy now also has fields of its own; before, a JDK
+  `clone()` such as `ArrayList`'s gave the copy the original's guest fields. A class that is
+  not `Cloneable` gets `CloneNotSupportedException` naming the class, as on a real JVM.
+- `AtomicReferenceFieldUpdater`, `AtomicIntegerFieldUpdater` and `AtomicLongFieldUpdater` work
+  on the sample's own fields (event `reflect.field-updater`). Making one checks what the JDK
+  checks, with the same exceptions: a missing field, a field the caller may not access, the
+  wrong type, a field that is not volatile, or a static field. `getClass()` names the JDK's
+  own implementation classes.
 - An `http:` URL now gives a plain `HttpURLConnection`; it used to give an
   `HttpsURLConnection`.
 - Renaming a directory in the virtual file system now moves its contents; the `file.rename`

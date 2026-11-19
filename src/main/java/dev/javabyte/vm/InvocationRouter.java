@@ -627,10 +627,7 @@ public final class InvocationRouter {
                 return jdkBase ? NOT_HANDLED
                         : state.type.dottedName() + '@' + Integer.toHexString(System.identityHashCode(receiver));
             case "clone()Ljava/lang/Object;":
-                if (receiver instanceof PlainObject) {
-                    return new PlainObject(new InstanceState(state));
-                }
-                return jdkBase ? NOT_HANDLED : gap("clone() of " + state.type.name, desc);
+                return cloneGuest(receiver, state, desc, args);
             case "finalize()V":
                 return null;
             case "notify()V", "notifyAll()V":
@@ -645,6 +642,41 @@ public final class InvocationRouter {
             default:
                 return NOT_HANDLED;
         }
+    }
+
+    /**
+     * {@code clone()} on a guest object whose class does not override it, or {@code super.clone()}
+     * from one that does. {@code Object.clone()} is protected and native, so only the object's
+     * own class can run it; the shell class generated for a guest class has a public accessor
+     * that does ({@code javabyte$super$clone}), and that also gives the copy its own guest
+     * fields (see {@code ShellDispatch.cloned}).
+     *
+     * <p>A class that is not {@code Cloneable} gets {@code CloneNotSupportedException} naming
+     * the guest class, as on a real JVM; letting the JDK throw it would name the shell instead.
+     * That check applies only where the JDK's clone would be {@code Object}'s own: a JDK
+     * superclass with its own {@code clone()} decides for itself.
+     */
+    private Object cloneGuest(Object receiver, InstanceState state, String desc, Object[] args) {
+        if (receiver instanceof PlainObject) {
+            // A plain object has no JDK supertypes at all, so it is never Cloneable.
+            throw vm.raise(new CloneNotSupportedException(state.type.dottedName()));
+        }
+        if (!(receiver instanceof Cloneable) && jdkCloneIsObjects(receiver.getClass())) {
+            throw vm.raise(new CloneNotSupportedException(state.type.dottedName()));
+        }
+        return hostCall("java/lang/Object", "clone", desc, receiver, args, true);
+    }
+
+    /** Whether the {@code clone()} a shell inherits from the JDK is {@code Object}'s own. */
+    private static boolean jdkCloneIsObjects(Class<?> shell) {
+        for (Class<?> current = shell.getSuperclass(); current != null && current != Object.class; current = current.getSuperclass()) {
+            for (java.lang.reflect.Method method : current.getDeclaredMethods()) {
+                if (method.getName().equals("clone") && method.getParameterCount() == 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static Object cloneArray(Object array) {

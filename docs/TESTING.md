@@ -28,7 +28,7 @@ of reported behaviour do need stated expectations; those are written as data, no
 mvn verify
 ```
 
-That runs everything that needs no malware and no Python: about 200 tests in a couple of minutes.
+That runs everything that needs no malware and no Python: about 220 tests in a couple of minutes.
 It also writes a coverage report to `target/site/jacoco/index.html`.
 
 | To run | Command |
@@ -51,7 +51,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 
 | Test class | Tests | What it proves |
 | --- | --- | --- |
-| `DifferentialTest` | 5 | Language features, the JDK boundary, threads, stack-trace-keyed decryption, and reflection, method handles, proxies and executors print exactly what a real JVM prints, with no gap events |
+| `DifferentialTest` | 6 | Language features, the JDK boundary, threads, stack-trace-keyed decryption, reflection, method handles, proxies and executors, and `clone()` and the atomic field updaters print exactly what a real JVM prints, with no gap events |
 | `BytecodeTest` | 6 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`; and that unverifiable code becomes a `VerifyError` |
 | `SimulatedCorpusTest` | 44 | Malware, limit and limitation scenarios (below) |
 | `LoaderTest` | 9 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |

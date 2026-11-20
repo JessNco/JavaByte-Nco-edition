@@ -83,7 +83,7 @@ fn validation_reads() {
 
 #[test]
 fn every_outcome_has_plain_words() {
-    for outcome in ["completed", "uncaught-exception", "exit", "sleep-budget", "blocked", "instruction-limit", "timeout", "policy",
+    for outcome in ["completed", "uncaught-exception", "exit", "sleep-budget", "silent-loop", "blocked", "instruction-limit", "timeout", "policy",
         "stopped", "no-entry-point", "config-error", "internal-error"] {
         assert!(!describe_outcome(outcome).contains("does not know"), "{outcome}");
     }

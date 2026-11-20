@@ -528,7 +528,17 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
                 return handle(new String(Base64.getDecoder().decode(String.valueOf(request.get("data"))), charset(request)));
             case "arrayInfo": {
                 Object array = object(request.get("h"));
-                return Map.of("length", array == null ? 0 : java.lang.reflect.Array.getLength(array), "type", arrayLetter(array));
+                if (array != null && !array.getClass().isArray()) {
+                    // A real JVM would crash here; report what native code passed instead, and
+                    // answer as for an empty array so the helper stays in step.
+                    vm.events.addOnce("not-array:" + vm.types.nameOf(array), "gap", "native-bridge-not-an-array",
+                            "callback", "arrayInfo", "type", vm.types.nameOf(array));
+                    array = null;
+                }
+                Map<String, Object> info = new LinkedHashMap<>();
+                info.put("length", array == null ? 0 : java.lang.reflect.Array.getLength(array));
+                info.put("type", arrayLetter(array));
+                return info;
             }
             case "arrayGet": {
                 Object array = primitiveArray(request.get("h"));

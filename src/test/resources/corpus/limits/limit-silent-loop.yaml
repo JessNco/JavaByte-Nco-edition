@@ -1,0 +1,15 @@
+description: A task spinning on a flag nobody sets is reported where it loops and ended, and the rest of the run still finishes.
+techniques: [limit, silent-loop]
+fixture: dev.javabyte.guest.sim.Limits
+stages:
+  - name: run
+    config:
+      entryPoints: [{args: [silent]}]
+      limits: {maxSilentInstructions: 2000000}
+    expect:
+      stdout: ['^started silent$', '^finished silent$']
+      notPrinted: ['^spinner saw the flag']
+      events:
+        - {category: lifecycle, action: silent-loop, min: 1, because: 'a loop that records nothing must still show up in the report, with where it is'}
+        - {category: thread, action: stopped, min: 1, where: {reason: 'SILENT_LOOP.*Limits'}}
+        - {category: process, action: exec, where: {command: after-the-silent-loop}, because: 'other work still runs after the spinner is ended'}

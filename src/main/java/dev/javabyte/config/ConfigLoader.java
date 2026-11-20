@@ -197,6 +197,10 @@ public final class ConfigLoader {
         }
         EmulatorConfig.Limits limits = config.limits;
         positive(found, "limits.maxInstructions", limits.maxInstructions);
+        if (limits.maxSilentInstructions < 0) {
+            found.add(new Problem("limits.maxSilentInstructions",
+                    "limits.maxSilentInstructions must be 0 (never) or more, found " + limits.maxSilentInstructions));
+        }
         positive(found, "limits.timeoutSeconds", limits.timeoutSeconds);
         positive(found, "limits.maxCallDepth", limits.maxCallDepth);
         positive(found, "limits.maxEventsPerCategory", limits.maxEventsPerCategory);

@@ -80,6 +80,26 @@ class NativeBridgeProtocolTest {
         assertInstanceOf(NullPointerException.class, plugin.pendingException());
     }
 
+    /**
+     * Native code asking for the length of something that is not an array (a misplaced
+     * argument once made JNA's dispatcher do this) is reported, and answered as an empty
+     * array so the helper stays in step and can carry on.
+     */
+    @Test
+    void anArrayQuestionAboutANonArrayIsReportedAndAnsweredAsEmpty() throws Exception {
+        int notArray = plugin.handle("a string");
+        int array = plugin.handle(new Object[] {"x", "y", "z"});
+        helperSends("{\"callback\":\"arrayInfo\",\"h\":" + notArray + "}",
+                "{\"callback\":\"arrayInfo\",\"h\":" + array + "}", "{\"result\":{\"v\":0}}");
+        call();
+        assertEquals(List.of("{\"op\":\"call\"}", "{\"v\":{\"length\":0,\"type\":\"L\"}}",
+                "{\"v\":{\"length\":3,\"type\":\"L\"}}"), sentLines());
+        Event gap = vm.events.byCategory("gap").get(0);
+        assertEquals("native-bridge-not-an-array", gap.action());
+        assertEquals("java.lang.String", gap.data().get("type"));
+        assertFalse(plugin.isDisabled());
+    }
+
     @Test
     void aPrimitiveArrayRegionOutOfRangeIsAJavaException() throws Exception {
         int array = plugin.handle(new int[2]);

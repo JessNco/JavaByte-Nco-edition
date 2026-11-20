@@ -409,7 +409,7 @@ class Bridge:
             return self.set_result(0)
 
         if name == "GetArrayLength":
-            return self.set_result(cb("arrayInfo", h=a(1))["length"])
+            return self.set_result(self.array_info(a(1))["length"])
         if name == "NewObjectArray":
             return self.set_result(cb("newArray", type="L", length=a(1) & 0xFFFFFFFF, cls=a(2), init=a(3)))
         if name == "GetObjectArrayElement":
@@ -464,8 +464,20 @@ class Bridge:
                                name=name, sig=signature, args=self.read_call_args(letters, offset % 3, first))
         self.set_result(result, ret)
 
-    def _pin_array(self, handle, is_copy):
+    def array_info(self, handle):
+        """The length and element type of an array, as {"length": n, "type": letter}.
+
+        A failed callback answers with a plain number; that is treated as an empty byte array
+        so that the native code carries on, and JavaByte has already reported the failure.
+        """
         info = self.callback("arrayInfo", h=handle)
+        if not isinstance(info, dict):
+            log("arrayInfo for handle", handle, "gave", repr(info), "; treating it as an empty array")
+            return {"length": 0, "type": "B"}
+        return info
+
+    def _pin_array(self, handle, is_copy):
+        info = self.array_info(handle)
         data = base64.b64decode(self.callback("arrayGet", h=handle, start=0, length=info["length"]))
         address = self.alloc_bytes(data)
         self.pinned[address] = (handle, info["type"], info["length"])
@@ -525,6 +537,14 @@ class Bridge:
                 params.append(raw)
             else:
                 params.append(int(value) & 0xFFFFFFFFFFFFFFFF)
+        if len(params) > 4:
+            # Windows x64 code finds its fifth argument 32 bytes above the return address,
+            # past the caller's shadow space. speakeasy (1.5.11) writes stack arguments right
+            # after the return address instead, so a native method with more than four
+            # (JNIEnv and the class or object count) would read the wrong slots: JNA's
+            # invoke(Function, long, int, Object[]) read its Object[] from leftover stack.
+            # Four placeholders fill the shadow space and move the real ones into place.
+            params = params[:4] + [0, 0, 0, 0] + params[4:]
         self.se.call(request["address"], params)
         self.report_api_calls()
         ret = request["ret"]

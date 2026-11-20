@@ -96,7 +96,7 @@ pub struct Summary {
 /// What a run's outcome means, in plain words, for people who have not read the manual.
 pub fn describe_outcome(outcome: &str) -> String {
     const KNOWN: &[&str] = &[
-        "completed", "uncaught-exception", "exit", "sleep-budget", "blocked", "instruction-limit", "timeout",
+        "completed", "uncaught-exception", "exit", "sleep-budget", "silent-loop", "blocked", "instruction-limit", "timeout",
         "policy", "stopped", "no-entry-point", "config-error", "internal-error",
     ];
     let id = if KNOWN.contains(&outcome) { format!("outcome-{outcome}") } else { "outcome-unknown".into() };

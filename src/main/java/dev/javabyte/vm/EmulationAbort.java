@@ -23,6 +23,12 @@ public final class EmulationAbort extends Error {
         STOPPED(false),
         /** Only the looping thread is ended; other guest threads still get their turn. */
         SLEEP_BUDGET(true),
+        /**
+         * The task ran {@code limits.maxSilentInstructions} instructions without doing anything
+         * the report records, as a spin loop waiting for a flag no one will set does; only it
+         * is ended, so the rest of the run still gets its turn.
+         */
+        SILENT_LOOP(true),
         /** The thread waited for something no other thread can provide; only it is ended. */
         BLOCKED(true),
         /** The run is over and a parked guest thread is being unwound. Never reported. */

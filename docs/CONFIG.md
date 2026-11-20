@@ -68,6 +68,7 @@ After each entry point returns, threads and timers it started are run.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `maxInstructions` | 2000000000 | Total bytecode instructions before the run stops |
+| `maxSilentInstructions` | 500000000 | Instructions one task may run without recording anything before it is stopped (outcome `silent-loop`); 0 never stops one |
 | `timeoutSeconds` | 120 | Wall-clock limit for the whole run |
 | `maxCallDepth` | 1500 | Guest call depth before a guest `StackOverflowError` |
 | `maxSleeps` | 40 | Sleeps one task may perform before it is stopped |
@@ -80,7 +81,18 @@ jumps forward. Every timed wait (`wait(ms)`, `join(ms)`, `parkNanos`, `Future.ge
 delayed and repeating executor or timer tasks) also passes in virtual time; a notify or a
 finished task still ends it early.
 
-All limits must be more than 0, except `maxSleeps` and `maxTasks`, which may be 0.
+`maxSilentInstructions` is what ends a spin loop: a task waiting on a flag that nothing will
+ever set, often because the code that should set it failed. "Silent" means the report records
+nothing at all: no output, no file, network, process or reflection activity. Halfway to the
+limit (or after 100 million instructions, if that comes first) a `lifecycle.silent-loop` event
+names where the guest is looping; at the limit only that task is stopped, and the rest of the
+run carries on. Raise it, or set 0, for a sample that computes for a long time without
+touching anything, such as a slow key derivation.
+
+Every run limit's message says where the guest was when it stopped, as a short stack.
+
+All limits must be more than 0, except `maxSleeps`, `maxTasks` and `maxSilentInstructions`,
+which may be 0.
 
 ## `environment`
 

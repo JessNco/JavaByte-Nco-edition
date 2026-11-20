@@ -93,4 +93,14 @@ class BytecodeTest {
         assertTrue(report.runs().get(0).detail().startsWith("java.lang.VerifyError"), report.runs().get(0).detail());
         assertEquals("Underflow.main([Ljava/lang/String;)V", Fixtures.only(report, "gap", "invalid-bytecode").data().get("method"));
     }
+
+    /**
+     * {@code invokevirtual java/lang/Object.clone} on arrays, as Kotlin and code shrinkers
+     * emit it (OkHttp's {@code Headers.of} clones its varargs array this way). The copy is
+     * independent of the original.
+     */
+    @Test
+    void arrayCloneThroughObjectMatchesRealJvm() throws Exception {
+        assertEquals(List.of("original", "copy", "2", "41", "42"), compare("ArrayCloneViaObject", GeneratedClasses::arrayCloneViaObject));
+    }
 }

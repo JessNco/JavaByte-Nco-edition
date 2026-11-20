@@ -27,6 +27,8 @@ public final class EventLog {
     private Supplier<String> callerSupplier = () -> null;
     private java.util.function.Consumer<Event> listener = event -> {};
     private long seq;
+    /** Every event recorded, including those only counted because their category was full. */
+    private long activity;
 
     /**
      * @param maxPerCategory events stored per category before further ones are only counted
@@ -71,6 +73,7 @@ public final class EventLog {
     }
 
     private void record(String category, String action, Map<String, Object> data) {
+        activity++;
         int count = counts.merge(category, 1, Integer::sum);
         if (count > maxPerCategory) {
             return; // counted in the summary, but not stored
@@ -83,6 +86,15 @@ public final class EventLog {
         // this costs little; the measurement is in docs/TESTING.md.
         flush();
         listener.accept(event);
+    }
+
+    /**
+     * How many events have been recorded so far, counting those a full category only counted.
+     * A repeat that {@link #addOnce} skipped is not counted. The interpreter compares this
+     * number over time to notice a loop that does nothing the report could show.
+     */
+    public long activity() {
+        return activity;
     }
 
     /** Writes a free-form line to the trace only (method and instruction tracing). */

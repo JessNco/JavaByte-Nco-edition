@@ -56,6 +56,11 @@
     "default" : 2000000000,
     "description" : "Bytecode instructions the run may execute before it ends with outcome instruction-limit."
   }, {
+    "path" : "limits.maxSilentInstructions",
+    "type" : "integer",
+    "default" : 500000000,
+    "description" : "Instructions a task may run without doing anything the report records before it is ended with outcome silent-loop, so a spin loop cannot use up the whole run. 0 never ends one."
+  }, {
     "path" : "limits.timeoutSeconds",
     "type" : "integer",
     "default" : 120,

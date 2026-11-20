@@ -43,6 +43,7 @@ Everything here also works for a person; it is just written as a procedure.
    | Events `file.read-missing` | Add the file under `environment.files` |
    | Events `net.http` with `matchedRule: none` | Add a rule under `network.http` to feed a reply |
    | Run ended `sleep-budget` in a retry loop | Supply the reply it is waiting for, or raise `limits.maxSleeps` |
+   | Event `lifecycle.silent-loop` or outcome `silent-loop` | Look at its `location` and `stack`: usually a wait on something that failed earlier (check the `gap` events before it). If the sample was only computing, raise `limits.maxSilentInstructions` |
    | An environment check stops the sample early | Add a `hooks` entry forcing the check's result |
    | Outcome `no-entry-point` | Use `type: method` with a class from `mainCandidates`, or `type: clinit-sweep` |
    | `gap.missing-class` for a library | Add the library jar to `classpath` |
@@ -70,10 +71,13 @@ Everything here also works for a person; it is just written as a procedure.
 | `events[]` | Everything, in order: `seq`, `category`, `action`, `caller`, `data` |
 | `artifacts[]` | Files saved under the output directory; paths are relative to it and use `/` on every system |
 
-`runs[].outcome` values: `completed`, `uncaught-exception`, `exit`, `sleep-budget`, `blocked`,
+`runs[].outcome` values: `completed`, `uncaught-exception`, `exit`, `sleep-budget`, `silent-loop`, `blocked`,
 `instruction-limit`, `timeout`, `policy`, `stopped`, `no-entry-point`, `config-error`,
 `internal-error`. `stopped` means someone ended the run (`stop` on standard input, or Ctrl+C);
-the report covers everything up to that point.
+the report covers everything up to that point. `silent-loop` means one task ran
+`limits.maxSilentInstructions` instructions without recording anything and was ended; the rest
+of the run went on. Every limit outcome's detail ends with where the guest was (", at ..." and a
+short stack).
 
 ## Driving a run live
 
@@ -110,6 +114,8 @@ Event categories: `process`, `file`, `net`, `class`, `resource`, `reflect`, `cry
 
 Useful single events:
 
+- `lifecycle.silent-loop`: `instructions`, `location`, `stack`. The guest ran that long without
+  recording anything; `stack` shows the loop. Often the sign that a wait will never end.
 - `crypto.cipher-init`: `algorithm`, `mode`, `key` (hex), `iv` (hex).
 - `crypto.cipher-output`: `preview` of the plaintext or ciphertext. Decrypted configs appear here.
 - `string.returned`: `method`, `value`. Mostly decrypted string constants.

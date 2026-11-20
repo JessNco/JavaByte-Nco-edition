@@ -23,6 +23,9 @@ public final class NativeLib {
 
     static native int dropMarker();
 
+    /** Shaped like JNA's {@code Native.invokeInt(Function, long, int, Object[])}. */
+    static native int jnaInvoke(Object function, long fp, int flags, Object[] args);
+
     /** Called back from native code by {@link #viaJava}. */
     static int twice(int x) {
         return x * 2;
@@ -40,6 +43,7 @@ public final class NativeLib {
         System.out.println("viaJava " + viaJava(10));
         System.out.println("xor " + new String(xorBytes("ABC".getBytes(), (byte) 0x20)));
         System.out.println("triple " + triple(-14_000_000_000L));
+        System.out.println("jna " + jnaInvoke("function", 7L, 30, new Object[] {"a", "b", "c"}));
         dropMarker();
     }
 }

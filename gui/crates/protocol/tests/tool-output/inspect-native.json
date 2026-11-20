@@ -1,6 +1,6 @@
 {
   "path" : "<work>/native/nativeuser.jar",
-  "size" : 3486,
+  "size" : 3548,
   "classCount" : 1,
   "mainClass" : "dev.javabyte.guest.NativeUser",
   "mainCandidates" : [ "dev/javabyte/guest/NativeUser" ],
@@ -11,15 +11,15 @@
     "native/testlib.dll" : {
       "format" : "PE",
       "architecture" : "x86-64",
-      "exportCount" : 6,
-      "jniExportCount" : 5,
+      "exportCount" : 7,
+      "jniExportCount" : 6,
       "hasJniOnLoad" : true,
-      "jniExports" : [ "Java_dev_javabyte_guest_NativeLib_add", "Java_dev_javabyte_guest_NativeLib_dropMarker", "Java_dev_javabyte_guest_NativeLib_greet", "Java_dev_javabyte_guest_NativeLib_viaJava", "Java_dev_javabyte_guest_NativeLib_xorBytes" ]
+      "jniExports" : [ "Java_dev_javabyte_guest_NativeLib_add", "Java_dev_javabyte_guest_NativeLib_dropMarker", "Java_dev_javabyte_guest_NativeLib_greet", "Java_dev_javabyte_guest_NativeLib_jnaInvoke", "Java_dev_javabyte_guest_NativeLib_viaJava", "Java_dev_javabyte_guest_NativeLib_xorBytes" ]
     }
   },
   "obfuscatedCallSites" : 0,
   "largestResources" : {
-    "native/testlib.dll" : 8485,
+    "native/testlib.dll" : 8547,
     "META-INF/MANIFEST.MF" : 68
   },
   "unparseableClasses" : [ ]

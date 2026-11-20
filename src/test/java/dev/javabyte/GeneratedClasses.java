@@ -382,4 +382,67 @@ final class GeneratedClasses {
         m.visitInsn(IADD);
         return end(writer, m);
     }
+
+    /**
+     * Clones arrays with {@code invokevirtual java/lang/Object.clone}, as older compilers,
+     * Kotlin and code shrinkers emit it, instead of the {@code [T.clone} that javac writes.
+     * The JVM allows it: an array's clone() is public. Prints the original's first element,
+     * the copy's first element after changing it, and the copy's length, for a String[] and
+     * an int[].
+     */
+    static byte[] arrayCloneViaObject(String name) {
+        ClassWriter writer = begin(name, V1_8);
+        MethodVisitor m = beginMain(writer);
+        m.visitInsn(ICONST_2);
+        m.visitTypeInsn(ANEWARRAY, "java/lang/String");
+        m.visitInsn(DUP);
+        m.visitInsn(ICONST_0);
+        m.visitLdcInsn("original");
+        m.visitInsn(AASTORE);
+        m.visitVarInsn(ASTORE, 1);
+        m.visitVarInsn(ALOAD, 1);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Object", "clone", "()Ljava/lang/Object;", false);
+        m.visitTypeInsn(CHECKCAST, "[Ljava/lang/String;");
+        m.visitVarInsn(ASTORE, 2);
+        m.visitVarInsn(ALOAD, 2);
+        m.visitInsn(ICONST_0);
+        m.visitLdcInsn("copy");
+        m.visitInsn(AASTORE);
+        m.visitVarInsn(ALOAD, 1);
+        m.visitInsn(ICONST_0);
+        m.visitInsn(AALOAD);
+        print(m, "Ljava/lang/String;");                  // original
+        m.visitVarInsn(ALOAD, 2);
+        m.visitInsn(ICONST_0);
+        m.visitInsn(AALOAD);
+        print(m, "Ljava/lang/String;");                  // copy
+        m.visitVarInsn(ALOAD, 2);
+        m.visitInsn(ARRAYLENGTH);
+        print(m, "I");                                   // 2
+
+        m.visitInsn(ICONST_3);
+        m.visitIntInsn(NEWARRAY, T_INT);
+        m.visitInsn(DUP);
+        m.visitInsn(ICONST_0);
+        m.visitIntInsn(BIPUSH, 41);
+        m.visitInsn(IASTORE);
+        m.visitVarInsn(ASTORE, 3);
+        m.visitVarInsn(ALOAD, 3);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Object", "clone", "()Ljava/lang/Object;", false);
+        m.visitTypeInsn(CHECKCAST, "[I");
+        m.visitVarInsn(ASTORE, 4);
+        m.visitVarInsn(ALOAD, 4);
+        m.visitInsn(ICONST_0);
+        m.visitIntInsn(BIPUSH, 42);
+        m.visitInsn(IASTORE);
+        m.visitVarInsn(ALOAD, 3);
+        m.visitInsn(ICONST_0);
+        m.visitInsn(IALOAD);
+        print(m, "I");                                   // 41
+        m.visitVarInsn(ALOAD, 4);
+        m.visitInsn(ICONST_0);
+        m.visitInsn(IALOAD);
+        print(m, "I");                                   // 42
+        return end(writer, m);
+    }
 }

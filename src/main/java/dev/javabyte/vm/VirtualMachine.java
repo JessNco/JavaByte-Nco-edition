@@ -60,6 +60,10 @@ public final class VirtualMachine {
     final ImplicitExceptions implicitExceptions = new ImplicitExceptions(this);
 
     private long instructions;
+    /** For {@link #checkSilence}: the event count last seen, and when it last changed. */
+    private long lastActivity = -1;
+    private long silentSince;
+    private boolean silenceReported;
     /** Why the run must end at the next checkpoint; null while it may continue. */
     private volatile EmulationAbort.Reason cancelReason;
     /** Called at every checkpoint on the emulator thread; used for progress reports. */
@@ -122,15 +126,73 @@ public final class VirtualMachine {
         if ((++instructions & 0x3FFF) == 0) {
             EmulationAbort.Reason cancel = cancelReason;
             if (cancel != null) {
-                throw new EmulationAbort(cancel, cancel == EmulationAbort.Reason.STOPPED ? "stop requested" : "wall-clock limit reached");
+                throw new EmulationAbort(cancel, (cancel == EmulationAbort.Reason.STOPPED ? "stop requested" : "wall-clock limit reached")
+                        + whereNow());
             }
             checkpointHook.run();
             if (instructions > config.limits.maxInstructions) {
                 throw new EmulationAbort(EmulationAbort.Reason.INSTRUCTION_LIMIT,
-                        "executed " + instructions + " instructions");
+                        "executed " + instructions + " instructions" + whereNow());
             }
+            checkSilence();
             scheduler.preempt();
         }
+    }
+
+    /**
+     * Notices a loop that does nothing the report could show. A spin loop waiting for a flag
+     * that no thread will ever set (its producer died at a gap, say) otherwise runs until the
+     * time limit, and the report says only that the time ran out.
+     *
+     * <p>"Silent" means no event of any kind was recorded: no console output, no file, network
+     * or reflection activity, nothing. Halfway to {@code limits.maxSilentInstructions} (or
+     * after 100 million instructions, whichever comes first) a {@code lifecycle.silent-loop}
+     * event names where the guest is, once for each silent stretch. At the limit itself, the
+     * current task is ended with outcome {@code silent-loop}; other threads and queued tasks
+     * still run. Checked at each budget check, every 16384 instructions.
+     */
+    private void checkSilence() {
+        long activity = events.activity();
+        if (activity != lastActivity) {
+            lastActivity = activity;
+            silentSince = instructions;
+            silenceReported = false;
+            return;
+        }
+        long silent = instructions - silentSince;
+        long limit = config.limits.maxSilentInstructions;
+        long reportAt = limit > 0 ? Math.min(SILENCE_REPORT, limit / 2) : SILENCE_REPORT;
+        if (!silenceReported && silent >= reportAt) {
+            silenceReported = true;
+            events.add("lifecycle", "silent-loop", "instructions", silent, "location", callerLocation(),
+                    "stack", shortStack());
+            // The report itself is activity; it must not end the stretch it describes.
+            lastActivity = events.activity();
+        }
+        if (limit > 0 && silent >= limit) {
+            silentSince = instructions;
+            throw new EmulationAbort(EmulationAbort.Reason.SILENT_LOOP,
+                    "no events for " + silent + " instructions" + whereNow());
+        }
+    }
+
+    /** When silence is reported if no limit comes sooner. */
+    private static final long SILENCE_REPORT = 100_000_000L;
+
+    /** The top few guest frames, for saying where a loop was when it was noticed or ended. */
+    private String shortStack() {
+        StackTraceElement[] trace = guestStackTrace();
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < Math.min(5, trace.length); i++) {
+            text.append(i == 0 ? "" : " < ").append(trace[i]);
+        }
+        return text.toString();
+    }
+
+    /** ", at <stack>" for the end of a run limit's message, or "" between entry points. */
+    private String whereNow() {
+        String stack = shortStack();
+        return stack.isEmpty() ? "" : ", at " + stack;
     }
 
     public long instructionCount() {

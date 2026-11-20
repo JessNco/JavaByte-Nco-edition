@@ -9,6 +9,8 @@
  *   xorBytes    reading and creating byte arrays
  *   triple      bound through RegisterNatives in JNI_OnLoad, not by name
  *   dropMarker  Windows API calls, which the emulator records
+ *   jnaInvoke   JNA's shape, (Function, long, int, Object[]): with JNIEnv and the class that is
+ *               six arguments, so the last two travel on the stack, as JNA's dispatcher reads them
  *
  * Build:  x86_64-w64-mingw32-gcc -O1 -shared -nostdlib -e DllMain -o testlib.dll testlib.c -lkernel32
  */
@@ -88,6 +90,12 @@ JNIEXPORT jint Java_dev_javabyte_guest_NativeLib_dropMarker(JNIEnv *env, jclass 
     WriteFile(file, "from native", 11, &written, 0);
     CloseHandle(file);
     return (jint) written;
+}
+
+/* Same parameters as JNA's Native.invokeInt; returns 1000 * args.length + flags + fp. */
+JNIEXPORT jint Java_dev_javabyte_guest_NativeLib_jnaInvoke(JNIEnv *env, jclass cls, jobject function, jlong fp,
+                                                           jint flags, jobject args) {
+    return (*env)->GetArrayLength(env, args) * 1000 + flags + (jint) fp;
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {

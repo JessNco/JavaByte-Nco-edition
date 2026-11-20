@@ -270,6 +270,7 @@
     "entryPoints" : [ ],
     "limits" : {
       "maxInstructions" : 2000000000,
+      "maxSilentInstructions" : 500000000,
       "timeoutSeconds" : 120,
       "maxCallDepth" : 1500,
       "maxSleeps" : 40,

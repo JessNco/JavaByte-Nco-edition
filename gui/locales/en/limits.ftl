@@ -55,6 +55,8 @@ gap-native-bridge-unavailable = The native bridge could not start
 gap-native-bridge-unavailable-meaning = The native bridge was turned on but its helper did not start, so native code was only reported, not run.
 gap-native-bridge-load-failed = A native library could not be loaded
 gap-native-bridge-load-failed-meaning = The native bridge could not load one of the sample's native libraries.
+gap-native-bridge-not-an-array = Native code passed something that is not an array
+gap-native-bridge-not-an-array-meaning = Native code asked about an array, but the value it passed is something else. The answer was "an empty array", so what the native code did next may differ.
 gap-native-bridge-call-failed = A native call failed
 gap-native-bridge-call-failed-meaning = The native bridge could not complete a call into native code.
 gap-nested-native-call = Native code called back into native code
@@ -70,6 +72,7 @@ gap-plugin-close-failed-meaning = A plugin failed while finishing. Results are k
 
 next-timeout = Allow more time.
 next-instructions = Allow more instructions.
+next-silent-loop = If the sample was busy with real work, such as decrypting something large, allow more silent instructions under Limits.
 next-sleeps = Give it the answer it waits for (a web answer), or allow more sleeps under Limits.
 next-blocked-wait = Supply what it waits for, often a reply from a server.
 next-entry = Choose where to start.

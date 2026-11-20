@@ -51,7 +51,7 @@ class NativeBridgeTest {
         Report report = Emulator.run(config, Files.createDirectory(temp.resolve("out")));
         String diagnostics = Fixtures.outcomes(report);
 
-        assertEquals(List.of("add 42", "greet hello, world", "viaJava 21", "xor abc", "triple -42000000000"),
+        assertEquals(List.of("add 42", "greet hello, world", "viaJava 21", "xor abc", "triple -42000000000", "jna 3037"),
                 Fixtures.stdout(report), diagnostics);
         assertEquals(List.of(), report.events().byCategory("gap"), diagnostics);
 

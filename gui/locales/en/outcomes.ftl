@@ -5,6 +5,7 @@ outcome-completed = The sample ran to its end.
 outcome-uncaught-exception = The sample stopped with an error it did not handle.
 outcome-exit = The sample ended itself.
 outcome-sleep-budget = The sample kept waiting, so the analysis moved on. It was probably waiting for an answer from a server.
+outcome-silent-loop = Part of the sample kept looping without doing anything, so the analysis ended that part and went on. The report says where it was looping.
 outcome-blocked = The sample waited for something that would never happen, so the analysis moved on.
 outcome-instruction-limit = The analysis reached its instruction limit before the sample finished.
 outcome-timeout = The analysis reached its time limit before the sample finished.

@@ -151,6 +151,7 @@ opt-entryPoints-args = Arguments
 opt-entryPoints-include = Classes to include
 opt-limits = Limits
 opt-limits-maxInstructions = Most instructions
+opt-limits-maxSilentInstructions = Most instructions without any activity
 opt-limits-timeoutSeconds = Time limit in seconds
 opt-limits-maxCallDepth = Deepest call nesting
 opt-limits-maxSleeps = Sleeps per thread

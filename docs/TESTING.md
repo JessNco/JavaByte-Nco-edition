@@ -52,7 +52,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | Test class | Tests | What it proves |
 | --- | --- | --- |
 | `DifferentialTest` | 6 | Language features, the JDK boundary, threads, stack-trace-keyed decryption, reflection, method handles, proxies and executors, and `clone()` and the atomic field updaters print exactly what a real JVM prints, with no gap events |
-| `BytecodeTest` | 6 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`; and that unverifiable code becomes a `VerifyError` |
+| `BytecodeTest` | 7 | Bytecode the Java compiler never emits: every stack-shuffling form, JSR/RET, wide instructions, obfuscator-style `invokedynamic`, arrays cloned through `Object.clone` as Kotlin and shrinkers write it; and that unverifiable code becomes a `VerifyError` |
 | `SimulatedCorpusTest` | 44 | Malware, limit and limitation scenarios (below) |
 | `LoaderTest` | 9 | Second stages are followed from `URLClassLoader` (network and file), `Lookup.defineClass` and `Unsafe.defineClass`; decoy archive entries, missing manifests, bare class files and directories |
 | `BehaviourTest` | 7 | `defineClass` routes, lazy loading through the sample's loader, hooks, file fixtures |
@@ -71,7 +71,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `vm/GuestTextTest` | 4 | Text the guest can read never names the emulator: class names of simulated objects, stand-in identity hashes, and what a JDK thread meets when it calls a guest lambda |
 | `env/NetworkSimulatorTest`, `env/SimHttpConnectionTest`, `env/SimProcessTest`, `env/VirtualFileSystemTest` | 15 | Address checks before the run; the connection class for `http:` and `https:`; standard input written to a launched process reaches the report; renaming a directory moves its contents |
 | `stubs/FileUrlPathTest` | 3 | The one conversion from a `file:` URL to a virtual path |
-| `nativebridge/NativeBridgeProtocolTest` | 6 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
+| `nativebridge/NativeBridgeProtocolTest` | 7 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
 | `cli/InspectionTest` | 2 | `inspect` reads a sample with the same code as `run`, so the two agree |
 | `cli/HostLookupBackstopTest` | 2 | In a separate JVM: once the backstop is set, no host name reaches the system resolver, while `localhost` and address literals still work |
 | `SafetyTest` | 12 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |
@@ -161,6 +161,7 @@ before the limit survives.
 | `limit-timeout` | `limits.timeoutSeconds` | `timeout` |
 | `limit-call-depth` | `limits.maxCallDepth` | A `StackOverflowError` the sample can catch |
 | `limit-sleeps` | `limits.maxSleeps` | `sleep-budget` |
+| `limit-silent-loop` | `limits.maxSilentInstructions` | Event `lifecycle.silent-loop`; the spinning thread is stopped and the rest finishes |
 | `limit-blocked` | (deadlock detection) | `blocked` |
 | `limit-tasks` | `limits.maxTasks` | Event `thread.task-limit-reached` |
 | `limit-written-bytes` | `limits.maxWrittenBytes` | `policy` |

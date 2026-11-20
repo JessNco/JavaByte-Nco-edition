@@ -93,7 +93,7 @@ pub const KNOWN_GAPS: &[&str] = &[
     "missing-class", "invalid-bytecode", "unparseable-class", "unsupported", "stub-exception",
     "phantom-superclass", "phantom-superclass-call", "shell-failed", "thread-not-started",
     "native-bridge-unavailable", "native-bridge-load-failed", "native-bridge-call-failed",
-    "nested-native-call", "unsupported-jni-callback", "finish-failed", "plugin-close-failed",
+    "native-bridge-not-an-array", "nested-native-call", "unsupported-jni-callback", "finish-failed", "plugin-close-failed",
 ];
 
 /// Examples kept per gap kind.
@@ -110,6 +110,7 @@ fn next_for_outcome(outcome: &str) -> Option<NextStep> {
         "timeout" => step("next-timeout", Some("limits.timeoutSeconds")),
         "instruction-limit" => step("next-instructions", Some("limits.maxInstructions")),
         "sleep-budget" => step("next-sleeps", Some("network.http")),
+        "silent-loop" => step("next-silent-loop", Some("limits.maxSilentInstructions")),
         "blocked" => step("next-blocked-wait", Some("network.http")),
         "no-entry-point" => step("next-entry", Some("entryPoints")),
         "policy" => step("next-policy-abort", Some("policy.onBlocked")),
@@ -125,6 +126,7 @@ fn next_for_gap(kind: &str) -> Option<NextStep> {
         "native-bridge-unavailable" | "native-bridge-load-failed" => step("next-native-bridge-python", Some("plugins.native-bridge.python")),
         "thread-not-started" => step("next-tasks", Some("limits.maxTasks")),
         "unsupported" | "stub-exception" | "shell-failed" | "finish-failed" | "plugin-close-failed" | "native-bridge-call-failed"
+        | "native-bridge-not-an-array"
         | "nested-native-call" | "unsupported-jni-callback" => step("next-report-fault", None),
         _ => None,
     }
@@ -205,7 +207,7 @@ mod tests {
             assert!(crate::i18n::has(&format!("gap-{kind}-meaning")), "no meaning for gap {kind}");
             next_for_gap(kind);
         }
-        for outcome in ["timeout", "instruction-limit", "sleep-budget", "blocked", "no-entry-point", "policy", "internal-error"] {
+        for outcome in ["timeout", "instruction-limit", "sleep-budget", "silent-loop", "blocked", "no-entry-point", "policy", "internal-error"] {
             assert!(next_for_outcome(outcome).is_some(), "{outcome} has no next step");
         }
     }

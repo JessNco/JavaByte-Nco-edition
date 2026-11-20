@@ -65,6 +65,21 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - `Package` metadata comes from the sample's `MANIFEST.MF`.
 
 ### Fixes
+- `clone()` on an array works whatever class the bytecode names. Kotlin, older compilers and
+  code shrinkers write `java/lang/Object.clone` for it, which stopped with a gap; OkHttp's
+  `Headers.of` is one place this happens.
+- Native bridge: native methods with more than four arguments (counting `JNIEnv` and the class
+  or object) read their fifth and later arguments from the wrong stack slots, because the CPU
+  emulator lays out stack arguments without the Windows x64 shadow space. JNA's
+  `Native.invokeXxx(Function, long, int, Object[])` therefore saw a wrong `Object[]` ("Argument
+  is not an array"). The helper now places them where Windows code expects them. Native code
+  asking for the length of something that is not an array is reported (gap
+  `native-bridge-not-an-array`) and answered as an empty array, instead of failing the helper.
+- A loop that records nothing no longer runs silently until the time limit. After 100 million
+  silent instructions (or half of the new `limits.maxSilentInstructions`, default 500 million)
+  a `lifecycle.silent-loop` event says where the guest is looping; at the limit, only that task
+  is ended (outcome `silent-loop`) and the rest of the run carries on. Every run limit's message
+  now also says where the guest was when it stopped.
 - `clone()` now works on every guest object. A class that implements `Cloneable` or extends a
   JDK class used to stop with a gap, because the call went to the JDK's `Object.clone()`,
   which is protected and native. The copy now also has fields of its own; before, a JDK

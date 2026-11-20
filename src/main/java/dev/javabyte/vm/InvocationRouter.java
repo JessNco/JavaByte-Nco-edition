@@ -343,6 +343,12 @@ public final class InvocationRouter {
      * @param special true for a non-virtual call
      */
     public Object hostCall(String owner, String name, String desc, Object receiver, Object[] args, boolean special) {
+        if (receiver != null && receiver.getClass().isArray() && name.equals("clone") && desc.equals("()Ljava/lang/Object;")) {
+            // An array's clone() is public whatever class the call names. Kotlin, older
+            // compilers and code shrinkers name java/lang/Object, whose clone() is protected and
+            // native, so it cannot be called from here; every route arrives at this point.
+            return cloneArray(receiver);
+        }
         Hooks.Hook hook = vm.hooks.forHost(owner, name, desc);
         if (hook != null) {
             return applyHook(hook, owner + '.' + name + desc, Type.getReturnType(desc));

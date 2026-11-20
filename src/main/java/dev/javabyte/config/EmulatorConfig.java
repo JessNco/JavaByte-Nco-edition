@@ -87,6 +87,10 @@ public final class EmulatorConfig {
         @ConfigDoc("Bytecode instructions the run may execute before it ends with outcome instruction-limit.")
         public long maxInstructions = 2_000_000_000L;
 
+        @ConfigDoc("Instructions a task may run without doing anything the report records before it is ended "
+                + "with outcome silent-loop, so a spin loop cannot use up the whole run. 0 never ends one.")
+        public long maxSilentInstructions = 500_000_000L;
+
         @ConfigDoc("Real seconds the run may take before it ends with outcome timeout.")
         public int timeoutSeconds = 120;
 

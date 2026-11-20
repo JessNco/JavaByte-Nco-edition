@@ -12,6 +12,9 @@ import java.util.concurrent.Executors;
 public final class Limits {
 
     private static int depth;
+    /** Never set: the "silent" mode's spinner waits on it for ever. */
+    private static volatile boolean ready;
+    private static long spins;
 
     public static void main(String[] args) throws Exception {
         System.out.println("started " + args[0]);
@@ -53,6 +56,26 @@ public final class Limits {
                         out.write(block);
                     }
                 }
+            case "silent": {
+                // A background task spins on a flag its producer never sets (in a real sample
+                // the producer died at an error); the main thread and later work must still finish.
+                Thread spinner = new Thread(() -> {
+                    while (!ready) {
+                        spins++;
+                    }
+                    System.out.println("spinner saw the flag");
+                });
+                spinner.start();
+                Thread later = new Thread(() -> {
+                    try {
+                        Runtime.getRuntime().exec("after-the-silent-loop.exe");
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+                later.start();
+                break;
+            }
             case "flood":
                 for (int i = 0; i < 500; i++) {
                     System.out.println("line " + i);

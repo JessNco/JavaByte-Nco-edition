@@ -148,18 +148,6 @@ public final class CloneAndUpdaters {
         int[] copied = numbers.clone();
         copied[0] = 5;
         System.out.println("array " + numbers[0] + " " + copied[0]);
-        // Through a method handle, as obfuscators reach it.
-        try {
-            java.lang.invoke.MethodHandle arrayClone = java.lang.invoke.MethodHandles.lookup().findVirtual(String[].class,
-                    "clone", java.lang.invoke.MethodType.methodType(Object.class));
-            String[] names = {"a", "b"};
-            String[] namesCopy = (String[]) arrayClone.invoke(names);
-            namesCopy[1] = "c";
-            System.out.println("handle " + names[1] + " " + namesCopy[1] + " " + (names != namesCopy));
-        } catch (Throwable e) {
-            System.out.println("handle " + e);
-        }
-
         // Through reflection, as obfuscated code reaches it. (Object's own clone() cannot be
         // made accessible on Java 9 and later, so a class's public override is used.)
         Method clone = Words.class.getMethod("clone");

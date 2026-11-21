@@ -71,7 +71,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `vm/GuestTextTest` | 4 | Text the guest can read never names the emulator: class names of simulated objects, stand-in identity hashes, and what a JDK thread meets when it calls a guest lambda |
 | `env/NetworkSimulatorTest`, `env/SimHttpConnectionTest`, `env/SimProcessTest`, `env/VirtualFileSystemTest` | 15 | Address checks before the run; the connection class for `http:` and `https:`; standard input written to a launched process reaches the report; renaming a directory moves its contents |
 | `stubs/FileUrlPathTest` | 3 | The one conversion from a `file:` URL to a virtual path |
-| `nativebridge/NativeBridgeProtocolTest` | 7 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
+| `nativebridge/NativeBridgeProtocolTest` | 8 | The Java side of the native bridge protocol, without Python: every callback gets exactly one answer, whatever it does |
 | `cli/InspectionTest` | 2 | `inspect` reads a sample with the same code as `run`, so the two agree |
 | `cli/HostLookupBackstopTest` | 2 | In a separate JVM: once the backstop is set, no host name reaches the system resolver, while `localhost` and address literals still work |
 | `SafetyTest` | 12 | Simulated classes override every method of the JDK class they replace; dangerous classes are not on the allow-list |

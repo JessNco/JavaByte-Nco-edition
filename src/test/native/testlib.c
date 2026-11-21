@@ -9,6 +9,9 @@
  *   xorBytes    reading and creating byte arrays
  *   triple      bound through RegisterNatives in JNI_OnLoad, not by name
  *   dropMarker  Windows API calls, which the emulator records
+ *   scale       a double and a float in, a double out: all through XMM registers
+ *   unbox       reads the value field of each box type, as JNA's dispatcher does for boxed
+ *               arguments (ten arguments, so most travel on the stack)
  *   jnaInvoke   JNA's shape, (Function, long, int, Object[]): with JNIEnv and the class that is
  *               six arguments, so the last two travel on the stack, as JNA's dispatcher reads them
  *
@@ -96,6 +99,30 @@ JNIEXPORT jint Java_dev_javabyte_guest_NativeLib_dropMarker(JNIEnv *env, jclass 
 JNIEXPORT jint Java_dev_javabyte_guest_NativeLib_jnaInvoke(JNIEnv *env, jclass cls, jobject function, jlong fp,
                                                            jint flags, jobject args) {
     return (*env)->GetArrayLength(env, args) * 1000 + flags + (jint) fp;
+}
+
+/* Windows x64 passes x in XMM2 and y in XMM3 (their argument positions) and returns in XMM0. */
+JNIEXPORT jdouble Java_dev_javabyte_guest_NativeLib_scale(JNIEnv *env, jclass cls, jdouble x, jfloat y) {
+    return x * y;
+}
+
+/* The value field of one box, found the way JNA's dispatcher finds it. */
+static jfieldID value_field(JNIEnv *env, const char *box, const char *type) {
+    return (*env)->GetFieldID(env, (*env)->FindClass(env, box), "value", type);
+}
+
+/* Unboxes one of each box type and adds them up: 1 + 2 + 65 + 300 + 40000 + 5000000000 + 7 + 250. */
+JNIEXPORT jlong Java_dev_javabyte_guest_NativeLib_unbox(JNIEnv *env, jclass cls, jobject z, jobject b, jobject c,
+                                                        jobject s, jobject i, jobject j, jobject f, jobject d) {
+    jlong sum = (*env)->GetBooleanField(env, z, value_field(env, "java/lang/Boolean", "Z")) ? 1 : 0;
+    sum += (*env)->GetByteField(env, b, value_field(env, "java/lang/Byte", "B"));
+    sum += (*env)->GetCharField(env, c, value_field(env, "java/lang/Character", "C"));
+    sum += (*env)->GetShortField(env, s, value_field(env, "java/lang/Short", "S"));
+    sum += (*env)->GetIntField(env, i, value_field(env, "java/lang/Integer", "I"));
+    sum += (*env)->GetLongField(env, j, value_field(env, "java/lang/Long", "J"));
+    sum += (jlong) (*env)->GetFloatField(env, f, value_field(env, "java/lang/Float", "F"));
+    sum += (jlong) (*env)->GetDoubleField(env, d, value_field(env, "java/lang/Double", "D"));
+    return sum;
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {

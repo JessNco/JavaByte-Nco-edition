@@ -37,6 +37,17 @@ import warnings
 warnings.filterwarnings("ignore")  # the Unicorn binding prints deprecation noise on import
 
 import speakeasy  # noqa: E402
+from speakeasy.winenv import arch as speakeasy_arch  # noqa: E402
+
+
+def xmm(number):
+    """The register id of XMM0 to XMM3, where Windows x64 passes and returns float and double.
+
+    speakeasy's register-name table has no "xmm" names, so reg_write("xmm0", ...) raises; its
+    engine does map these numeric ids. (Before this was used, every float or double crossing
+    the bridge silently became 0.)
+    """
+    return speakeasy_arch.X86_REG_XMM0 + number
 
 # JNI function table, in specification order. The index of a name is its slot in JNIEnv.
 JNI_FUNCTIONS = """
@@ -259,7 +270,7 @@ class Bridge:
         if letter in "FD":
             packed = struct.pack("<d" if letter == "D" else "<f", float(value or 0))
             try:
-                self.se.reg_write("xmm0", int.from_bytes(packed.ljust(16, b"\0"), "little"))
+                self.se.reg_write(xmm(0), int.from_bytes(packed.ljust(16, b"\0"), "little"))
             except Exception as error:  # the register may be unavailable in some engine builds
                 log("cannot set xmm0:", error)
             return
@@ -531,7 +542,7 @@ class Bridge:
                     # Windows x64 passes the first four arguments by position; a floating
                     # point one travels in the XMM register of the same position.
                     try:
-                        self.se.reg_write("xmm%d" % position, raw)
+                        self.se.reg_write(xmm(position), raw)
                     except Exception as error:
                         log("cannot set xmm register:", error)
                 params.append(raw)
@@ -550,7 +561,7 @@ class Bridge:
         ret = request["ret"]
         if ret in "FD":
             try:
-                raw = self.se.reg_read("xmm0")
+                raw = self.se.reg_read(xmm(0))
                 data = (raw & ((1 << 64) - 1)).to_bytes(8, "little")
                 return {"v": struct.unpack("<d", data)[0] if ret == "D" else struct.unpack("<f", data[:4])[0]}
             except Exception as error:

@@ -626,6 +626,16 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
         FieldRef ref = guest == null ? null : guest.resolveField(fieldName, descriptor);
         FieldInsnNode node = new FieldInsnNode(isStatic ? Opcodes.GETSTATIC : Opcodes.GETFIELD, owner, fieldName, descriptor);
         Object target = object(request.get("obj"));
+        if (!isStatic && "value".equals(fieldName) && isBox(target, owner)) {
+            if (write) {
+                // Boxes are immutable, and the JDK shares cached ones (Integer.valueOf(1) is the
+                // same object everywhere), so changing one would change it for the whole JVM.
+                vm.events.addOnce("box-write:" + owner, "gap", "unsupported",
+                        "detail", "native code tried to change " + owner + ".value; boxes are not changed");
+                return 0;
+            }
+            return boxValue(target);
+        }
         if (write) {
             Object value = fromWire(request.get("v"), type);
             if (!isStatic) {
@@ -640,6 +650,34 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
         Object value = !isStatic ? vm.fields.get(target, ref, node)
                 : ref != null ? vm.fields.getStatic(ref) : vm.fields.getHostStatic(owner, fieldName, descriptor);
         return toWire(value, type);
+    }
+
+    /**
+     * Whether {@code target} is a box of the class the field belongs to. Native code reads a
+     * boxed argument through its private {@code value} field: JNA's dispatcher does this for
+     * every {@code Boolean}, {@code Byte}, {@code Character}, {@code Short}, {@code Integer},
+     * {@code Long}, {@code Float} and {@code Double} it passes on. JNI may read private
+     * fields, while the interpreter's field access reaches only the public fields of JDK
+     * objects, so these are answered here.
+     */
+    private static boolean isBox(Object target, String owner) {
+        return target != null && owner.equals(Type.getInternalName(target.getClass()))
+                && (target instanceof Number || target instanceof Boolean || target instanceof Character)
+                && target.getClass().getName().startsWith("java.lang.");
+    }
+
+    /** A box's value in wire form: a number, with booleans as 0 or 1 and chars as their code. */
+    private static Object boxValue(Object box) {
+        if (box instanceof Boolean b) {
+            return b ? 1 : 0;
+        }
+        if (box instanceof Character c) {
+            return (int) c;
+        }
+        if (box instanceof Byte || box instanceof Short) {
+            return ((Number) box).intValue();
+        }
+        return box; // Integer, Long, Float, Double
     }
 
     /**

@@ -65,6 +65,14 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - `Package` metadata comes from the sample's `MANIFEST.MF`.
 
 ### Fixes
+- Native bridge: boxed arguments reach native code. JNA's dispatcher reads each `Boolean`,
+  `Byte`, `Character`, `Short`, `Integer`, `Long`, `Float` and `Double` it passes on through
+  the box's private `value` field, which the bridge could not read ("no host field
+  java/lang/Long.value"), so native code saw 0 for every one. Native code that tries to
+  change a box is refused and reported, since the JDK shares cached boxes.
+- Native bridge: `float` and `double` values cross the bridge. The helper addressed the XMM
+  registers by a name the CPU emulator does not know, so every floating-point argument, result
+  and field value silently became 0.
 - `clone()` on an array works whatever class the bytecode names. Kotlin, older compilers and
   code shrinkers write `java/lang/Object.clone` for it, which stopped with a gap; OkHttp's
   `Headers.of` is one place this happens.

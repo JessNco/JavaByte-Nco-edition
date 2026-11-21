@@ -100,6 +100,27 @@ class NativeBridgeProtocolTest {
         assertFalse(plugin.isDisabled());
     }
 
+    /**
+     * Native code reads boxed arguments through their private value field, as JNA's dispatcher
+     * does; that is answered. Changing one is refused, since the JDK shares cached boxes.
+     */
+    @Test
+    void boxValuesAreReadButNeverChanged() throws Exception {
+        Long boxed = 5_000_000_000L;
+        int handle = plugin.handle(boxed);
+        int truth = plugin.handle(Boolean.TRUE);
+        int longClass = plugin.handle(Long.class);
+        int booleanClass = plugin.handle(Boolean.class);
+        helperSends("{\"callback\":\"getField\",\"cls\":" + longClass + ",\"obj\":" + handle + ",\"name\":\"value\",\"sig\":\"J\"}",
+                "{\"callback\":\"getField\",\"cls\":" + booleanClass + ",\"obj\":" + truth + ",\"name\":\"value\",\"sig\":\"Z\"}",
+                "{\"callback\":\"setField\",\"cls\":" + longClass + ",\"obj\":" + handle + ",\"name\":\"value\",\"sig\":\"J\",\"v\":1}",
+                "{\"result\":{\"v\":0}}");
+        call();
+        assertEquals(List.of("{\"op\":\"call\"}", "{\"v\":5000000000}", "{\"v\":1}", "{\"v\":0}"), sentLines());
+        assertEquals(5_000_000_000L, boxed);
+        assertEquals("unsupported", vm.events.byCategory("gap").get(0).action());
+    }
+
     @Test
     void aPrimitiveArrayRegionOutOfRangeIsAJavaException() throws Exception {
         int array = plugin.handle(new int[2]);

@@ -12,12 +12,17 @@ typedef int jint;
 typedef long long jlong;
 typedef signed char jbyte;
 typedef unsigned char jboolean;
+typedef unsigned short jchar;
+typedef short jshort;
+typedef float jfloat;
+typedef double jdouble;
 typedef int jsize;
 typedef void *jobject;
 typedef jobject jclass;
 typedef jobject jstring;
 typedef jobject jbyteArray;
 typedef void *jmethodID;
+typedef void *jfieldID;
 
 typedef struct {
     const char *name;
@@ -31,7 +36,18 @@ typedef const struct JNINativeInterface *JNIEnv;
 struct JNINativeInterface {
     void *pad0[6];
     jclass (*FindClass)(JNIEnv *, const char *);                                  /*   6 */
-    void *pad7[106];
+    void *pad7[87];
+    jfieldID (*GetFieldID)(JNIEnv *, jclass, const char *, const char *);         /*  94 */
+    void *pad95[1];
+    jboolean (*GetBooleanField)(JNIEnv *, jobject, jfieldID);                     /*  96 */
+    jbyte (*GetByteField)(JNIEnv *, jobject, jfieldID);                           /*  97 */
+    jchar (*GetCharField)(JNIEnv *, jobject, jfieldID);                           /*  98 */
+    jshort (*GetShortField)(JNIEnv *, jobject, jfieldID);                         /*  99 */
+    jint (*GetIntField)(JNIEnv *, jobject, jfieldID);                             /* 100 */
+    jlong (*GetLongField)(JNIEnv *, jobject, jfieldID);                           /* 101 */
+    jfloat (*GetFloatField)(JNIEnv *, jobject, jfieldID);                         /* 102 */
+    jdouble (*GetDoubleField)(JNIEnv *, jobject, jfieldID);                       /* 103 */
+    void *pad104[9];
     jmethodID (*GetStaticMethodID)(JNIEnv *, jclass, const char *, const char *); /* 113 */
     void *pad114[15];
     jint (*CallStaticIntMethod)(JNIEnv *, jclass, jmethodID, ...);                /* 129 */

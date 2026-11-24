@@ -349,6 +349,11 @@ public final class InvocationRouter {
             // native, so it cannot be called from here; every route arrives at this point.
             return cloneArray(receiver);
         }
+        if (name.startsWith(EMULATOR_MEMBER_PREFIX)) {
+            // The accessors generated on shell classes are the emulator's own plumbing. They are
+            // public so that the host bridge can call them, never so that a sample can.
+            return blocked(owner, name, desc, "method");
+        }
         Hooks.Hook hook = vm.hooks.forHost(owner, name, desc);
         if (hook != null) {
             return applyHook(hook, owner + '.' + name + desc, Type.getReturnType(desc));
@@ -356,6 +361,13 @@ public final class InvocationRouter {
         Stub stub = vm.stubs.find(owner, name, desc, vm.host::findClass);
         if (stub != null) {
             return runStub(stub, new CallContext(vm, owner, name, desc, receiver, args, special));
+        }
+        // The class named in the bytecode is the sample's claim about the receiver, and nothing
+        // has verified it. What decides is the object actually in hand: a stub or a deny rule
+        // on its real class applies whatever name the call site used.
+        ReceiverRules byReceiver = receiver == null ? null : receiverRules(owner, receiver, name, desc);
+        if (byReceiver != null && byReceiver.stub() != null) {
+            return runStub(byReceiver.stub(), new CallContext(vm, byReceiver.stubOwner(), name, desc, receiver, args, special));
         }
         if (receiver instanceof PhantomObject phantom) {
             vm.events.addOnce(phantom.type + name + desc, "policy", "phantom-call",
@@ -383,7 +395,15 @@ public final class InvocationRouter {
             vm.events.addOnce(owner + name + desc, "policy", "phantom-call", "method", owner + '.' + name + desc);
             return neutralResult(desc);
         }
-        if (vm.policy.allows(owner, name, desc) && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc)) {
+        if (byReceiver != null && byReceiver.denied()) {
+            return blocked(byReceiver.stubOwner(), name, desc, "method");
+        }
+        // The policy's answer for the named class counts only if the method really is that
+        // class's and the receiver really is an instance of it. Otherwise a call site naming
+        // an allowed class (String, say) with some other object underneath would be approved
+        // for the name and then run whatever same-named method the object has.
+        if (vm.host.resolvesOn(owner, name, desc, receiver) && vm.policy.allows(owner, name, desc)
+                && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc)) {
             traceHostCall(owner, name, desc, args);
             return vm.host.invoke(owner, name, desc, receiver, args, special);
         }
@@ -393,6 +413,89 @@ public final class InvocationRouter {
             return vm.host.invoke(viaReceiver, name, desc, receiver, args, special);
         }
         return blocked(owner, name, desc, "method");
+    }
+
+    /** Prefix of every member the emulator generates on shell classes for its own use. */
+    private static final String EMULATOR_MEMBER_PREFIX = "javabyte$";
+
+    /**
+     * What the receiver's real class says about a call, beyond what the named class said.
+     *
+     * @param stub      a stub registered on a JDK class or interface of the receiver, or null
+     * @param stubOwner internal name of the receiver's JDK class the answer was found through
+     * @param denied    true if a deny rule covers this member on one of the receiver's JDK types
+     */
+    private record ReceiverRules(Stub stub, String stubOwner, boolean denied) {}
+
+    private static final ReceiverRules NO_RECEIVER_RULES = new ReceiverRules(null, null, false);
+
+    private final java.util.Map<Class<?>, java.util.Map<String, ReceiverRules>> receiverRulesCache =
+            new java.util.IdentityHashMap<>();
+
+    /**
+     * Looks the call up by the receiver's real class.
+     *
+     * <p>There is no verifier, so the receiver need not be an instance of the class the call
+     * names, and even valid bytecode may name a supertype: {@code Object.hashCode()} on a
+     * {@code URL}, {@code Runnable.run()} on a {@code Thread}. Stubs and deny rules are keyed
+     * by class, so each must also be looked up from the object itself or naming another class
+     * would be a way round it.
+     *
+     * <p>Emulator objects are left out. Simulations are safe by construction and override what
+     * they inherit, and mirrors and phantoms have no JDK class of their own to consult.
+     *
+     * @return null when the receiver's class adds nothing to what the named class decided
+     */
+    private ReceiverRules receiverRules(String owner, Object receiver, String name, String desc) {
+        Class<?> receiverClass = receiver.getClass();
+        if (receiverClass == vm.host.findClass(owner) || receiver instanceof PhantomObject || receiver instanceof PlainObject
+                || isMirror(receiver) || HostBridge.isSimulated(receiver)) {
+            return null;
+        }
+        ReceiverRules rules = receiverRulesCache.computeIfAbsent(receiverClass, unused -> new java.util.HashMap<>())
+                .computeIfAbsent(name.concat(desc), unused -> findReceiverRules(receiverClass, name, desc));
+        return rules == NO_RECEIVER_RULES ? null : rules;
+    }
+
+    private ReceiverRules findReceiverRules(Class<?> receiverClass, String name, String desc) {
+        Stub stub = null;
+        String stubOwner = null;
+        boolean denied = false;
+        java.util.Deque<Class<?>> work = new java.util.ArrayDeque<>(java.util.List.of(receiverClass));
+        java.util.Set<Class<?>> visited = new java.util.HashSet<>();
+        while (!work.isEmpty()) {
+            Class<?> current = work.poll();
+            if (!visited.add(current)) {
+                continue;
+            }
+            String internalName = Type.getInternalName(current);
+            if (vm.host.findClass(internalName) != null) {
+                if (stub == null) {
+                    // The registry walks this class's own supertypes, so the first JDK class
+                    // reached on each branch is enough to ask.
+                    stub = vm.stubs.find(internalName, name, desc, vm.host::findClass);
+                    stubOwner = stub == null ? null : internalName;
+                }
+                denied |= vm.policy.denies(internalName, name, desc);
+            }
+            if (current.getSuperclass() != null) {
+                work.add(current.getSuperclass());
+            }
+            work.addAll(java.util.List.of(current.getInterfaces()));
+        }
+        if (stub == null && !denied) {
+            return NO_RECEIVER_RULES;
+        }
+        return new ReceiverRules(stub, stub != null ? stubOwner : nearestJdkClass(receiverClass), denied);
+    }
+
+    /** Internal name of the nearest JDK class of a class, for reports. */
+    private String nearestJdkClass(Class<?> cls) {
+        Class<?> current = cls;
+        while (current != null && vm.host.findClass(Type.getInternalName(current)) == null) {
+            current = current.getSuperclass();
+        }
+        return current == null ? "java/lang/Object" : Type.getInternalName(current);
     }
 
     private final java.util.Map<String, java.util.Optional<String>> receiverCache = new java.util.HashMap<>();

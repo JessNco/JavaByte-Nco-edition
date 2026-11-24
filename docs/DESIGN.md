@@ -59,6 +59,23 @@ The router also refuses any allow-listed JDK method or constructor whose paramet
 `ClassLoader` (such as `ResourceBundle.Control.newBundle`), because the JDK code would then ask
 that loader for classes or resources where no stub sees it.
 
+There is no verifier, so the class a call names is only the sample's claim about the receiver.
+Three rules keep that claim from deciding anything:
+
+- A JDK method runs only if it resolves on the named class and the receiver is an instance of
+  the class that declares it. Otherwise the call goes through an allow-listed supertype of
+  the receiver, or is blocked. The method name is never looked up on "whatever is there";
+  that fallback exists only for simulated objects, which imitate a class without extending it.
+- Stubs and deny rules are found from the receiver's real class as well as from the named
+  class, so `Object.hashCode()` on a `URL`, or a made-up `String.exec()` on the `Runtime`
+  token, meets the stub for the object in hand.
+- On a simulated object, a method the simulation declares is safe by construction; a static,
+  protected or private method it inherits from the JDK class is JDK code and needs the policy.
+
+Fields follow the same idea: an instance field is reached only if a JDK class declares it
+(or a `StandIn` that imitates one), never on the emulator's own objects, which the guest
+holds wherever it expects a class, a method or a file.
+
 ### Values
 
 Inside the interpreter every `boolean`, `byte`, `char`, `short` and `int` is an `Integer`, as on
@@ -90,6 +107,14 @@ package.
 A JDK class may serve as a shell's superclass only if the policy allows guest code to construct
 it. Otherwise it is treated as a *phantom* superclass: the guest class is plain, and calls to
 the missing parent are reported and answered with neutral values.
+
+The sample's `super(...)` call runs the JDK constructor for real, inside the shell, and no
+stub can stand in for it because the object must be the shell itself. So the router judges
+that constructor exactly as it judges `new` on the JDK class: the policy for that overload,
+and the checks for file and class-loader parameters. `PrintStream(OutputStream)` passes;
+`PrintStream(String fileName)` does not, is reported, and the object is built as if the
+superclass were unavailable. The helper members a shell has for the emulator's own use
+(`javabyte$...`) cannot be named by guest code.
 
 When a guest class with a shell is extended by another guest class, the second shell extends
 the first, so the generated classes mirror the guest hierarchy. JDK code can observe that
@@ -233,7 +258,9 @@ What the design guarantees, assuming the allow-list is sound:
 - Guest code cannot call emulator internals: only classes from the JDK's boot and platform
   loaders are visible as "host classes".
 - Java deserialization is restricted by a JVM-wide filter to value types and keys, because
-  deserializing attacker-controlled data could otherwise reach gadget classes.
+  deserializing attacker-controlled data could otherwise reach gadget classes. The JDK asks a
+  stream's own filter first and takes its "allowed" as final, so a filter factory makes the
+  guard every stream's filter and `setObjectInputFilter` is a stub that installs nothing.
 - No host name is ever looked up for real. The guest's lookups are answered by the network
   simulator, and as a backstop the command-line tool sets `jdk.net.hosts.file` to a file that
   cannot exist before anything uses the network classes, so any lookup a stub missed fails

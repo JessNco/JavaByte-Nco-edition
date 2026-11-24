@@ -157,10 +157,11 @@ add a second layer that does not depend on the emulator being right:
 scripts/run-isolated.sh run sample.jar
 ```
 
-That runs the tool in a network namespace with no network interface at all. A network
-namespace does not hide host services' Unix sockets in the file system (D-Bus, X11 and
-others); the desktop app's isolation hides those too, and a container with `--network none`
-and only the output folder mounted is stronger still. See [docs/DESIGN.md](docs/DESIGN.md) for
+That runs the tool in a network namespace with no network interface at all, and in a mount
+namespace that hides host services' Unix sockets (D-Bus, systemd-resolved, Docker, X11, tmux,
+an ssh-agent), as the desktop app's isolation does. Neither protects your files: a run can
+still read and write whatever your user can. A container with `--network none`, a read-only
+root and only the output folder mounted is stronger, and is the right choice for live malware. See [docs/DESIGN.md](docs/DESIGN.md) for
 the reasoning and for what was borrowed from other projects.
 
 ## Tested against real samples

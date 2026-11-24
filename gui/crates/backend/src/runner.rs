@@ -931,6 +931,8 @@ mod isolation_tests {
     #[test]
     fn the_windows_variable_list_is_the_add_ons() {
         fn names(source: &str, from: &str) -> Vec<String> {
+            // A Windows checkout may hold these files with CRLF line ends.
+            let source = source.replace("\r\n", "\n");
             let list = &source[source.find(from).expect("the list is there") + from.len()..];
             let list = &list[..list.find(']').unwrap()];
             list.split('"').skip(1).step_by(2).filter(|name| !matches!(*name, "TEMP" | "TMP")).map(str::to_string).collect()

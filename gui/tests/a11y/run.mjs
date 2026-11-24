@@ -467,7 +467,7 @@ await section('preferences and isolation', async () => {
   await page.getByRole('button', { name: 'Preferences' }).click();
   check(await focusIs(page, 'preferences-heading'), 'Preferences focuses its heading');
   check((await page.title()) === 'Preferences – JavaByte', `preferences title: ${await page.title()}`);
-  check(await page.getByRole('checkbox', { name: 'Turn off the network for each analysis' }).isChecked(), 'isolation is on by default');
+  check(await page.getByRole('checkbox', { name: 'Isolate each analysis (no network; on Linux, no changes to your files)' }).isChecked(), 'isolation is on by default');
   check(await page.getByRole('checkbox', { name: 'Ask me before an analysis that cannot be isolated' }).isChecked(), 'asking is on by default');
   check((await page.locator('#prefs-isolate').getAttribute('aria-describedby')) === 'prefs-isolate-hint', 'the isolation setting is explained');
   check(await page.getByRole('button', { name: 'Choose another Java…' }).isVisible(), 'another Java can be chosen');

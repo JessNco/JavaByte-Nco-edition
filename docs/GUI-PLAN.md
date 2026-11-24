@@ -219,7 +219,7 @@ spacing, and the isolation setting (Linux, and Windows with the sandbox add-on; 
 | `policy [--json]` | Tools → Policy |
 | `disasm FILE [--class NAME]` | Report → Files → a saved class, shown as bytecode |
 | exit codes 0/1/2/3 | Outcome shown in words; 1 is shown as a tool fault with a "copy details" button |
-| `scripts/run-isolated.sh` | Preferences → "Turn off the network for each analysis" (on by default; Linux, and Windows with the sandbox add-on). On Linux this is the same isolation: no network, a read-only file system but for the output folder and a private temporary folder, host service sockets hidden |
+| `scripts/run-isolated.sh` | Preferences → "Isolate each analysis" (on by default; Linux, and Windows with the sandbox add-on). On Linux this is the same isolation: no network, a read-only file system but for the output folder and a private temporary folder, host service sockets hidden |
 | Plugins (`plugins:`) | Settings → Plugins, from the schema |
 | Native bridge | Settings → Plugins → Native bridge, available because it is bundled |
 

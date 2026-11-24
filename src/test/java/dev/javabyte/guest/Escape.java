@@ -58,6 +58,9 @@ public final class Escape {
         port = Integer.parseInt(args[2]);
 
         // ---- writing the canary to the real disk
+        // A subclass's super(...) call runs the JDK constructor itself; it must be judged like "new".
+        attempt("subclass of PrintStream(String)", () -> new NamedPrintStream(canary).append("x").close());
+        attempt("subclass of PrintWriter(File)", () -> new FilePrintWriter(new File(canary)).append("x").close());
         attempt("FileOutputStream", () -> write(new FileOutputStream(canary)));
         attempt("FileOutputStream(File)", () -> write(new FileOutputStream(new File(canary))));
         attempt("FileWriter", () -> new FileWriter(canary).append("x").close());
@@ -286,6 +289,20 @@ public final class Escape {
             System.out.println(name + ": returned");
         } catch (Throwable thrown) {
             System.out.println(name + ": " + thrown.getClass().getSimpleName());
+        }
+    }
+
+    /** A sample's own stream class, opening a file by name through its superclass. */
+    static final class NamedPrintStream extends PrintStream {
+        NamedPrintStream(String fileName) throws java.io.IOException {
+            super(fileName);
+        }
+    }
+
+    /** The same through the overload that takes a {@code File}. */
+    static final class FilePrintWriter extends PrintWriter {
+        FilePrintWriter(File file) throws java.io.IOException {
+            super(file);
         }
     }
 }

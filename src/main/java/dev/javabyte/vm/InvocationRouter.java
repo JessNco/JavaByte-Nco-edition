@@ -237,9 +237,22 @@ public final class InvocationRouter {
             // Constructor invoked on an already constructed object; legal bytecode never does this.
             return;
         }
-        pending.resolved = pending.state != null
-                ? vm.shells.instantiate(pending.state, owner, desc, args)
-                : constructHost(owner, desc, args);
+        if (pending.state == null) {
+            pending.resolved = constructHost(owner, desc, args);
+            return;
+        }
+        // A sample's subclass of a JDK class: its super(...) call runs the JDK constructor for
+        // real, inside the generated shell. That constructor is judged exactly as if the sample
+        // had written "new" on the JDK class: class PrintStream being allowed says nothing
+        // about PrintStream(String fileName), which opens a file. No stub can stand in here,
+        // because the object must be the shell itself, so a constructor that is not allowed
+        // is not run: the class is built as if that superclass were unavailable.
+        boolean permitted = vm.shells.hasSimulatedBase(pending.state.type)
+                || (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc));
+        if (!permitted) {
+            blocked(owner, "<init>", desc, "constructor");
+        }
+        pending.resolved = vm.shells.instantiate(pending.state, permitted ? owner : null, desc, args);
     }
 
     /** Creates an instance of a JDK class, subject to hooks, stubs and policy. */

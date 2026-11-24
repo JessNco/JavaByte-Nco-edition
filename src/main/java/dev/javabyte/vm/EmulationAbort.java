@@ -45,6 +45,9 @@ public final class EmulationAbort extends Error {
     public final Reason reason;
     public final String detail;
 
+    /**
+     * @param detail what happened, for the report's run entry
+     */
     public EmulationAbort(Reason reason, String detail) {
         super(reason + ": " + detail, null, false, false);
         this.reason = reason;

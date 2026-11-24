@@ -26,6 +26,13 @@ public final class ClassRepository {
     /** Largest archive entry that is read. Real classes and payloads are far smaller. */
     static final int MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 
+    /**
+     * The most bytes kept from one archive in all. Many entries that each pass the per-entry
+     * limit can still unpack to far more than memory holds; what is past this total is left
+     * out and said so, instead of the tool dying of memory.
+     */
+    static final long MAX_ARCHIVE_BYTES = 1024L * 1024 * 1024;
+
     /** Raw class files by internal name, parsed on first use so huge bundled libraries cost nothing. */
     private final Map<String, byte[]> classBytes = new LinkedHashMap<>();
     private final Map<String, String> classOrigins = new LinkedHashMap<>();
@@ -60,6 +67,7 @@ public final class ClassRepository {
     public Manifest addArchive(byte[] archive, String origin) throws IOException {
         Manifest manifest = null;
         int entriesRead = 0;
+        long kept = 0;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive))) {
             for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
                 String name = entry.getName();
@@ -76,6 +84,12 @@ public final class ClassRepository {
                     // could cost the whole analysis.
                     unparseable.add(name + ": entry larger than " + MAX_ENTRY_BYTES + " bytes, skipped");
                     continue;
+                }
+                kept += data.length;
+                if (kept > MAX_ARCHIVE_BYTES) {
+                    unparseable.add("(archive from " + origin + ") unpacks to more than " + MAX_ARCHIVE_BYTES
+                            + " bytes: entries after the first " + entriesRead + " were left out");
+                    break;
                 }
                 // Requiring the class-file magic keeps decoy entries (obfuscators add thousands of
                 // one-byte ".class" files to confuse tools) from being reported as broken classes.

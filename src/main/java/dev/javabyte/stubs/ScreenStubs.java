@@ -24,6 +24,7 @@ final class ScreenStubs {
     /** Height of the Windows taskbar at 100% scaling, which the usable screen area leaves out. */
     private static final int TASKBAR_HEIGHT = 40;
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         MachineProfile machine = vm.env.machine;
         Screen screen = new Screen(vm, machine);

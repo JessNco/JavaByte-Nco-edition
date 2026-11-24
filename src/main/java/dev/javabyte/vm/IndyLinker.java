@@ -95,6 +95,7 @@ public final class IndyLinker {
 
     // ------------------------------------------------------------------ invokedynamic
 
+    /** Executes one {@code invokedynamic} instruction, linking its call site on first use. */
     Object invoke(GuestMethod caller, int pc, InvokeDynamicInsnNode indy, Object[] args) {
         if (!foreignCalls.isEmpty()) {
             reportForeignCalls();

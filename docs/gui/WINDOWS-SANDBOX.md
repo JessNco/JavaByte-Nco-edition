@@ -61,15 +61,17 @@ javabyte-sandbox windows-sandbox [--map HOST=GUEST[:rw]]... [--stage FILE]... --
   break once mapped folders are replaced by their sandbox paths cannot be passed safely to the
   script inside the sandbox, so such a run is refused rather than started.
 
-Paths in the arguments, and `JAVABYTE_BRIDGE_PYTHON`, are rewritten from the host's to the
-sandbox's, so the app builds one command line for every way of running.
+Folder paths in the arguments, and `JAVABYTE_BRIDGE_PYTHON`, are rewritten from the host's to
+the sandbox's. The sample is the exception: the app names it as the sandbox will see it
+(`C:\JavaByteStage\<safe name>` for a file, `C:\JavaByteSample` for a folder), so that
+nothing of a name its author chose has to be found and rewritten.
 
 ## In the app
 
 - `setup.rs` finds the helper (in the app's resources, in `Program Files\JavaByte\sandbox`, or
   next to the app) and asks it `check` once at start.
 - Preferences on Windows: without the add-on, the existing explanation and where to get it;
-  with it, "Turn off the network for each analysis" and the choice between AppContainer and
+  with it, "Isolate each analysis" and the choice between AppContainer and
   Windows Sandbox, each saying whether it is available here and why not.
 - The Running screen shows the starting stage while Windows Sandbox starts.
 - A failed sandbox start ends the run with the reason, and offers "Analyse in an AppContainer

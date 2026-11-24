@@ -80,7 +80,7 @@ public final class EventLog {
         }
         Event event = new Event(seq++, category, action, callerSupplier.get(), data);
         events.add(event);
-        writeTrace(event.toLine());
+        writeLine(event.toLine()); // already made visible by toLine()
         // Each event reaches the file before the next one is recorded, so a run that is killed
         // or hangs still leaves its evidence on disk. Events are rare next to instructions, so
         // this costs little; the measurement is in docs/TESTING.md.
@@ -97,19 +97,27 @@ public final class EventLog {
         return activity;
     }
 
-    /** Writes a free-form line to the trace only (method and instruction tracing). */
+    /**
+     * Writes a free-form line to the trace only (method and instruction tracing). The line
+     * holds the sample's own names and values, so it is made visible first ({@link Text}).
+     */
     public void writeTrace(String line) {
+        writeLine(Text.visible(line));
+    }
+
+    private void writeLine(String line) {
         if (trace == null) {
             return;
         }
         try {
-            trace.write(Text.visible(line));
+            trace.write(line);
             trace.write('\n');
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
+    /** Pushes the trace to disk, so a run that is killed still leaves what it recorded. */
     public void flush() {
         if (trace == null) {
             return;

@@ -54,7 +54,9 @@ if [[ $os == linux ]]; then
     export LD_LIBRARY_PATH="$runtime/server:$runtime${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export NO_STRIP=true
 fi
-(cd app && "${tauri[@]}" build --verbose --bundles "$bundles" "${configs[@]}")
+# --locked: exactly the crate versions in Cargo.lock, or the build stops; a lock file that no
+# longer matches is never quietly resolved again while a release is being built.
+(cd app && "${tauri[@]}" build --verbose --bundles "$bundles" "${configs[@]}" -- --locked)
 
 out="target/installers"
 mkdir -p "$out"
@@ -75,7 +77,7 @@ else
     # The sandbox add-on, a separate download (docs/gui/WINDOWS-SANDBOX.md). Built once, with the
     # standard edition: it is the same for both.
     if [[ -z "$suffix" ]]; then
-        cargo build --release -p javabyte-sandbox
+        cargo build --release --locked -p javabyte-sandbox
         addon="JavaByte-$version-windows-x86_64-sandbox-addon"
         repo="$(cd "$gui/.." && pwd)"
         # Not $WIX: Windows runners set that to the WiX 3 folder, which Tauri uses.

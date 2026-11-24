@@ -3,6 +3,11 @@
 # Guest bytecode is interpreted. When it calls into the JDK, the call runs for real ONLY if a
 # rule below allows it. Everything else is answered by a stub or blocked and reported.
 #
+# A rule is necessary, not sufficient. The method must really belong to the class the call
+# names and the receiver must be an instance of it; a member declared to take a File, a Path or
+# a ClassLoader is refused whatever is listed here; and a deny rule also applies when the object
+# in hand is of the denied class but the call names another.
+#
 # The test for adding a line here: can any member it exposes read or change something outside
 # the emulator's own memory (disk, network, processes, threads, the JVM itself)? If yes, it must
 # not be listed; give it a stub instead. Syntax is documented on dev.javabyte.host.HostPolicy.
@@ -155,6 +160,10 @@ java/util/stream/**
 !java/util/concurrent/RecursiveTask
 !java/util/concurrent/RecursiveAction
 !java/util/concurrent/CountedCompleter
+# Structured concurrency starts a real thread for every fork (a virtual one, or one from a
+# factory the sample supplies).
+!java/util/concurrent/StructuredTaskScope
+!java/util/concurrent/StructuredTaskScope$*
 # JVM-wide defaults: changing them would alter the emulator itself for the rest of the run.
 !java/util/Locale#setDefault
 !java/util/TimeZone#setDefault

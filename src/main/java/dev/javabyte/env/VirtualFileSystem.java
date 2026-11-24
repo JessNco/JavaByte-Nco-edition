@@ -46,8 +46,14 @@ public final class VirtualFileSystem {
     private final List<SimFileOutputStream> openOutputs = new ArrayList<>();
     private String workingDirectory;
     private long writtenBytes;
-    private long now;
+    /** The time new files and folders are stamped with: the moment the run started. */
+    private final long now;
 
+    /**
+     * @param windows whether paths follow Windows rules (drive letters, backslashes, no case)
+     * @param maxWrittenBytes the most the guest may write in all
+     * @param now the time new files are stamped with
+     */
     public VirtualFileSystem(boolean windows, EventLog events, long maxWrittenBytes, long now) {
         this.windows = windows;
         this.separator = windows ? '\\' : '/';
@@ -136,6 +142,11 @@ public final class VirtualFileSystem {
         return root + String.join(String.valueOf(separator), parts);
     }
 
+    /**
+     * A child path under a parent, with exactly one separator between them. Leading separators
+     * of the child are dropped, so the result is always under the parent; an empty parent gives
+     * the child alone.
+     */
     public String join(String parent, String child) {
         if (parent.isEmpty()) {
             return normalise(child);
@@ -180,6 +191,7 @@ public final class VirtualFileSystem {
         nodes.put(key(path), new Node(absolute(path), false, data, now));
     }
 
+    /** Adds a folder and its parents as part of the machine, not as something the guest made. */
     public void addDirectory(String path) {
         for (String current = path == null ? null : absolute(path); current != null; current = parent(current)) {
             nodes.putIfAbsent(key(current), new Node(current, true, null, now));
@@ -192,6 +204,10 @@ public final class VirtualFileSystem {
         return nodes.get(key(path));
     }
 
+    /**
+     * Whether a file or folder is there; each question the guest asks is recorded once as {@code
+     * file.check}.
+     */
     public boolean exists(String path) {
         boolean exists = nodes.containsKey(key(path));
         events.addOnce("exists:" + key(path), "file", "check", "path", absolute(path), "exists", exists);
@@ -253,6 +269,7 @@ public final class VirtualFileSystem {
                 "sha256", VirtualMachine.sha256(data), "preview", dev.javabyte.vm.Values.preview(data, 96));
     }
 
+    /** Creates an empty file; false if something is already there, as {@code File.createNewFile} answers. */
     public boolean createFile(String path) {
         if (nodes.containsKey(key(path))) {
             return false;
@@ -261,6 +278,7 @@ public final class VirtualFileSystem {
         return true;
     }
 
+    /** Creates a folder and any missing parents; false if it already exists. */
     public boolean mkdirs(String path) {
         if (nodes.containsKey(key(path))) {
             return false;
@@ -271,6 +289,7 @@ public final class VirtualFileSystem {
         return true;
     }
 
+    /** Deletes a file or an empty folder; false if nothing is there or the folder has contents. */
     public boolean delete(String path) {
         Node target = nodes.get(key(path));
         if (target != null && target.directory && hasChildren(path)) {
@@ -380,9 +399,5 @@ public final class VirtualFileSystem {
     /** Files the guest created or modified. */
     public List<Node> guestFiles() {
         return nodes.values().stream().filter(node -> node.touchedByGuest && !node.directory).toList();
-    }
-
-    public void setNow(long now) {
-        this.now = now;
     }
 }

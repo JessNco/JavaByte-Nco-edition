@@ -219,13 +219,16 @@ fn every_message_named_in_the_code_exists() {
 #[test]
 fn every_message_is_used() {
     let all_code: String = sources().iter().map(|f| std::fs::read_to_string(f).unwrap()).collect();
-    // Messages chosen at run time, such as `outcome-{name}`, are named by their prefix.
+    // Messages chosen at run time, such as `outcome-{name}`, are named by their prefix. A
+    // `format!` that builds a file name (`check-{n}.yaml`, told by the dot) is not one of them,
+    // and must not keep a whole family of unused messages alive.
     let dynamic_prefixes: Vec<String> = all_code
         .match_indices("format!(\"")
         .filter_map(|(at, _)| {
             let rest = &all_code[at + 9..];
-            let prefix = &rest[..rest.find('{')?];
-            (prefix.ends_with('-') && !prefix.contains(' ')).then(|| prefix.to_string())
+            let literal = &rest[..rest.find('"')?];
+            let prefix = &literal[..literal.find('{')?];
+            (prefix.ends_with('-') && !prefix.contains(' ') && !literal.contains('.')).then(|| prefix.to_string())
         })
         .collect();
     let unused: Vec<String> = message_ids()

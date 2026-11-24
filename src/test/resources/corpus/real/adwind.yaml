@@ -29,12 +29,14 @@ stages:
         - {category: class, action: define, where: {name: '^server/main/Start$', via: defineClass, superclass: 'java/lang/Thread'}}
         - {category: class, action: define, min: 4}
         - {category: class, action: implicit-load, because: classes the sample's loader would supply on demand must be fetched through it}
-        - {category: file, action: write, where: {path: 'Temp\\_0\.\d+rs\.class$'}}
-        - {category: process, action: exec, where: {command: 'java\.exe -jar .*Temp\\_0\.\d+rs\.class$'}}
+        # The dropper names its copy with File.createTempFile: "_0." and digits of its own, then the
+        # characters the JVM adds, which here come from the virtual clock and so vary with its start.
+        - {category: file, action: write, where: {path: 'Temp\\_0\.\d+[0-9a-z]+\.class$'}}
+        - {category: process, action: exec, where: {command: 'java\.exe -jar .*Temp\\_0\.\d+[0-9a-z]+\.class$'}}
         - {category: policy, action: blocked, where: {member: 'javax/swing/UIManager'}}
-      artifacts: ['defined-classes/server/main/Start\.class$', 'dropped/.*_0\.\d+rs\.class$']
+      artifacts: ['defined-classes/server/main/Start\.class$', 'dropped/.*_0\.\d+[0-9a-z]+\.class$']
   - name: third-stage
-    sampleFromArtifact: 'dropped/.*_0\.\d+rs\.class$'
+    sampleFromArtifact: 'dropped/.*_0\.\d+[0-9a-z]+\.class$'
     config:
       limits: {timeoutSeconds: 120, maxSleeps: 6}
     expect:

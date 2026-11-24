@@ -33,12 +33,17 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress verify
       # The isolated launcher must run the jar of the version in pom.xml, not an older one left
       # in target/, and what it starts must be unable to write outside its output folder and
-      # its private temporary folder (that part is skipped, with a message, where the runner
-      # does not allow unprivileged namespaces). The check uses stand-ins for Java, so one Java
-      # version is enough.
+      # its private temporary folder. Ubuntu's runners refuse unprivileged namespaces to
+      # programs without an AppArmor profile, so that restriction is lifted for this job, and
+      # the isolation part is then required: without the variable it would skip with a message
+      # and pass. The check uses stand-ins for Java, so one Java version is enough.
       - name: The isolated launcher picks the right jar and isolates
         if: matrix.java == '21'
-        run: scripts/test-run-isolated.sh
+        env:
+          JAVABYTE_ISOLATION_TESTS_REQUIRED: '1'
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          scripts/test-run-isolated.sh
       # One copy of the coverage report is enough; it does not differ meaningfully by Java version.
       - name: Keep the coverage report
         if: matrix.java == '21'

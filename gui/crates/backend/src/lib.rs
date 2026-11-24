@@ -10,7 +10,7 @@
 //! - `artifacts` reads and saves the files a run produced (desktop only);
 //! - `setup` finds the bundled runtime, jar, bridge and Windows sandbox helper, and the
 //!   preferences that choose between them (desktop only);
-//! - `isolation` runs the tool with no network (Linux only);
+//! - `isolation` runs the tool with no network, a read-only file system and no terminal (Linux only);
 //! - [`simulation`], [`synthetic`] stand in for a real run and real events in browser tests.
 //!
 //! Everything except `artifacts`, `setup` and `isolation` also compiles to WebAssembly, so the
@@ -22,7 +22,7 @@
 pub mod artifacts;
 /// Settings as YAML, edited in place.
 pub mod config;
-/// Runs with no network, on Linux.
+/// Runs with no network and a read-only file system, on Linux.
 #[cfg(target_os = "linux")]
 pub mod isolation;
 /// The bundled runtime, jar, bridge and Windows sandbox helper, and the preferences that

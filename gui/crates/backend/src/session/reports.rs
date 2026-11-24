@@ -60,7 +60,8 @@ impl Session {
 
     /// The open report's sample, chosen again with the run's settings, for **Run again with
     /// changes**. The sample must still be where it was, on this computer. The report may
-    /// come from someone else, so settings that name a program to start are left out
+    /// come from someone else, so settings that reach this computer (a program to start,
+    /// `policy.allow`, `classpath`, files to read) are left out
     /// ([`without_host_access`]).
     pub fn run_again(&mut self) -> Result<Overview, String> {
         let open = self.report.as_ref().ok_or_else(|| t!("error-no-report"))?;

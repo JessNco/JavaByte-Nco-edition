@@ -106,8 +106,9 @@ fingerprint in `docs/INSTALL.md` and wherever else you published it, and say so 
 
 ## Refreshing pinned tools
 
-Everything that goes into an installer, or runs while one is built, is fixed to an exact
-version and checked against a checksum kept in this repository. Nothing updates by itself, so
+What goes into an installer, or runs while one is built, is fixed to an exact version and
+checked against a checksum kept in this repository, except for what is listed at the end of
+this section. Nothing updates by itself, so
 refresh the pins from time to time and whenever a security fix is announced. Each refresh is an
 ordinary change: review the diff, then let the **Installers** workflow build and test the
 result (tick "Also build the with native bridge edition" when the Python side changed).
@@ -151,7 +152,9 @@ its page), then set `WIX_VERSION` and `WIX_SHA256`.
 Still taken as "the newest" on each build, and so not covered by a checksum here: the Rust
 toolchain (`stable`), the Temurin 21, Python 3.12 and Node 22 builds the setup actions install,
 the system libraries from Ubuntu's package archive, and the tools Tauri's bundler downloads for
-itself (WiX 3 on Windows, the AppImage tools on Linux).
+itself (WiX 3 on Windows, the AppImage tools on Linux), and the `wasm-bindgen` program Trunk
+fetches to build the screens. The Rust crates are those in `gui/Cargo.lock`: the installers are
+built with `--locked`.
 
 ## Signing the Windows installer
 

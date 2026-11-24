@@ -366,7 +366,7 @@ public final class Interpreter {
                             if (resolveField(method, pc, field) instanceof FieldRef ref) {
                                 vm.fields.putStatic(ref, value);
                             } else {
-                                vm.fields.putHostStatic(field.owner, field.name, field.desc, value);
+                                vm.fields.putHostStatic(field.owner, field.name, value);
                             }
                             break;
                         }

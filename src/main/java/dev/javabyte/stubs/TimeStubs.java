@@ -100,6 +100,7 @@ final class TimeStubs {
         }
     }
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         VirtualClock clock = vm.env.clock;
         // From here on, executed instructions cost virtual time.
@@ -145,7 +146,7 @@ final class TimeStubs {
         }
         Object[] args = ctx.args.clone();
         args[index] = vm.router.invokeVirtual(owner, "toString", "()Ljava/lang/String;", value, new Object[0]);
-        return vm.host.invoke(ctx.owner, ctx.name, ctx.desc, ctx.receiver, args, ctx.special);
+        return ctx.proceedWith(args);
     }
 
     /** {@code now()} on every {@code java.time} type and chronology, and {@code java.time.Clock}. */

@@ -14,8 +14,10 @@ import java.util.Set;
  * JVM-wide filter resolves this: strings, numbers, dates and plain collections may be read;
  * every other class is rejected and reported.
  *
- * <p>The filter is process-wide because the JDK offers no reliable per-stream hook that also
- * covers streams created by the sample's own subclasses.
+ * <p>The JVM-wide filter is the fallback. A filter factory makes the same guard every stream's
+ * own filter as well, because the JDK asks a stream's filter first and takes its "allowed" as
+ * final. If the factory cannot be installed (something in this JVM used a stream first), the
+ * stub for {@code ObjectInputStream.setObjectInputFilter} still keeps a sample's filter out.
  */
 public final class SerializationGuard {
 
@@ -63,7 +65,7 @@ public final class SerializationGuard {
             return;
         }
         try {
-            ObjectInputFilter.Config.setSerialFilter(SerializationGuard::check);
+            ObjectInputFilter.Config.setSerialFilter(GUARD);
         } catch (IllegalStateException alreadySet) {
             // The embedding application set its own filter first; that one stays in force.
         }
@@ -79,7 +81,7 @@ public final class SerializationGuard {
         installed = true;
     }
 
-    /** The one filter every stream gets; see {@link #install}. */
+    /** The one filter: JVM-wide, and every stream's own; see {@link #install}. */
     private static final ObjectInputFilter GUARD = SerializationGuard::check;
 
     private static ObjectInputFilter.Status check(ObjectInputFilter.FilterInfo info) {

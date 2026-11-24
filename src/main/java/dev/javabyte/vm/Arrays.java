@@ -19,6 +19,10 @@ final class Arrays {
 
     private Arrays() {}
 
+    /**
+     * The {@code xALOAD} instructions: an element in interpreter form (int-like values as {@code
+     * Integer}).
+     */
     static Object load(VirtualMachine vm, Object array, int index) {
         checkAccess(vm, array, index);
         if (array instanceof byte[] bytes) {
@@ -48,6 +52,10 @@ final class Arrays {
         return ((double[]) array)[index];
     }
 
+    /**
+     * The {@code xASTORE} instructions: narrows an interpreter value to the array's element type
+     * and stores it.
+     */
     static void store(VirtualMachine vm, Object array, int index, Object value) {
         checkAccess(vm, array, index);
         if (array instanceof byte[] bytes) {
@@ -76,6 +84,7 @@ final class Arrays {
         }
     }
 
+    /** {@code ARRAYLENGTH}, with the guest's {@code NullPointerException} for null. */
     static int length(VirtualMachine vm, Object array) {
         if (array == null) {
             throw vm.implicitExceptions.nullPointer("Cannot read the array length because value is null");
@@ -94,6 +103,7 @@ final class Arrays {
         }
     }
 
+    /** {@code NEWARRAY}: a real primitive array for the JVM's type code. */
     static Object newPrimitive(VirtualMachine vm, int typeCode, int length) {
         checkLength(vm, length);
         switch (typeCode) {
@@ -115,6 +125,7 @@ final class Arrays {
         return Array.newInstance(vm.types.hostClassOrObject(elementType), length);
     }
 
+    /** {@code MULTIANEWARRAY}: nested arrays for the leading dimensions that were given sizes. */
     static Object newMulti(VirtualMachine vm, String desc, int[] dimensions) {
         for (int dimension : dimensions) {
             checkLength(vm, dimension);

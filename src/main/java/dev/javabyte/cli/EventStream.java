@@ -32,6 +32,11 @@ final class EventStream implements RunListener {
     private final String outputDirectory;
     private final boolean withProgress;
 
+    /**
+     * @param out where the JSON lines go
+     * @param outputDirectory the run's folder, named in the start record
+     * @param withProgress whether to write progress records as well
+     */
     EventStream(OutputStream out, String outputDirectory, boolean withProgress) {
         this.out = out;
         this.outputDirectory = outputDirectory;

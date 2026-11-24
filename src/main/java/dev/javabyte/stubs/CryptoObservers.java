@@ -20,6 +20,7 @@ final class CryptoObservers {
 
     private CryptoObservers() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         vm.stubs.on("javax/crypto/Cipher", "init", ctx -> {
             Object result = ctx.proceed();

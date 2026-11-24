@@ -57,6 +57,10 @@ public final class RunControl {
 
     // ------------------------------------------------------------------ called by the emulator
 
+    /**
+     * Connects this control to the run's machine, so that events and progress reach the listeners
+     * and a stop request reaches the run.
+     */
     void attach(VirtualMachine machine) {
         this.vm = machine;
         startedNanos = System.nanoTime();

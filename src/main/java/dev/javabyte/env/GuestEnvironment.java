@@ -43,6 +43,7 @@ public final class GuestEnvironment {
     /** Every process the sample launched in this run, in launch order. */
     private final List<SimProcess> processes = new ArrayList<>();
 
+    /** Builds the machine the guest sees from the config: profile, clock, disk, network and console. */
     public GuestEnvironment(VirtualMachine vm) {
         this.vm = vm;
         EmulatorConfig.Environment config = vm.config.environment;

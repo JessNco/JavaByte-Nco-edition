@@ -113,6 +113,7 @@ final class Inspection {
         return total;
     }
 
+    /** The description as the JSON document {@code inspect --json} prints. */
     Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("path", path.toString());
@@ -133,6 +134,7 @@ final class Inspection {
         return map;
     }
 
+    /** The description for a person. Names from the sample are shown with control characters escaped. */
     String toText() {
         StringBuilder text = new StringBuilder();
         text.append("Sample            ").append(visible(String.valueOf(path))).append(" (").append(size).append(" bytes)\n");

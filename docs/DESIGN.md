@@ -51,13 +51,18 @@ Reflection (`Method.invoke`, `Constructor.newInstance`, `Field.get`), method han
 all re-enter the router. A reflective `Runtime.exec` meets the same stub as a direct one; this is
 covered by a test.
 
-Guest code reaches the JDK through two entry points only: `InvocationRouter` (`hostCall` for
-methods, `constructHost` for constructors) and `Fields` (fields of JDK classes). Static JDK
-field reads are policy-checked, static writes are never performed, and instance fields are
-reached only on host objects the guest obtained through checked calls, and only when public.
-The router also refuses any allow-listed JDK method or constructor whose parameters include a
-`ClassLoader` (such as `ResourceBundle.Control.newBundle`), because the JDK code would then ask
-that loader for classes or resources where no stub sees it.
+Guest code reaches the JDK through `InvocationRouter` and `Fields` only. The router decides
+every method (`hostCall`), every constructor (`constructHost`) and the superclass constructor
+of a sample's own subclass (`construct`); a stub it chose may then pass its call on to the JDK
+(`CallContext.proceed`). `Fields` handles fields of JDK classes: static reads are
+policy-checked, static writes are never performed, and instance fields are reached only on
+host objects the guest obtained through checked calls, and only when public (or, for a
+sample's subclass, protected in its JDK superclass).
+
+The router also refuses any allow-listed JDK method or constructor declared to take a `File`,
+a `Path` or a `ClassLoader`, and so does a stub's pass-through. A simulated file is a real
+`File`, so the first two would act on the real disk; and JDK code given a loader (as in
+`ResourceBundle.Control.newBundle`) asks it for classes or resources where no stub sees it.
 
 There is no verifier, so the class a call names is only the sample's claim about the receiver.
 Three rules keep that claim from deciding anything:
@@ -309,9 +314,9 @@ Treat JavaByte as strong containment for analysis, and still run it somewhere di
 Everything above depends on the emulator being right. `scripts/run-isolated.sh` and the desktop
 app (`gui/crates/backend/src/isolation.rs`) add a layer that does not: the Java process itself
 is confined by the kernel, so an escape of the kind an audit has found before (a path by which
-a sample made the emulator write a real file) ends at a refusal. The two implementations do the
-same things in the same order, one with `unshare` and `mount`, the other with system calls
-between `fork` and `exec` (so that Ubuntu 24.04's AppArmor profile for the app applies, and
+a sample made the emulator write a real file) ends at a refusal. The two implementations set up
+the same confinement, one with `unshare` and `mount` (as root inside its user namespace, one
+mount at a time), the other with system calls between `fork` and `exec` (so that Ubuntu 24.04's AppArmor profile for the app applies, and
 with nothing but async-signal-safe calls and memory prepared before the fork).
 
 1. New user, network and mount namespaces. The network namespace has only a loopback that is
@@ -352,9 +357,16 @@ What this layer leaves open, on purpose or by nature:
   report.
 - Sockets outside the covered folders. A read-only mount does not refuse `connect` on a Unix
   socket, so one that a program keeps under the home folder is reachable.
-- Other processes' details in `/proc` (names and command lines) are visible: there is no
-  process namespace, because a fresh `/proc` cannot be mounted inside most containers. Their
-  files are not: the kernel refuses `/proc/<pid>/root` and `cwd` across user namespaces.
+- Other processes' details in `/proc` (names and command lines) are visible, and the run can
+  send the user's other processes signals: there is no process namespace, because a fresh
+  `/proc` cannot be mounted inside most containers. Their files, memory and environment are
+  not reachable: the kernel refuses `/proc/<pid>/root`, `cwd` and `environ` across user
+  namespaces.
+
+The run has a session of its own and so no controlling terminal. With one, a process can push
+text into the terminal's input (`TIOCSTI`, allowed on kernels before 6.2 and wherever
+`dev.tty.legacy_tiocsti` is on), and the shell the tool was started from would run it after
+the run, outside every namespace.
 - Files the config names under `/tmp`, `/run` or `/dev/shm` are hidden unless they are also
   the sample, the config or the output folder.
 - CPU, memory and the size of the private temporary folder (half of memory, the `tmpfs`

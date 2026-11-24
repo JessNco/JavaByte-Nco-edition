@@ -42,6 +42,7 @@ final class AtomicStubs {
 
     private AtomicStubs() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         vm.stubs.on(ATOMIC + "AtomicReferenceFieldUpdater", "newUpdater", ctx -> newUpdater(ctx, Kind.REFERENCE));
         vm.stubs.on(ATOMIC + "AtomicIntegerFieldUpdater", "newUpdater", ctx -> newUpdater(ctx, Kind.INT));

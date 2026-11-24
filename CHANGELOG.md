@@ -6,6 +6,30 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Security
+- Second audit pass. In the desktop app, the removal of settings that reach this computer
+  (`policy.allow`, `classpath`, host files, the bridge's Python) from imported files, presets
+  and report folders could be bypassed: the app and the tool read YAML by different rules (a
+  repeated key, a tagged key, the line breaks only YAML 1.1 knows), so a file could show the
+  app nothing to remove and still give the tool `policy.allow`. The settings are now taken
+  apart as a value, and every run is started from the value the app checked, written out
+  afresh, never from the text as imported or typed.
+- An isolated run on Linux has a session of its own and so no controlling terminal. With one
+  it could push a command into the terminal's input (`TIOCSTI`), which the shell would run
+  after the run, outside the isolation.
+- More routes to the real JDK closed: `StructuredTaskScope` (a real thread per fork),
+  `KeyStore.Builder` and `KEM` for machine key stores, `InetAddress.getHostName` on a
+  nameless address (no lookup any more, with or without the command line's backstop), and
+  stubs that pass a call through now refuse file, path and class-loader overloads as the
+  router does.
+- What a sample can make the tool write or compute is bounded: files saved during a run
+  (defined classes, payloads, libraries) count against `limits.maxWrittenBytes` (event
+  `gap.artifacts-not-saved` past it), an archive is unpacked up to 1 GiB, and the native
+  library parser no longer follows a crafted section table for billions of steps.
+- The tool no longer reads `@file` arguments, so a sample named `@x` is a sample. The desktop
+  app always names the sample by its full path.
+- CI now requires the isolation tests (they used to skip themselves where namespaces were
+  refused), and the check that every GitHub Action is pinned to a commit catches more
+  spellings and also runs before a release.
 - **A sample could run real JDK methods by naming the wrong class at a call.** There is no
   bytecode verifier, and a call was approved for the class the call site named and then
   looked up by name on the object actually there. A call naming `String` (every member
@@ -49,8 +73,8 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Releases are always signed. The release workflow fails if the signing key is missing, expired
   or not the one whose public half is `docs/javabyte-signing-key.asc`; the public key is no
   longer uploaded with the release it signs, and its fingerprint is in `docs/INSTALL.md`.
-- Everything fetched while the installers are built is fixed to a version and a checksum:
-  GitHub Actions by commit, the Tauri CLI by `package-lock.json`, the native bridge's Python
+- What is fetched while the installers are built is fixed to a version and a checksum (the
+  exceptions are listed in `docs/gui/RELEASING.md`): GitHub Actions by commit, the Tauri CLI by `package-lock.json`, the native bridge's Python
   packages (which ship in the "with native bridge" installers) and uv by hashed requirements
   files, and WiX by its package's checksum. `scripts/setup-native-bridge.sh` installs the same
   pinned packages.

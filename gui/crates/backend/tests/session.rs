@@ -128,7 +128,10 @@ fn presets_round_trip_without_their_sample() {
     let loaded = session.load_preset("Beacon slow").unwrap();
     let loaded = ConfigDoc::new(loaded);
     assert_eq!(loaded.get(&ConfigPath::parse("limits.maxSleeps")), Some(serde_json::json!(7)));
-    assert_eq!(loaded.get(&ConfigPath::parse("sample")), Some(serde_json::json!(classes.display().to_string())));
+    // The session names the sample by its full path as the system writes it (on Windows, with
+    // backslashes throughout), which is not always how the test spelled it.
+    let chosen = std::path::absolute(&classes).unwrap();
+    assert_eq!(loaded.get(&ConfigPath::parse("sample")), Some(serde_json::json!(chosen.display().to_string())));
     session.delete_preset("Beacon slow").unwrap();
     assert!(session.presets().is_empty());
 }

@@ -33,6 +33,7 @@ final class ProcessStubs {
     private static final Map<VirtualMachine, Map<SimProcess, Long>> PIDS =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         vm.stubs.on("java/lang/ProcessBuilder", "start", ctx ->
                 launch(vm, ((ProcessBuilder) ctx.receiver).command(), ((ProcessBuilder) ctx.receiver).directory()));

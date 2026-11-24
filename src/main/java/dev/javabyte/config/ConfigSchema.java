@@ -93,6 +93,7 @@ public final class ConfigSchema {
         return plugins;
     }
 
+    /** The whole schema as the JSON document {@code schema --json} prints: every option, then every plugin. */
     public static Map<String, Object> toMap() {
         List<Map<String, Object>> options = new ArrayList<>();
         for (Option option : options()) {
@@ -219,6 +220,7 @@ public final class ConfigSchema {
 
     // ------------------------------------------------------------------ reflection helpers
 
+    /** The option fields of a config class, in declaration order: public, not static. */
     static List<Field> fields(Class<?> type) {
         List<Field> fields = new ArrayList<>();
         for (Field field : type.getDeclaredFields()) {

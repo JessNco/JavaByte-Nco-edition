@@ -38,7 +38,6 @@ fn request(classes: &Path, class: &str, args: &[&str], name: &str) -> RunRequest
         output: output(name),
         config: None,
         overrides: vec![format!("entryPoints=[{{class: {class}, args: [{args}]}}]"), "limits.timeoutSeconds=60".into()],
-        pin_sample: false,
     }
 }
 
@@ -160,7 +159,7 @@ fn a_windows_sandbox_run_keeps_an_awkward_sample_name_out_of_the_tools_arguments
 
     for name in AWKWARD_NAMES {
         let sample = dir.join("o'brien\u{feff}").join(format!("{name}.jar"));
-        let request = RunRequest { sample: sample.clone(), output: dir.join("run"), config: None, overrides: vec![], pin_sample: true };
+        let request = RunRequest { sample: sample.clone(), output: dir.join("run"), config: None, overrides: vec![] };
         // Another test starting a process at the moment the script was written can hold it open
         // for writing for an instant, and a file open for writing cannot be started.
         let run = (0..50).find_map(|attempt| {
@@ -177,7 +176,7 @@ fn a_windows_sandbox_run_keeps_an_awkward_sample_name_out_of_the_tools_arguments
 
         let staged = format!("C:\\JavaByteStage\\{}.jar", name.replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
         assert_eq!(program[3..5], ["run".to_string(), staged.clone()], "{program:?}");
-        assert_eq!(program.last().unwrap(), &format!("sample='{staged}'"), "{program:?}");
+        assert!(!program.iter().any(|a| a.starts_with("sample=")), "the sample is named once, as an argument: {program:?}");
         // Nothing of the name the author chose is left for the add-on to rewrite or refuse.
         let folder = dir.join("o'brien\u{feff}").to_string_lossy().into_owned();
         assert!(!program.iter().any(|a| a.contains(&folder) || a.contains(['"', '%', '\u{feff}', '\u{2028}', '\u{85}'])), "{program:?}");
@@ -206,8 +205,7 @@ fn a_sample_with_an_awkward_name_runs() {
                 std::fs::copy(entry.path(), sample.join("dev/javabyte/guest").join(entry.file_name())).unwrap();
             }
         }
-        let mut request = request(&sample, "dev.javabyte.guest.Basics", &[], &format!("awkward-{n}-run"));
-        request.pin_sample = true;
+        let request = request(&sample, "dev.javabyte.guest.Basics", &[], &format!("awkward-{n}-run"));
         let ended = launcher.start(&request).unwrap().wait(Duration::from_secs(60), Duration::from_secs(10));
         assert_eq!(ended.exit_code, Some(exit_code::OK), "{name:?}: {}", ended.stderr);
         assert_eq!(ended.tally.entries.first().map(|e| e.outcome.as_str()), Some("completed"), "{name:?}: {:?}", ended.tally.entries);
@@ -220,6 +218,7 @@ fn a_sample_with_an_awkward_name_runs() {
 fn an_isolated_run_works_and_writes_its_report() {
     let Some((mut launcher, classes)) = setup() else { return };
     if let Err(e) = javabyte_gui_backend::isolation::check() {
+        assert!(std::env::var_os("JAVABYTE_ISOLATION_TESTS_REQUIRED").is_none(), "isolation is required here but not available: {e}");
         eprintln!("skipped: isolation is not available here: {e}");
         return;
     }

@@ -38,7 +38,7 @@ class TimeTest {
         VirtualClock clock = new VirtualClock(1_700_000_000_000L);
         long millis = clock.currentTimeMillis();
         long nanos = clock.nanoTime();
-        clock.advance(90_000);
+        clock.advanceNanos(90_000L * 1_000_000L);
         for (int i = 0; i < 5_000; i++) {
             clock.currentTimeMillis();
         }
@@ -94,8 +94,8 @@ class TimeTest {
     @Test
     void hugeSleepsSaturate() {
         VirtualClock clock = new VirtualClock(0);
-        clock.advance(Long.MAX_VALUE);
-        clock.advance(Long.MAX_VALUE);
+        clock.advanceNanos(Long.MAX_VALUE);
+        clock.advanceNanos(Long.MAX_VALUE);
         assertTrue(clock.nanoTime() > 0);
     }
 

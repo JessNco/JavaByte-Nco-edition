@@ -608,7 +608,8 @@ pub struct AppPreferences {
     pub output_folder: Option<String>,
     /// A Java 17+ executable to use instead of the bundled runtime. None: the bundled one.
     pub java: Option<String>,
-    /// Start each run with no network: a new network namespace on Linux, or an AppContainer
+    /// Start each run isolated: on Linux new namespaces with no network and a read-only file
+    /// system; on Windows no network, in an AppContainer
     /// (or Windows Sandbox, see `strongest_isolation`) on Windows with the sandbox add-on.
     pub isolate: bool,
     /// Ask before a run when isolation is on but cannot be used on this computer (Linux, or
@@ -644,7 +645,7 @@ pub struct SetupStatus {
     pub output_folder: String,
     /// The native bridge's Python, when one came with the app.
     pub bridge: Option<String>,
-    /// The network isolation for runs: available, or why not.
+    /// The isolation for runs: available, or why not.
     pub isolation: Isolation,
     /// The preferences these come from.
     pub preferences: AppPreferences,

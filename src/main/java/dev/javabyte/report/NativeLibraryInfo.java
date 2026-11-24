@@ -33,6 +33,12 @@ public final class NativeLibraryInfo {
     /** True if the library exports {@code JNI_OnLoad}, where natives can be registered dynamically. */
     public boolean hasJniOnLoad;
 
+    /** The most sections a PE image may have (the Windows loader's own limit). */
+    private static final int MAX_PE_SECTIONS = 96;
+
+    /** The most ELF symbols examined in one library; real ones have a few thousand. */
+    private static final int MAX_SYMBOLS = 1_000_000;
+
     private NativeLibraryInfo(String format, String architecture) {
         this.format = format;
         this.architecture = architecture;
@@ -80,7 +86,10 @@ public final class NativeLibraryInfo {
             return new NativeLibraryInfo("MZ (not PE)", "unknown");
         }
         int machine = pe.getShort(header + 4) & 0xFFFF;
-        int sectionCount = pe.getShort(header + 6) & 0xFFFF;
+        // Windows loads no image with more than 96 sections. The field allows 65535, and every
+        // export name is looked up in the section table, so a crafted header could otherwise
+        // buy billions of steps with a small file.
+        int sectionCount = Math.min(pe.getShort(header + 6) & 0xFFFF, MAX_PE_SECTIONS);
         int optionalSize = pe.getShort(header + 20) & 0xFFFF;
         int optional = header + 24;
         boolean plus = (pe.getShort(optional) & 0xFFFF) == 0x20B;
@@ -125,7 +134,11 @@ public final class NativeLibraryInfo {
         long sectionTable = wide ? elf.getLong(0x28) : elf.getInt(0x20) & 0xFFFFFFFFL;
         int entrySize = elf.getShort(wide ? 0x3A : 0x2E) & 0xFFFF;
         int count = elf.getShort(wide ? 0x3C : 0x30) & 0xFFFF;
-        for (int i = 0; i < count; i++) {
+        // The library belongs to the sample, and its section table can name the same symbol
+        // table thousands of times (an entry size of zero makes every entry the first one).
+        // The symbols looked at are counted across all of them.
+        int symbolsLeft = MAX_SYMBOLS;
+        for (int i = 0; i < count && symbolsLeft > 0; i++) {
             int section = (int) sectionTable + i * entrySize;
             if (elf.getInt(section + 4) != 11) { // SHT_DYNSYM: the symbols visible to a loader
                 continue;
@@ -135,7 +148,7 @@ public final class NativeLibraryInfo {
             int stringSection = (int) sectionTable + elf.getInt(section + (wide ? 40 : 24)) * entrySize;
             long strings = wide ? elf.getLong(stringSection + 24) : elf.getInt(stringSection + 16) & 0xFFFFFFFFL;
             int symbolSize = wide ? 24 : 16;
-            for (long at = offset; at + symbolSize <= offset + size; at += symbolSize) {
+            for (long at = offset; at + symbolSize <= offset + size && symbolsLeft > 0; at += symbolSize, symbolsLeft--) {
                 int nameIndex = elf.getInt((int) at);
                 int definedIn = elf.getShort((int) at + (wide ? 6 : 14)) & 0xFFFF;
                 if (nameIndex != 0 && definedIn != 0) { // section 0 means "imported", not exported
@@ -184,6 +197,7 @@ public final class NativeLibraryInfo {
         return out.toString();
     }
 
+    /** The description as it appears in {@code inspect --json}. */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("format", format);

@@ -26,6 +26,7 @@ public final class Frame {
      */
     java.util.List<StackTraceElement> callingThrough;
 
+    /** A fresh frame with room for the method's locals and operand stack. */
     Frame(GuestMethod method) {
         this.method = method;
         this.locals = new Object[method.node.maxLocals + 1];

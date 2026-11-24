@@ -18,6 +18,7 @@ public final class SimFileInputStream extends FileInputStream {
     private final ByteArrayInputStream in;
     private final byte[] data;
 
+    /** A stream over a virtual file's bytes as they were when it was opened. */
     public SimFileInputStream(byte[] data) {
         super(new FileDescriptor());
         this.data = data;

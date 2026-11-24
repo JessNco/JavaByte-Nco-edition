@@ -31,6 +31,7 @@ final class NetworkStubs {
 
     private NetworkStubs() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
         NetworkSimulator network = vm.env.network;

@@ -33,7 +33,7 @@ const CELL_CHARS: usize = 160;
 const DETAIL_CHARS: usize = 4_000;
 const TABLE_PAGE: u64 = 50;
 /// Categories offered in the filter; each one's label is the message `category-<name>`.
-const CATEGORIES: [&str; 11] = ["process", "net", "file", "class", "crypto", "string", "reflect", "thread", "console", "policy", "gap"];
+const CATEGORIES: [&str; 12] = ["process", "net", "file", "class", "native", "crypto", "string", "reflect", "thread", "console", "policy", "gap"];
 
 /// A column's heading, from its message.
 fn column_name(stem: &str) -> String {

@@ -18,6 +18,10 @@ public final class SimFileOutputStream extends FileOutputStream {
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
     private boolean dirty = true; // creating the stream creates the file, even if nothing is written
 
+    /**
+     * Opens a virtual file for writing; as on a real disk, the file exists (empty, unless
+     * appending) from this moment.
+     */
     public SimFileOutputStream(VirtualFileSystem fs, String path, boolean append) {
         super(new FileDescriptor());
         this.fs = fs;
@@ -62,6 +66,10 @@ public final class SimFileOutputStream extends FileOutputStream {
         fs.untrack(this);
     }
 
+    /**
+     * Writes what has been buffered to the virtual disk, if anything changed. Called when the
+     * stream is closed, and for every stream still open when the run ends.
+     */
     void commit() {
         if (dirty) {
             fs.write(path, buffer.toByteArray());

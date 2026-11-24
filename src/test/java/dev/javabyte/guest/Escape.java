@@ -162,6 +162,12 @@ public final class Escape {
         });
         // Stores and providers that belong to the machine: the user's certificates and keys.
         attempt("Windows key store", () -> java.security.KeyStore.getInstance("Windows-MY").load(null, null));
+        attempt("Windows key store through a builder", () -> java.security.KeyStore.Builder.newInstance("Windows-MY", null,
+                new java.security.KeyStore.PasswordProtection(null)).getKeyStore());
+        attempt("structured concurrency", () -> Class.forName("java.util.concurrent.StructuredTaskScope")
+                .getMethod("fork", java.util.concurrent.Callable.class)
+                .invoke(Class.forName("java.util.concurrent.StructuredTaskScope").getConstructor().newInstance(),
+                        (java.util.concurrent.Callable<String>) () -> "x"));
         attempt("key pair in a machine provider", () -> java.security.KeyPairGenerator.getInstance("RSA", "SunMSCAPI"));
         attempt("URL in HashSet", () -> new java.util.HashSet<Object>().add(new URL("http://javabyte-set.invalid/")));
         attempt("URL in List.contains", () -> List.of(new URL("http://javabyte-list.invalid/"))

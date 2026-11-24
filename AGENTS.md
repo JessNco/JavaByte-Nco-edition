@@ -11,8 +11,9 @@ Everything here also works for a person; it is just written as a procedure.
   and line-breaking characters from the sample appear as `\uXXXX`, so one finding is one line;
   JSON output carries the exact strings.
 - Keep samples in their own directory, outside version control.
-- Prefer `scripts/run-isolated.sh` over calling the jar directly; it removes network access
-  from the process as a second safeguard.
+- Prefer `scripts/run-isolated.sh` over calling the jar directly. As a second safeguard it
+  runs the tool with no network, a read-only file system (only the `-o` folder and a private
+  `/tmp` are writable), a short environment and no terminal. Pass the output folder with `-o`.
 - Report what the emulator observed. Where the report lists gaps, say that the result may differ
   from a real run.
 

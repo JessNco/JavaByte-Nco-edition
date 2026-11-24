@@ -29,6 +29,7 @@ final class RandomStubs {
 
     private RandomStubs() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         Long seed = vm.config.environment.randomSeed;
         if (seed == null) {

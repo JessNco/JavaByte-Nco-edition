@@ -53,6 +53,7 @@ public final class Report {
     private final VirtualMachine vm;
     private final List<Run> runs = new ArrayList<>();
 
+    /** Starts the report of one run; the runs and the events are added as they happen. */
     public Report(EmulatorConfig config, Path samplePath, byte[] sampleBytes, String mainClass, VirtualMachine vm) {
         this.config = config;
         this.samplePath = samplePath;
@@ -62,6 +63,7 @@ public final class Report {
         this.vm = vm;
     }
 
+    /** Records how one entry point (or batch of queued tasks) ended. */
     public synchronized void addRun(String entry, String outcome, String detail, long instructions) {
         Run run = new Run(entry, outcome, detail, instructions);
         runs.add(run);
@@ -115,6 +117,10 @@ public final class Report {
 
     // ------------------------------------------------------------------ JSON
 
+    /**
+     * The whole report as the document {@code report.json} holds; its layout is versioned by
+     * {@code schemaVersion}.
+     */
     public Map<String, Object> toMap() {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", SCHEMA_VERSION);
@@ -170,6 +176,10 @@ public final class Report {
         Files.writeString(file, toJson());
     }
 
+    /**
+     * The report as JSON text, with strings from the sample exactly as they were (the encoder
+     * escapes control characters).
+     */
     public String toJson() {
         try {
             return ConfigLoader.json().writeValueAsString(toMap());
@@ -183,6 +193,10 @@ public final class Report {
     /** Maximum lines shown per section of the text summary; the JSON report has everything. */
     private static final int SECTION_LIMIT = 25;
 
+    /**
+     * The summary for a person. Text from the sample is shown on one line each with control
+     * characters escaped ({@link Text}).
+     */
     public String toText() {
         StringBuilder text = new StringBuilder();
         text.append("JavaByte ").append(TOOL_VERSION).append(" report\n");

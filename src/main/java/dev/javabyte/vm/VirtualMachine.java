@@ -79,6 +79,10 @@ public final class VirtualMachine {
     private final java.util.Map<String, Integer> unresolved = new java.util.HashMap<>();
     private int definedClassCount;
 
+    /**
+     * Assembles a machine for one run. Stubs are installed separately ({@code
+     * BuiltinStubs.install}), then plugins.
+     */
     public VirtualMachine(EmulatorConfig config, EventLog events, Artifacts artifacts) {
         this.config = config;
         this.events = events;
@@ -120,6 +124,10 @@ public final class VirtualMachine {
 
     // ------------------------------------------------------------------ budgets
 
+    /**
+     * Called by the interpreter for every instruction; every 16384th one checks the budgets and
+     * offers a thread switch.
+     */
     void countInstruction() {
         // The limits are checked every 16384 instructions; a per-instruction check of a
         // volatile flag would slow the hot loop for no practical gain in precision.
@@ -201,8 +209,9 @@ public final class VirtualMachine {
 
     /**
      * Asks the emulator thread to stop at its next budget check for the given reason. Safe to
-     * call from any thread. The first
-     * reason wins: a stop requested by a person is not relabelled as a timeout afterwards.
+     * call from any thread. The first reason normally wins, so a stop requested by a person is
+     * not relabelled as a timeout afterwards; two requests in the same instant may settle
+     * either way, and both end the run.
      */
     public void cancel(EmulationAbort.Reason reason) {
         if (cancelReason == null) {
@@ -230,16 +239,15 @@ public final class VirtualMachine {
 
     // ------------------------------------------------------------------ guest call stack
 
-    /** The call stack of the guest thread that currently holds the baton. */
-    private List<Frame> frames() {
-        return scheduler.frames();
-    }
-
+    /**
+     * Enters a guest method; past the configured depth the guest gets a {@code
+     * StackOverflowError}, as on a real JVM.
+     */
     void pushFrame(Frame frame) {
-        if (frames().size() >= config.limits.maxCallDepth) {
+        if (currentStack().size() >= config.limits.maxCallDepth) {
             throw raise(new StackOverflowError());
         }
-        frames().add(frame);
+        currentStack().add(frame);
     }
 
     /**
@@ -252,17 +260,18 @@ public final class VirtualMachine {
         }
     }
 
+    /** The call stack of the guest thread that currently holds the baton. */
     List<Frame> currentStack() {
-        return frames();
+        return scheduler.frames();
     }
 
     /** The guest method currently executing, or null between entry points. */
     public GuestMethod currentMethod() {
-        return frames().isEmpty() ? null : frames().get(frames().size() - 1).method;
+        return currentStack().isEmpty() ? null : currentStack().get(currentStack().size() - 1).method;
     }
 
     public String callerLocation() {
-        return frames().isEmpty() ? null : frames().get(frames().size() - 1).location();
+        return currentStack().isEmpty() ? null : currentStack().get(currentStack().size() - 1).location();
     }
 
     /**
@@ -294,7 +303,7 @@ public final class VirtualMachine {
      * @param jdkFrames the frames to show, innermost first
      */
     public <T> T callThroughJdk(List<StackTraceElement> jdkFrames, java.util.function.Supplier<T> call) {
-        List<Frame> stack = frames();
+        List<Frame> stack = currentStack();
         if (stack.isEmpty()) {
             return call.get();
         }
@@ -316,9 +325,9 @@ public final class VirtualMachine {
      * so the JDK frames recorded by {@link #callThroughJdk} are included too.
      */
     public StackTraceElement[] guestStackTrace() {
-        List<StackTraceElement> trace = new ArrayList<>(frames().size());
-        for (int i = frames().size() - 1; i >= 0; i--) {
-            Frame frame = frames().get(i);
+        List<StackTraceElement> trace = new ArrayList<>(currentStack().size());
+        for (int i = currentStack().size() - 1; i >= 0; i--) {
+            Frame frame = currentStack().get(i);
             if (frame.callingThrough != null) {
                 trace.addAll(frame.callingThrough);
             }
@@ -569,6 +578,7 @@ public final class VirtualMachine {
         }
     }
 
+    /** SHA-256 as lowercase hex: the one hash used for samples, artifacts and events. */
     public static String sha256(byte[] data) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));

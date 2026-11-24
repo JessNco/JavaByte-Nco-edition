@@ -1,6 +1,6 @@
 //! What the installed app brings with it, and the preferences that choose between that and the
 //! person's own: the Java runtime, the JavaByte jar, the native bridge's Python, the output
-//! folder and network isolation (docs/gui/PHASE5-PLAN.md).
+//! folder and the isolation of runs (docs/gui/PHASE5-PLAN.md).
 //!
 //! Installers put the bundled parts in the app's resource folder:
 //!
@@ -111,7 +111,7 @@ impl Setup {
         candidates.into_iter().find(|p| p.is_file())
     }
 
-    /// Whether analyses can be isolated from the network here. Takes a moment (it starts a
+    /// Whether analyses can be isolated here (no network; on Linux also a read-only file system). Takes a moment (it starts a
     /// process), so the app checks once at start.
     pub fn isolation_status(&self) -> Isolation {
         #[cfg(target_os = "linux")]

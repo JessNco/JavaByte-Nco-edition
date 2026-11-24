@@ -89,7 +89,7 @@
     "path" : "limits.maxWrittenBytes",
     "type" : "integer",
     "default" : 268435456,
-    "description" : "Total bytes the sample may write to the pretend disk."
+    "description" : "Total bytes the sample may write to the pretend disk. The files saved while it runs (classes it defines, data it sends, libraries it loads) are held to the same total."
   }, {
     "path" : "environment",
     "type" : "object",

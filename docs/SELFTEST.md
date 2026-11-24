@@ -136,6 +136,49 @@ would on a real Linux machine. No emulator errors.
 
 The full test suite gives the same results on Java 17, 21 and 25.
 
+## Step-through inside the isolation (November 2026)
+
+After the second security pass, all nine samples were stepped through again on Linux, this time
+only through `scripts/run-isolated.sh` (no network, read-only file system, no terminal), following
+the procedure in [AGENTS.md](../AGENTS.md): `inspect`, a first run with defaults, then the
+follow-up each report pointed to. The purpose was to check two things: that the tightened policy
+did not cost any observed behaviour, and that nothing left the emulator.
+
+| Sample | First run | Follow-up | Result of the follow-up |
+| --- | --- | --- | --- |
+| STRRAT | `exit` after install and relaunch | `environment.samplePath` set to the installed copy | `sleep-budget` in the C2 retry loop: four process launches, two simulated connections |
+| Adwind | `exit` after dropping and launching a jar | JavaByte on the dropped jar, then on its drop | Config decrypted, four classes defined in each stage |
+| Ratty | `completed` | none needed | Three process launches, one simulated connection |
+| SilentNet | `completed` | none | Relaunch with `-restarted` recorded |
+| Discord stealer | `exit` | none | Profile probes recorded; one gap (missing JSON library) |
+| Bombay | `no-entry-point` | `clinit-sweep` | Completed; nothing recorded without the Fabric loader |
+| funrat | `no-entry-point` | `clinit-sweep` | Completed; nothing recorded without the game classes |
+| IRAHook | `no-entry-point` | `clinit-sweep` | 172 decrypted strings |
+| RuneLite agent | `no-entry-point` | `clinit-sweep` | 33 decrypted strings, 57 cipher events |
+
+The four `no-entry-point` outcomes are the expected answer for jars with no `Main-Class`; the
+sections above use a configured entry point for those samples.
+
+One STRRAT run was driven live with `--events jsonl --progress --control stdin` and ended by
+sending `stop`: outcome `stopped`, exit code 0, report complete up to that point.
+
+What was checked afterwards:
+
+- Every command exited 0 and no run had outcome `internal-error`. No category dropped events.
+- Blocked calls and gaps across all runs were limited to AWT, Swing, preferences and logging
+  members, one missing third-party class and one phantom superclass (JNativeHook). None of the
+  rules added in the second pass fired on a real sample, so they cost no observed behaviour.
+- On the analysis machine: no new or changed file in the home directory or the temporary
+  directories outside the output folders, no process left running, no temporary archive left
+  behind.
+- `RealCorpusTest` passes for all nine samples on the same build.
+
+One scenario expectation was wrong and was corrected: the Adwind stub names its dropped jar from
+the clock, and the scenario had fixed the suffix that one clock value produced.
+
+This is a check on one Linux machine with the script's isolation. It does not cover the Windows
+sandbox helper or the desktop app's own launcher, which are exercised by their own tests.
+
 ## Defects found and fixed during the self-test
 
 | Found on | Problem | Fix |

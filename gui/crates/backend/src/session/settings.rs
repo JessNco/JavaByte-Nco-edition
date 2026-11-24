@@ -1,7 +1,7 @@
 //! The chosen sample's settings: reading, checking and changing them, presets, import and
 //! export, and the same analysis as a command line.
 
-use super::{Session, sample_override};
+use super::Session;
 use crate::config::{self, ConfigDoc, ConfigPath, Shell};
 use crate::runner::Launcher;
 use javabyte_gui_protocol::schema::Schema;
@@ -45,7 +45,7 @@ impl Session {
         self.launcher()?.policy()
     }
 
-    /// Every problem in some settings, as the tool sees them. The sample is the chosen one.
+    /// Every problem in some settings, as the tool sees them.
     pub fn check(&self, text: &str) -> Result<Validation, String> {
         self.checker()?.check(text)
     }
@@ -55,7 +55,6 @@ impl Session {
         Ok(Checker {
             launcher: self.launcher()?.clone(),
             folder: self.data_dir(),
-            sample: self.settings.as_ref().map(|(s, _)| s.clone()),
         })
     }
 
@@ -142,11 +141,10 @@ impl Session {
 pub struct Checker {
     launcher: Launcher,
     folder: PathBuf,
-    sample: Option<SampleChoice>,
 }
 
 impl Checker {
-    /// Checks settings with the tool. The sample is the chosen one.
+    /// Checks settings with the tool. Checking never looks at the sample itself.
     pub fn check(&self, text: &str) -> Result<Validation, String> {
         std::fs::create_dir_all(&self.folder).map_err(|e| t!("error-results-folder", detail = e.to_string()))?;
         // One file per check, so two checks at once cannot read each other's settings.
@@ -154,8 +152,7 @@ impl Checker {
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let file = self.folder.join(format!("check-{}-{n}.yaml", std::process::id()));
         std::fs::write(&file, text).map_err(|e| t!("error-results-folder", detail = e.to_string()))?;
-        let overrides: Vec<String> = self.sample.iter().map(sample_override).collect();
-        let result = self.launcher.validate(Some(&file), &overrides);
+        let result = self.launcher.validate(Some(&file), &[]);
         let _ = std::fs::remove_file(&file);
         result
     }
@@ -189,54 +186,61 @@ const HOST_FILE_KEYS: &[(&str, &str)] = &[("environment.files", "hostFile"), ("n
 /// the app did not write: a report folder, an imported file or a preset. Such a file could
 /// otherwise make a run start any program, switch the tool's protection off, or feed the
 /// sample this computer's files. The person can still set any of these by hand afterwards.
-/// A plugin whose program is removed stays on, and uses the Python the app bundles. Text that
-/// cannot be read as YAML is returned as it is: the tool refuses it too.
+/// A plugin whose program is removed stays on, and uses the Python the app bundles.
+///
+/// The settings are taken apart as a value, not edited as text. A file written to be read
+/// two ways (a key given twice, a tagged key, a line break only some YAML readers honour)
+/// cannot keep a setting in a place the editing would miss: what comes back, when anything
+/// was removed, is written afresh from the value that was checked. Text with nothing to remove
+/// is returned as it is, comments and all; a run is started from the same value in any case
+/// ([`Session::start`]). Text that cannot be read is returned as it is: no run starts from it.
 pub fn without_host_access(text: &str) -> String {
-    let mut doc = ConfigDoc::new(text);
+    let Some(mut value) = ConfigDoc::new(text).to_json() else { return text.to_string() };
+    if strip_host_access(&mut value) { config::render_document(&value) } else { text.to_string() }
+}
+
+/// Removes the settings [`without_host_access`] names from a settings value. True if any was there.
+fn strip_host_access(value: &mut serde_json::Value) -> bool {
+    use serde_json::Value;
+    let mut removed = false;
     for (plugin, setting) in HOST_PROGRAMS {
-        let plugin = ConfigPath::parse(plugin);
-        let program = plugin.clone().key(*setting);
-        if doc.get(&program).is_none() {
-            continue;
-        }
-        let _ = doc.remove(&program);
-        // Removing the last setting removes the plugin's entry, which would turn it off.
-        if doc.get(&plugin).is_none() {
-            let _ = doc.set(&plugin, &serde_json::Value::Object(serde_json::Map::new()));
+        // Only the program goes: an empty entry keeps the plugin on.
+        if let Some(Value::Object(settings)) = at_mut(value, plugin) {
+            removed |= settings.shift_remove(*setting).is_some();
         }
     }
     for key in HOST_ACCESS_KEYS {
-        let path = ConfigPath::parse(key);
-        if doc.get(&path).is_some() {
-            let _ = doc.remove(&path);
+        let (parent, name) = key.rsplit_once('.').unwrap_or(("", key));
+        if let Some(Value::Object(map)) = at_mut(value, parent) {
+            removed |= map.shift_remove(name).is_some();
         }
     }
     for (list, key) in HOST_FILE_KEYS {
-        let list = ConfigPath::parse(list);
-        let Some(serde_json::Value::Array(items)) = doc.get(&list) else { continue };
-        // From the end, so that removing an item does not move the ones still to visit.
-        for index in (0..items.len()).rev() {
-            if items[index].get(*key).is_none() {
-                continue;
-            }
+        if let Some(Value::Array(items)) = at_mut(value, list) {
+            let before = items.len();
             // An item is of no use without its content: a file to plant with no bytes, an
             // answer with no body. It goes whole, so the run does not quietly use an empty one.
-            if doc.remove_item(&list, index).is_err() {
-                let _ = doc.remove(&list.clone().index(index).key(*key));
-            }
+            items.retain(|item| item.get(*key).is_none());
+            removed |= items.len() != before;
         }
     }
-    doc.text().to_string()
+    removed
+}
+
+/// The value at a dotted path of keys (`""` is the value itself), if every step is there.
+fn at_mut<'a>(value: &'a mut serde_json::Value, path: &str) -> Option<&'a mut serde_json::Value> {
+    path.split('.').filter(|step| !step.is_empty()).try_fold(value, |current, step| current.get_mut(step))
 }
 
 /// The program on this computer that settings tell the tool to start ([`HOST_PROGRAMS`]), as
 /// the settings name it, or `None` if they name none. A value that is not text is given as the
-/// settings spell it, so the person still sees what is there. Settings that cannot be read
-/// give `None`: the session refuses to start a run with them at all.
+/// settings spell it, so the person still sees what is there. Read from the same value a run
+/// is started from, so what is asked about is what the tool will be told. Settings that
+/// cannot be read give `None`: the session refuses to start a run with them at all.
 pub fn host_program(text: &str) -> Option<String> {
-    let doc = ConfigDoc::new(text);
+    let mut value = ConfigDoc::new(text).to_json()?;
     HOST_PROGRAMS.iter().find_map(|(plugin, setting)| {
-        let value = doc.get(&ConfigPath::parse(plugin).key(*setting))?;
+        let value = at_mut(&mut value, plugin)?.get(*setting)?;
         Some(value.as_str().map_or_else(|| value.to_string(), str::to_string))
     })
 }
@@ -324,6 +328,46 @@ mod tests {
         assert_eq!(doc.get(&ConfigPath::parse("environment.files")), Some(serde_json::json!([{"path": "C:\\a.txt", "text": "kept"}])), "{cleaned}");
         assert_eq!(doc.get(&ConfigPath::parse("network.http")), Some(serde_json::json!([{"url": "other", "body": "ok"}])), "{cleaned}");
         assert!(doc.syntax_problems().is_empty(), "{cleaned}");
+    }
+
+    /// Files written to be read one way by the app and another by the tool. The tool reads YAML
+    /// 1.1, where U+2028, U+2029 and U+0085 end a line; it takes the last of a repeated key;
+    /// and it ignores a tag on a key. Whatever the app's reader makes of such a file, nothing
+    /// that reaches this computer may be left in what comes back.
+    #[test]
+    fn settings_written_to_be_read_two_ways_keep_nothing() {
+        let repeated = [
+            "policy:\n  onBlocked: phantom\npolicy:\n  allow: ['**']\n",
+            "policy:\n  allow: ['a']\n  allow: ['**']\n",
+            "classpath: [a.jar]\nclasspath: ['/etc']\n",
+            "plugins:\n  native-bridge:\n    python: /a\n    python: /tmp/evil\n",
+            "environment:\n  files:\n    - {path: a, text: b}\n  files:\n    - {path: k, hostFile: /etc/hostname}\n",
+        ];
+        for crafted in repeated {
+            let cleaned = without_host_access(crafted);
+            for gone in ["'**'", "allow", "classpath", "evil", "python", "hostFile"] {
+                assert!(!cleaned.contains(gone), "{gone} survived in:\n{cleaned}\nfrom:\n{crafted}");
+            }
+            assert_eq!(host_program(&cleaned), None, "{cleaned}");
+        }
+        // Where the two readers disagree about what the file says, the app's reading decides
+        // what is run: the run is started from the value, written out afresh.
+        for crafted in [
+            "limits:\n  maxSleeps: 3 # note\u{2028}policy: {allow: ['**']}\n",
+            "environment:\n  userName: bob\u{85}policy: {allow: ['**']}\n",
+            "!!str policy:\n  allow: ['**']\n",
+            "limits: {maxSleeps: 3}\n!!str plugins:\n  native-bridge:\n    python: /tmp/evil\n",
+        ] {
+            let Some(value) = ConfigDoc::new(without_host_access(crafted)).to_json() else { continue };
+            let run_from = config::render_document(&value);
+            // One line per key the app saw, and no line break of any kind inside a value.
+            assert!(!run_from.contains(['\u{2028}', '\u{2029}', '\u{85}']), "{run_from:?}");
+            let reread = ConfigDoc::new(run_from.clone()).to_json().expect("the app can read what it wrote");
+            assert_eq!(reread, value, "{run_from}");
+            assert_eq!(reread.pointer("/policy/allow"), None, "{run_from}");
+            assert_eq!(reread.pointer("/plugins/native-bridge/python"), None, "{run_from}");
+            assert_eq!(host_program(&run_from), None);
+        }
     }
 
     /// An imported settings file loses the program setting too.

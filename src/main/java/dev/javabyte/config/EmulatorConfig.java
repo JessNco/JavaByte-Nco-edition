@@ -106,7 +106,8 @@ public final class EmulatorConfig {
         @ConfigDoc("Events kept per category. Further events are counted but not stored.")
         public int maxEventsPerCategory = 20_000;
 
-        @ConfigDoc("Total bytes the sample may write to the pretend disk.")
+        @ConfigDoc("Total bytes the sample may write to the pretend disk. The files saved while it runs (classes it "
+                + "defines, data it sends, libraries it loads) are held to the same total.")
         public long maxWrittenBytes = 256L * 1024 * 1024;
     }
 

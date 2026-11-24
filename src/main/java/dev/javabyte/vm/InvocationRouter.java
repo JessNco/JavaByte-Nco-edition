@@ -628,6 +628,16 @@ public final class InvocationRouter {
                 && !LOADER_INERT_OWNERS.contains(owner);
     }
 
+    /**
+     * True if a JDK member with this descriptor must not be run for real whatever the policy
+     * says of it: it is declared to take a file or path ({@link #touchesFileSystem}) or a
+     * class loader ({@link #passesClassLoader}). For code outside the router that performs a
+     * JDK call itself, such as a stub passing a call through.
+     */
+    public static boolean refusesParameters(String owner, String desc) {
+        return touchesFileSystem(owner, desc) || passesClassLoader(owner, desc);
+    }
+
     private static boolean isMirror(Object value) {
         return value instanceof GuestClass || value instanceof Mirrors.MethodMirror
                 || value instanceof Mirrors.FieldMirror || value instanceof Mirrors.ConstructorMirror

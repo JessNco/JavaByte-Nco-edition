@@ -155,6 +155,10 @@ java/util/stream/**
 !java/util/concurrent/RecursiveTask
 !java/util/concurrent/RecursiveAction
 !java/util/concurrent/CountedCompleter
+# Structured concurrency starts a real thread for every fork (a virtual one, or one from a
+# factory the sample supplies).
+!java/util/concurrent/StructuredTaskScope
+!java/util/concurrent/StructuredTaskScope$*
 # JVM-wide defaults: changing them would alter the emulator itself for the rest of the run.
 !java/util/Locale#setDefault
 !java/util/TimeZone#setDefault

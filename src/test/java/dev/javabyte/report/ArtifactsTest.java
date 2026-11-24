@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -52,6 +53,51 @@ class ArtifactsTest {
         assertEquals(2, artifacts.saved().size());
         assertEquals(1, Files.size(temp.resolve(second)));
         assertTrue(temp.resolve(second).normalize().startsWith(temp.resolve("dropped")), second);
+    }
+
+    /**
+     * What is saved while the sample runs has a total bound, so a sample defining classes or
+     * sending data in a loop cannot fill the disk. Files it left on the virtual disk have
+     * their own bound and are saved regardless.
+     */
+    @Test
+    void savingDuringTheRunStopsAtTheBudget() throws Exception {
+        Artifacts artifacts = new Artifacts(temp, 10);
+        assertEquals("network/a.bin", artifacts.save("network", "a.bin", new byte[6]));
+        assertEquals(null, artifacts.save("network", "b.bin", new byte[6]));
+        assertEquals("network/c.bin", artifacts.save("network", "c.bin", new byte[4]));
+        assertEquals(null, artifacts.save("defined-classes", "D.class", new byte[1]));
+        assertEquals(2, artifacts.skipped());
+        assertEquals("dropped/big.bin", artifacts.saveDropped("big.bin", new byte[100]));
+        assertFalse(Files.exists(temp.resolve("network/b.bin")));
+        assertEquals(List.of("network/a.bin", "network/c.bin", "dropped/big.bin"), artifacts.saved());
+    }
+
+    /**
+     * A library is the sample's own file, read before anything else is known about it. A
+     * section table that names one symbol table tens of thousands of times must not buy
+     * minutes of work.
+     */
+    @Test
+    void aCraftedLibraryIsDescribedQuickly() {
+        byte[] elf = new byte[4 << 20];
+        java.nio.ByteBuffer header = java.nio.ByteBuffer.wrap(elf).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        header.put(0, new byte[] {0x7F, 'E', 'L', 'F', 2, 1});
+        header.putShort(18, (short) 62);
+        header.putLong(0x28, 0x100);          // the section table
+        header.putShort(0x3A, (short) 0);     // entries of size zero: every one is the first
+        header.putShort(0x3C, (short) 0xFFFF);
+        header.putInt(0x100 + 4, 11);         // a dynamic symbol table ...
+        header.putLong(0x100 + 24, 0x200);
+        header.putLong(0x100 + 32, elf.length - 0x200L); // ... as large as the file
+        for (int at = 0x200; at + 24 <= elf.length; at += 24) {
+            header.putInt(at, 1);
+            header.putShort(at + 6, (short) 1);
+        }
+        NativeLibraryInfo info = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
+                java.time.Duration.ofSeconds(20), () -> NativeLibraryInfo.parse(elf));
+        assertEquals("ELF", info.format);
+        assertTrue(info.exportCount <= 1_000_000, "symbols examined: " + info.exportCount);
     }
 
     /** Text from a sample is shown, never obeyed, by a terminal or a YAML reader. */

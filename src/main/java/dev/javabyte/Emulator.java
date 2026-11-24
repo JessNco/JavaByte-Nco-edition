@@ -91,7 +91,7 @@ public final class Emulator {
         EventLog events = null;
         try {
             events = new EventLog(config.limits.maxEventsPerCategory, trace);
-            VirtualMachine vm = new VirtualMachine(config, events, new Artifacts(outputDirectory));
+            VirtualMachine vm = new VirtualMachine(config, events, new Artifacts(outputDirectory, config.limits.maxWrittenBytes));
             control.attach(vm);
             BuiltinStubs.install(vm);
             for (EmulatorPlugin plugin : ServiceLoader.load(EmulatorPlugin.class)) {
@@ -213,7 +213,12 @@ public final class Emulator {
         vm.env.reportProcessInput();
         vm.indy.reportForeignCalls();
         if (config.output.dumpDroppedFiles) {
-            vm.env.files.guestFiles().forEach(node -> vm.artifacts.save("dropped", node.path, node.data));
+            vm.env.files.guestFiles().forEach(node -> vm.artifacts.saveDropped(node.path, node.data));
+        }
+        if (vm.artifacts.skipped() > 0) {
+            vm.events.add("gap", "artifacts-not-saved", "count", vm.artifacts.skipped(),
+                    "detail", "limits.maxWrittenBytes was reached for files saved during the run (defined classes, "
+                            + "network payloads, process input, libraries); the events still carry their hashes");
         }
         for (String failure : vm.classes.unparseable()) {
             vm.events.add("gap", "unparseable-class", "detail", failure);

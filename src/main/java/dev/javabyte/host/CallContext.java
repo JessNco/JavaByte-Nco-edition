@@ -33,8 +33,19 @@ public final class CallContext {
      * Performs the real JDK call. Used by stubs that only observe a call (for example to log a
      * cipher key) or that handle some receivers themselves and pass the rest through.
      * The stub takes responsibility for the call being safe: policy is not consulted again.
+     *
+     * <p>One check is repeated, because a stub registered for every overload of a name cannot
+     * be expected to know them all: an overload declared to take a file, a path or a class
+     * loader is refused here as the router refuses it (see
+     * {@link dev.javabyte.vm.InvocationRouter#refusesParameters}). Such an overload acts on
+     * the real disk, or asks the loader for classes from inside JDK code, whatever else the
+     * stub checked.
      */
     public Object proceed() {
+        if (dev.javabyte.vm.InvocationRouter.refusesParameters(owner, desc)) {
+            Object neutral = vm.router.blocked(owner, name, desc, "<init>".equals(name) ? "constructor" : "method");
+            return "<init>".equals(name) ? new dev.javabyte.model.PhantomObject(owner) : neutral;
+        }
         return "<init>".equals(name)
                 ? vm.host.construct(owner, desc, args)
                 : vm.host.invoke(owner, name, desc, receiver, args, special);

@@ -74,7 +74,7 @@ class EscapeTest {
             assertFalse(report.hasOutcome("internal-error"), diagnostics);
             assertTrue(report.hasOutcome("exit"), "the fixture should run to its final System.exit: " + diagnostics);
             assertFalse(Files.exists(canary), "a guest write reached the real disk");
-            assertEquals(2, Fixtures.events(report, "policy", "blocked").stream()
+            assertEquals(3, Fixtures.events(report, "policy", "blocked").stream()
                     .filter(event -> "machine-key-store".equals(event.data().get("kind"))).count(),
                     "the machine's key stores and providers should be refused and reported");
             assertFalse(everything.contains(token), "the guest read a real file");

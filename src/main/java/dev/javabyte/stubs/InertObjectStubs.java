@@ -56,6 +56,15 @@ final class InertObjectStubs {
         installUrls(vm, stubs);
 
         stubs.on("java/net/InetAddress", "getCanonicalHostName", ctx -> canonicalHostName(vm, (InetAddress) ctx.receiver));
+        // getHostName() looks an address up when it carries no name. Addresses the stubs hand
+        // out all carry one, but the JDK makes nameless ones itself (the wildcard address of
+        // new InetSocketAddress(port)), so the name is read without a lookup here too.
+        stubs.on("java/net/InetAddress", "getHostName", ctx -> hostName((InetAddress) ctx.receiver));
+        stubs.on("java/net/InetSocketAddress", "getHostName", ctx -> {
+            java.net.InetSocketAddress socketAddress = (java.net.InetSocketAddress) ctx.receiver;
+            // An unresolved address holds only the name it was given; getHostString never resolves.
+            return socketAddress.getAddress() == null ? socketAddress.getHostString() : hostName(socketAddress.getAddress());
+        });
 
         // A stream's own filter is consulted before the JVM-wide one, and its ALLOWED is final,
         // so a sample's filter could switch the deserialization guard off for its stream.
@@ -86,6 +95,9 @@ final class InertObjectStubs {
             }
         }
         stubs.on("javax/net/ssl/SSLContext", "getInstance", ctx -> engine(vm, ctx));
+        stubs.on("javax/crypto/KEM", "getInstance", ctx -> engine(vm, ctx));
+        // A builder opens its key store later, inside the JDK, where the stub above is not asked.
+        stubs.on("java/security/KeyStore$Builder", "newInstance", ctx -> engine(vm, ctx));
     }
 
     // ------------------------------------------------------------------ cryptography backed by the machine
@@ -114,19 +126,25 @@ final class InertObjectStubs {
      * without it refuses, and reported.
      */
     private static Object engine(VirtualMachine vm, CallContext ctx) throws Exception {
-        boolean keyStore = ctx.owner.equals("java/security/KeyStore");
+        boolean keyStore = ctx.owner.startsWith("java/security/KeyStore");
         String algorithm = ctx.argCount() > 0 && ctx.arg(0) instanceof String text ? text : null;
         Object provider = ctx.argCount() > 1 ? ctx.arg(1) : null;
         String providerName = provider instanceof String text ? text : provider instanceof Provider given ? given.getName() : null;
         if ((keyStore && machineKeyStore(algorithm)) || machineProvider(providerName)) {
             String what = machineProvider(providerName) ? "provider " + providerName : "key store " + algorithm;
-            vm.events.addOnce("machine-crypto:" + what, "policy", "blocked", "kind", "machine-key-store",
-                    "member", ctx.owner + ".getInstance: " + what + " belongs to the analysis machine");
+            vm.events.addOnce("machine-crypto:" + ctx.owner + ctx.name + what, "policy", "blocked", "kind", "machine-key-store",
+                    "member", ctx.owner + '.' + ctx.name + ": " + what + " belongs to the analysis machine");
             if (provider instanceof String) {
                 throw new java.security.NoSuchProviderException("no such provider: " + providerName);
             }
             throw keyStore ? new java.security.KeyStoreException(algorithm + " not found")
                     : new java.security.NoSuchAlgorithmException(algorithm + " not available");
+        }
+        if (ctx.desc.contains("Ljava/io/File;")) {
+            // KeyStore.Builder.newInstance(type, provider, file, protection) reads that file
+            // later. A stub runs before the router's own check for file parameters, so the
+            // check is repeated here.
+            return vm.router.blocked(ctx.owner, ctx.name, ctx.desc, "method");
         }
         return ctx.proceed();
     }
@@ -182,13 +200,18 @@ final class InertObjectStubs {
      * text, as it does here.
      */
     private static String canonicalHostName(VirtualMachine vm, InetAddress address) {
-        String text = address.toString();
-        String knownName = text.substring(0, Math.max(0, text.indexOf('/')));
         boolean offline = "offline".equals(vm.config.network.mode);
-        String result = offline || knownName.isEmpty() ? address.getHostAddress() : knownName;
+        String result = offline ? address.getHostAddress() : hostName(address);
         vm.events.addOnce("dns-reverse:" + address.getHostAddress(), "net", "dns-reverse",
                 "address", address.getHostAddress(), "result", result);
         return result;
+    }
+
+    /** The name an address carries, or its text if it carries none. Never a lookup: read from {@code toString()}. */
+    private static String hostName(InetAddress address) {
+        String text = address.toString();
+        int slash = text.indexOf('/');
+        return slash > 0 ? text.substring(0, slash) : address.getHostAddress();
     }
 
     // ------------------------------------------------------------------ security providers

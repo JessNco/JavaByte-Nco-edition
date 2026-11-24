@@ -19,21 +19,61 @@ public final class Artifacts {
 
     private final Path root;
     private final List<String> saved = new ArrayList<>();
+    /** Bytes that {@link #save} may still write; see the two-argument constructor. */
+    private long budget;
+    private int skipped;
 
     /** @param root output directory, or null to keep nothing (used by tests) */
     public Artifacts(Path root) {
-        this.root = root;
+        this(root, Long.MAX_VALUE);
     }
 
     /**
-     * @param group subdirectory, e.g. {@code dropped}
+     * @param root   output directory, or null to keep nothing
+     * @param budget the most bytes {@link #save} writes in all. Evidence is saved the moment
+     *               the sample produces it (each class it defines, each request body it
+     *               sends), so without a bound a sample in a loop could fill the analysis
+     *               machine's disk within its time limit.
+     */
+    public Artifacts(Path root, long budget) {
+        this.root = root;
+        this.budget = budget;
+    }
+
+    /**
+     * Saves evidence produced during the run, within the budget.
+     *
+     * @param group subdirectory, e.g. {@code defined-classes}
      * @param name  name suggested by the sample; may contain any characters
-     * @return the path written, relative to the output directory, or null if nothing was written
+     * @return the path written, relative to the output directory, or null if nothing was
+     *         written (no output directory, or the budget is used up; see {@link #skipped})
      */
     public String save(String group, String name, byte[] data) {
         if (root == null) {
             return null;
         }
+        if (data.length > budget) {
+            skipped++;
+            return null;
+        }
+        budget -= data.length;
+        return write(group, name, data);
+    }
+
+    /**
+     * Saves a file the sample left on the virtual disk. These are not counted against the
+     * budget: the virtual disk has its own bound ({@code limits.maxWrittenBytes}).
+     */
+    public String saveDropped(String name, byte[] data) {
+        return root == null ? null : write("dropped", name, data);
+    }
+
+    /** How many times {@link #save} wrote nothing because the budget was used up. */
+    public int skipped() {
+        return skipped;
+    }
+
+    private String write(String group, String name, byte[] data) {
         Path target = root.resolve(group).resolve(sanitise(name)).normalize();
         if (!target.startsWith(root.resolve(group))) {
             // Belt and braces: sanitise() already removes traversal sequences.

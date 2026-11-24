@@ -74,7 +74,7 @@ After each entry point returns, threads and timers it started are run.
 | `maxSleeps` | 40 | Sleeps one task may perform before it is stopped |
 | `maxTasks` | 512 | Threads, timers and executor jobs one run may queue |
 | `maxEventsPerCategory` | 20000 | Events stored per category; the rest are only counted |
-| `maxWrittenBytes` | 268435456 | Total bytes the sample may write to the virtual disk |
+| `maxWrittenBytes` | 268435456 | Total bytes the sample may write to the virtual disk. The files saved while it runs (classes it defines, data it sends, libraries it loads) are held to the same total; past it they are not saved and the run ends with a `gap.artifacts-not-saved` event |
 
 `maxSleeps` is what ends beacon and retry loops. Sleeping takes no real time: the virtual clock
 jumps forward. Every timed wait (`wait(ms)`, `join(ms)`, `parkNanos`, `Future.get(timeout)`,

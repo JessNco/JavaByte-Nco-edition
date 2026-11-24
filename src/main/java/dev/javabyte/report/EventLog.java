@@ -103,7 +103,7 @@ public final class EventLog {
             return;
         }
         try {
-            trace.write(line);
+            trace.write(Text.visible(line));
             trace.write('\n');
         } catch (IOException e) {
             throw new UncheckedIOException(e);

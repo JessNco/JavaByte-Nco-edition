@@ -2,6 +2,7 @@ package dev.javabyte.stubs;
 
 import dev.javabyte.env.SimProvider;
 import dev.javabyte.env.SimURLStreamHandler;
+import dev.javabyte.host.CallContext;
 import dev.javabyte.host.StubRegistry;
 import dev.javabyte.vm.VirtualMachine;
 import java.net.InetAddress;
@@ -80,7 +81,54 @@ final class InertObjectStubs {
         });
         for (String owner : PROVIDER_OWNERS) {
             stubs.on(owner, "getProvider", ctx -> guestProvider(vm, copies, (Provider) ctx.proceed()));
+            if (!owner.equals("java/security/Provider$Service")) {
+                stubs.on(owner, "getInstance", ctx -> engine(vm, ctx));
+            }
         }
+        stubs.on("javax/net/ssl/SSLContext", "getInstance", ctx -> engine(vm, ctx));
+    }
+
+    // ------------------------------------------------------------------ cryptography backed by the machine
+
+    /**
+     * Security providers that are a door to the analysis machine rather than computation:
+     * the Windows certificate and key store, the macOS keychain, PKCS#11 tokens and smart
+     * cards, and LDAP. Through them a sample could list the user's certificates, sign with
+     * the user's private keys or create key containers in the user's profile.
+     */
+    private static boolean machineProvider(String name) {
+        String upper = name == null ? "" : name.toUpperCase(java.util.Locale.ROOT);
+        return upper.startsWith("SUNMSCAPI") || upper.startsWith("SUNPKCS11") || upper.equals("APPLE")
+                || upper.equals("SUNPCSC") || upper.equals("JDKLDAP");
+    }
+
+    /** Key store types that open a store of the machine or its user instead of reading a stream. */
+    private static boolean machineKeyStore(String type) {
+        String upper = type == null ? "" : type.toUpperCase(java.util.Locale.ROOT);
+        return upper.startsWith("WINDOWS-") || upper.startsWith("KEYCHAINSTORE") || upper.equals("PKCS11") || upper.equals("DKS");
+    }
+
+    /**
+     * {@code getInstance} of an engine class. Algorithms are pure computation and run for
+     * real; a provider or key store type that reaches the machine is refused the way a JVM
+     * without it refuses, and reported.
+     */
+    private static Object engine(VirtualMachine vm, CallContext ctx) throws Exception {
+        boolean keyStore = ctx.owner.equals("java/security/KeyStore");
+        String algorithm = ctx.argCount() > 0 && ctx.arg(0) instanceof String text ? text : null;
+        Object provider = ctx.argCount() > 1 ? ctx.arg(1) : null;
+        String providerName = provider instanceof String text ? text : provider instanceof Provider given ? given.getName() : null;
+        if ((keyStore && machineKeyStore(algorithm)) || machineProvider(providerName)) {
+            String what = machineProvider(providerName) ? "provider " + providerName : "key store " + algorithm;
+            vm.events.addOnce("machine-crypto:" + what, "policy", "blocked", "kind", "machine-key-store",
+                    "member", ctx.owner + ".getInstance: " + what + " belongs to the analysis machine");
+            if (provider instanceof String) {
+                throw new java.security.NoSuchProviderException("no such provider: " + providerName);
+            }
+            throw keyStore ? new java.security.KeyStoreException(algorithm + " not found")
+                    : new java.security.NoSuchAlgorithmException(algorithm + " not available");
+        }
+        return ctx.proceed();
     }
 
     // ------------------------------------------------------------------ URLs

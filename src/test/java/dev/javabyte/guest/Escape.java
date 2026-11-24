@@ -157,6 +157,9 @@ public final class Escape {
             }
             new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray())).readObject();
         });
+        // Stores and providers that belong to the machine: the user's certificates and keys.
+        attempt("Windows key store", () -> java.security.KeyStore.getInstance("Windows-MY").load(null, null));
+        attempt("key pair in a machine provider", () -> java.security.KeyPairGenerator.getInstance("RSA", "SunMSCAPI"));
         attempt("URL in HashSet", () -> new java.util.HashSet<Object>().add(new URL("http://javabyte-set.invalid/")));
         attempt("URL in List.contains", () -> List.of(new URL("http://javabyte-list.invalid/"))
                 .contains(new URL("http://javabyte-other.invalid/")));

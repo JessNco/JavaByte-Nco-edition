@@ -41,8 +41,17 @@ public final class Artifacts {
         try {
             Files.createDirectories(target.getParent());
             Files.write(target, data);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        } catch (IOException | RuntimeException clash) {
+            // The sample chooses the names, and can choose ones that cannot coexist: a file
+            // where another name needs a directory, or a name this file system refuses. One
+            // such name must not cost the files saved after it, so it gets a neutral name.
+            target = root.resolve(group).resolve("unnamed-" + saved.size());
+            try {
+                Files.createDirectories(target.getParent());
+                Files.write(target, data);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
         // Always '/', whatever the system: reports are read on other systems too, and the
         // report format documents paths this way.
@@ -63,9 +72,44 @@ public final class Artifacts {
                 safe.append('/');
             }
             // Very long obfuscated names can exceed file-system limits.
-            safe.append(cleaned.length() > 120 ? cleaned.substring(0, 120) : cleaned);
+            safe.append(inert(cleaned.length() > 120 ? cleaned.substring(0, 120) : cleaned));
         }
         return safe.length() == 0 ? "unnamed" : safe.toString();
+    }
+
+    /** Windows device names: a file called {@code CON} or {@code COM1.txt} is the device, not a file. */
+    private static final java.util.regex.Pattern DEVICE_NAME = java.util.regex.Pattern.compile(
+            "(?i)(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9]|LPT[0-9])(\\..*)?");
+
+    /**
+     * Names and extensions the Windows shell reads by itself when a folder is merely opened
+     * or listed, to find an icon or folder settings. Such a file can name an icon on a remote
+     * share, which makes Explorer contact that server with the user's credentials.
+     */
+    private static final java.util.Set<String> SHELL_READ_NAMES = java.util.Set.of("desktop.ini", "autorun.inf", "thumbs.db");
+    private static final java.util.Set<String> SHELL_READ_EXTENSIONS = java.util.Set.of("lnk", "url", "scf", "pif",
+            "library-ms", "searchconnector-ms", "search-ms", "website", "theme", "themepack", "contact");
+
+    /**
+     * Makes one path segment a plain file name on every system. A device name gets a leading
+     * underscore; a trailing dot or space, which Windows silently drops, becomes an
+     * underscore; and a name the Windows shell would act on gets {@code .saved} appended, so
+     * that browsing the output folder never makes the shell read a file the sample wrote.
+     */
+    private static String inert(String segment) {
+        String name = segment;
+        if (name.endsWith(".") || name.endsWith(" ")) {
+            name = name.substring(0, name.length() - 1) + '_';
+        }
+        if (DEVICE_NAME.matcher(name).matches()) {
+            name = '_' + name;
+        }
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        int dot = lower.lastIndexOf('.');
+        if (SHELL_READ_NAMES.contains(lower) || (dot >= 0 && SHELL_READ_EXTENSIONS.contains(lower.substring(dot + 1)))) {
+            name += ".saved";
+        }
+        return name;
     }
 
     public List<String> saved() {

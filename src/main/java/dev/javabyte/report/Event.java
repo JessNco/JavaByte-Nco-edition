@@ -13,7 +13,10 @@ import java.util.Map;
  */
 public record Event(long seq, String category, String action, String caller, Map<String, Object> data) {
 
-    /** Compact single-line form for the human-readable trace. */
+    /**
+     * Compact single-line form for the human-readable trace. Values come from the sample, so
+     * line breaks and control characters in them are shown as escapes: one event, one line.
+     */
     public String toLine() {
         StringBuilder line = new StringBuilder(96);
         line.append('[').append(category).append('.').append(action).append("] ");
@@ -21,6 +24,6 @@ public record Event(long seq, String category, String action, String caller, Map
         if (caller != null) {
             line.append("@ ").append(caller);
         }
-        return line.toString().stripTrailing();
+        return Text.visible(line.toString().stripTrailing());
     }
 }

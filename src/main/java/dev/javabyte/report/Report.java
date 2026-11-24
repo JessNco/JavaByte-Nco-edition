@@ -186,17 +186,17 @@ public final class Report {
     public String toText() {
         StringBuilder text = new StringBuilder();
         text.append("JavaByte ").append(TOOL_VERSION).append(" report\n");
-        text.append("  sample   ").append(samplePath).append("  (").append(sampleSize).append(" bytes)\n");
+        text.append("  sample   ").append(Text.visible(String.valueOf(samplePath))).append("  (").append(sampleSize).append(" bytes)\n");
         text.append("  sha256   ").append(sampleSha256).append('\n');
         text.append("  classes  ").append(vm.classes.classNames().size())
-                .append(mainClass == null ? "" : "   Main-Class: " + mainClass).append('\n');
+                .append(mainClass == null ? "" : "   Main-Class: " + Text.visible(mainClass)).append('\n');
         text.append("  executed ").append(vm.instructionCount()).append(" instructions\n\n");
 
         text.append("Outcome\n");
         for (Run run : runs) {
-            text.append("  ").append(run.entry()).append(": ").append(run.outcome());
+            text.append("  ").append(Text.visible(run.entry())).append(": ").append(run.outcome());
             if (run.detail() != null) {
-                text.append(" - ").append(run.detail().lines().findFirst().orElse(""));
+                text.append(" - ").append(Text.visible(run.detail().lines().findFirst().orElse("")));
             }
             text.append('\n');
         }
@@ -221,7 +221,8 @@ public final class Report {
             if (!event.category().equals(category) || (action != null && !event.action().equals(action))) {
                 continue;
             }
-            lines.add(field == null ? event.action() + " " + event.data() : String.valueOf(event.data().get(field)));
+            // Sample-chosen text: kept to one line each, with nothing a terminal would act on.
+            lines.add(Text.visible(field == null ? event.action() + " " + event.data() : String.valueOf(event.data().get(field))));
         }
         if (lines.isEmpty()) {
             return;

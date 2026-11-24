@@ -99,8 +99,33 @@ final class FileStubs {
 
         // Archive classes need a real file. A private temporary copy of the virtual file's bytes
         // is used; it holds only data the emulator already has in memory.
-        stubs.on("java/util/zip/ZipFile", "<init>", ctx -> new java.util.zip.ZipFile(materialise(fs, path(ctx.arg(0)))));
-        stubs.on("java/util/jar/JarFile", "<init>", ctx -> new java.util.jar.JarFile(materialise(fs, path(ctx.arg(0)))));
+        // The copy's path is the analysis machine's, so the guest is told the path it asked for.
+        java.util.Map<java.util.zip.ZipFile, String> archiveNames =
+                java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+        stubs.on("java/util/zip/ZipFile", "<init>", ctx -> {
+            File copy = materialise(fs, path(ctx.arg(0)));
+            try {
+                java.util.zip.ZipFile archive = new java.util.zip.ZipFile(copy);
+                archiveNames.put(archive, path(ctx.arg(0)));
+                return archive;
+            } finally {
+                discard(copy);
+            }
+        });
+        stubs.on("java/util/jar/JarFile", "<init>", ctx -> {
+            File copy = materialise(fs, path(ctx.arg(0)));
+            try {
+                java.util.jar.JarFile archive = new java.util.jar.JarFile(copy);
+                archiveNames.put(archive, path(ctx.arg(0)));
+                return archive;
+            } finally {
+                discard(copy);
+            }
+        });
+        stubs.on("java/util/zip/ZipFile", "getName", ctx -> {
+            String name = ctx.receiver instanceof java.util.zip.ZipFile archive ? archiveNames.get(archive) : null;
+            return name != null ? name : "archive.zip";
+        });
 
         stubs.on("java/nio/file/Paths", "get", ctx -> newPath(fs, ctx.args));
         stubs.on("java/nio/file/Path", "of", ctx -> newPath(fs, ctx.args));
@@ -229,6 +254,20 @@ final class FileStubs {
         copy.deleteOnExit();
         java.nio.file.Files.write(copy.toPath(), data);
         return copy;
+    }
+
+    /**
+     * Removes a materialised archive as soon as it has been opened. Where the system allows an
+     * open file to be deleted (everywhere but Windows) the sample's bytes then no longer sit
+     * in the temporary folder under any name; on Windows the delete fails and the file goes
+     * when the tool exits.
+     */
+    private static void discard(File copy) {
+        try {
+            java.nio.file.Files.deleteIfExists(copy.toPath());
+        } catch (IOException | RuntimeException stillOpen) {
+            // deleteOnExit() is already registered.
+        }
     }
 
     // ------------------------------------------------------------------ java.nio.file.Files

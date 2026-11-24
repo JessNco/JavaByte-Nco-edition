@@ -135,42 +135,45 @@ final class Inspection {
 
     String toText() {
         StringBuilder text = new StringBuilder();
-        text.append("Sample            ").append(path).append(" (").append(size).append(" bytes)\n");
+        text.append("Sample            ").append(visible(String.valueOf(path))).append(" (").append(size).append(" bytes)\n");
         text.append("Classes           ").append(classCount).append('\n');
-        text.append("Main-Class        ").append(mainClass == null ? "(none in manifest)" : mainClass).append('\n');
+        text.append("Main-Class        ").append(mainClass == null ? "(none in manifest)" : visible(mainClass)).append('\n');
         if (agentClass != null) {
-            text.append("Premain-Class     ").append(agentClass).append('\n');
+            text.append("Premain-Class     ").append(visible(agentClass)).append('\n');
         }
-        text.append("Classes with main ").append(mainCandidates.isEmpty() ? "(none)" : String.join(", ", mainCandidates)).append('\n');
-        text.append("Custom loaders    ").append(loaderClasses.isEmpty() ? "(none)" : String.join("; ", loaderClasses)).append('\n');
+        text.append("Classes with main ").append(mainCandidates.isEmpty() ? "(none)" : visible(String.join(", ", mainCandidates))).append('\n');
+        text.append("Custom loaders    ").append(loaderClasses.isEmpty() ? "(none)" : visible(String.join("; ", loaderClasses))).append('\n');
         text.append("Native methods    ").append(nativeMethods.size())
                 .append(nativeMethods.isEmpty() ? "" : "  (cannot be emulated; calls are reported)").append('\n');
-        nativeLibraries.forEach((name, info) -> text.append("  library ").append(name).append(": ")
+        nativeLibraries.forEach((name, info) -> text.append("  library ").append(visible(name)).append(": ")
                 .append(info.format).append(' ').append(info.architecture).append(", ").append(info.binding()).append('\n'));
         text.append("Obfuscated calls  ").append(invokeDynamicBootstraps).append(" invokedynamic sites using the sample's own bootstrap\n");
         if (!largestResources.isEmpty()) {
             text.append("Largest resources\n");
-            largestResources.forEach((name, length) -> text.append("  ").append(length).append("  ").append(name).append('\n'));
+            largestResources.forEach((name, length) -> text.append("  ").append(length).append("  ").append(visible(name)).append('\n'));
         }
         if (!unparseable.isEmpty()) {
             text.append("Unparseable classes ").append(unparseable.size()).append('\n');
         }
-        return text.toString();
+        // Every name above comes from the sample; the layout's own line breaks are kept.
+        return dev.javabyte.report.Text.visibleLines(text.toString());
     }
 
     /** A minimal config with the choices a first run most often needs to revisit, as comments. */
     String starterConfig() {
         String entryClass = mainClass != null ? mainClass : mainCandidates.isEmpty() ? null : mainCandidates.get(0);
         StringBuilder yaml = new StringBuilder();
-        yaml.append("# JavaByte config for ").append(path.getFileName()).append('\n');
+        yaml.append("# JavaByte config for ").append(visible(String.valueOf(path.getFileName()))).append('\n');
         yaml.append("# Run with: javabyte run -c <this file>. Every option: javabyte defaults\n");
-        yaml.append("sample: ").append(path).append("\n\n");
+        // Quoted: the path and the class name are the sample's, and unquoted a line break in
+        // either would start config keys of the sample's choosing (policy.allow, for one).
+        yaml.append("sample: ").append(dev.javabyte.report.Text.yamlString(path.toString())).append("\n\n");
         yaml.append("entryPoints:\n");
         if (entryClass == null) {
             yaml.append("  # No main method was found. A static-initialiser sweep still decrypts most strings.\n");
             yaml.append("  - type: clinit-sweep\n");
         } else {
-            yaml.append("  - type: main\n    class: ").append(entryClass).append("\n    args: []\n");
+            yaml.append("  - type: main\n    class: ").append(dev.javabyte.report.Text.yamlString(entryClass)).append("\n    args: []\n");
             yaml.append("  # Uncomment to also run every static initialiser (harvests decrypted strings):\n");
             yaml.append("  # - type: clinit-sweep\n");
         }
@@ -185,5 +188,10 @@ final class Inspection {
         yaml.append("#   - method: 'com/example/Checks.isSandbox()Z'\n#     action: return\n#     value: false\n\n");
         yaml.append("output:\n  directory: javabyte-out\n");
         return yaml.toString();
+    }
+
+    /** Sample-chosen text on one line, with control characters shown as escapes. */
+    private static String visible(String text) {
+        return dev.javabyte.report.Text.visible(text);
     }
 }

@@ -156,12 +156,30 @@ const CONFIG_LIMIT: u64 = 1 << 20;
 /// this only stops a file that is not a report at all from filling the memory.
 const REPORT_LIMIT: u64 = 2 << 30;
 
+/// Reads a text file from a folder that may have come from someone else: only a regular file
+/// that is not a link, and no more than `limit` bytes. A link could lead to a private file of
+/// the person's own, whose content would then be shown and reused; a device such as
+/// `/dev/zero` would never end.
+fn read_plain_text(path: &Path, limit: u64) -> std::io::Result<String> {
+    use std::io::Read as _;
+    let found = std::fs::symlink_metadata(path)?;
+    if !found.file_type().is_file() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, t!("error-not-plain-file", path = path.display().to_string())));
+    }
+    let mut text = String::new();
+    std::fs::File::open(path)?.take(limit.saturating_add(1)).read_to_string(&mut text)?;
+    if text.len() as u64 > limit {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, t!("error-file-too-large", path = path.display().to_string())));
+    }
+    Ok(text)
+}
+
 /// Reads a run folder's report, its events and its settings file.
 pub(super) fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport, String> {
     let (report, text) = read_report(output)?;
     let events = ReportEventsSource::read(text.as_bytes())?;
     let mut view = views::report_view(&report, sample_name, &output.display().to_string());
-    view.config_text = crate::artifacts::read_plain_text(&output.join("config.yaml"), CONFIG_LIMIT).ok();
+    view.config_text = read_plain_text(&output.join("config.yaml"), CONFIG_LIMIT).ok();
     Ok(OpenReport {
         view,
         events: EventStore::new(Box::new(events)),
@@ -174,7 +192,7 @@ pub(super) fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport
 
 /// A run folder's report, and its text.
 pub(super) fn read_report(folder: &Path) -> Result<(Report, String), String> {
-    let text = crate::artifacts::read_plain_text(&folder.join("report.json"), REPORT_LIMIT).map_err(|e| t!("error-report-unreadable", detail = e.to_string()))?;
+    let text = read_plain_text(&folder.join("report.json"), REPORT_LIMIT).map_err(|e| t!("error-report-unreadable", detail = e.to_string()))?;
     let report: Report = serde_json::from_str(&text).map_err(|e| t!("error-not-a-report", detail = e.to_string()))?;
     Ok((report, text))
 }

@@ -169,24 +169,6 @@ pub fn is_plain_file_or_absent(path: &Path) -> bool {
     }
 }
 
-/// Reads a text file from a folder that may have come from someone else: only a regular file
-/// that is not a link, and no more than `limit` bytes. A link could lead to a private file of
-/// the person's own, whose content would then be shown and reused; a device such as
-/// `/dev/zero` would never end.
-pub fn read_plain_text(path: &Path, limit: u64) -> std::io::Result<String> {
-    use std::io::Read;
-    let found = std::fs::symlink_metadata(path)?;
-    if !found.file_type().is_file() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, t!("error-not-plain-file", path = path.display().to_string())));
-    }
-    let mut text = String::new();
-    std::fs::File::open(path)?.take(limit.saturating_add(1)).read_to_string(&mut text)?;
-    if text.len() as u64 > limit {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, t!("error-file-too-large", path = path.display().to_string())));
-    }
-    Ok(text)
-}
-
 /// A name that is safe inside a zip: no folders, no control characters, not empty.
 fn safe_zip_name(name: &str) -> String {
     let cleaned: String = name.chars().map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '_' } else { c }).take(120).collect();

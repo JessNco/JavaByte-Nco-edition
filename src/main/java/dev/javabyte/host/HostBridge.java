@@ -221,6 +221,29 @@ public final class HostBridge {
     }
 
     /**
+     * For a call on a simulated object: the internal name of the JDK class whose code would
+     * run and which the simulation had no say over, or null if the call stays within the
+     * simulation (or there is no such method, which {@link #invoke} reports).
+     *
+     * <p>A simulation overrides every public instance method it can, and the public final ones
+     * it cannot (such as {@code FileChannel.tryLock()}) only call back into those overrides.
+     * What is left is JDK code proper: a static method found through the receiver's class
+     * ({@code File.createTempFile} on a simulated file), and protected or private members of
+     * the JDK superclass ({@code ClassLoader.defineClass}).
+     */
+    public String jdkDeclarer(String owner, String name, String desc, Object receiver, boolean special) {
+        Method method = resolve(owner, name, desc, receiver, special);
+        if (method == null || !isJdkClass(method.getDeclaringClass())) {
+            return null;
+        }
+        int modifiers = method.getModifiers();
+        if (Modifier.isPublic(modifiers) && !Modifier.isStatic(modifiers)) {
+            return null;
+        }
+        return Type.getInternalName(method.getDeclaringClass());
+    }
+
+    /**
      * Finds a method by JVM signature. An exact descriptor match is preferred; failing that the
      * parameters alone are matched, which covers covariant return types.
      */

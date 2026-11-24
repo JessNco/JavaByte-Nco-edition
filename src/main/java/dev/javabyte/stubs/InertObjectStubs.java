@@ -56,6 +56,14 @@ final class InertObjectStubs {
 
         stubs.on("java/net/InetAddress", "getCanonicalHostName", ctx -> canonicalHostName(vm, (InetAddress) ctx.receiver));
 
+        // A stream's own filter is consulted before the JVM-wide one, and its ALLOWED is final,
+        // so a sample's filter could switch the deserialization guard off for its stream.
+        // The filter is not installed; the guard stays the only one.
+        stubs.on("java/io/ObjectInputStream", "setObjectInputFilter", ctx -> {
+            vm.events.addOnce("serial-filter", "policy", "blocked", "kind", "deserialization-filter",
+                    "member", "java/io/ObjectInputStream.setObjectInputFilter: the sample's filter was not installed");
+            return null;
+        });
         // One copy per real provider, so identity comparisons in the guest behave as on a real JVM.
         Map<Provider, SimProvider> copies = new IdentityHashMap<>();
         stubs.on("java/security/Security", "getProvider", ctx -> guestProvider(vm, copies, (Provider) ctx.proceed()));

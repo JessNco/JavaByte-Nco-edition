@@ -67,8 +67,20 @@ public final class SerializationGuard {
         } catch (IllegalStateException alreadySet) {
             // The embedding application set its own filter first; that one stays in force.
         }
+        try {
+            // The JDK lets each stream be given a filter of its own, and consults that one
+            // before the JVM-wide filter: a stream filter that answers ALLOWED is final. With
+            // this factory every stream's filter is the guard, whatever a stream is given.
+            ObjectInputFilter.Config.setSerialFilterFactory((current, requested) -> GUARD);
+        } catch (IllegalStateException alreadyInUse) {
+            // A stream was created, or a factory set, before the first run in this JVM. The
+            // stub for ObjectInputStream.setObjectInputFilter still keeps guest filters out.
+        }
         installed = true;
     }
+
+    /** The one filter every stream gets; see {@link #install}. */
+    private static final ObjectInputFilter GUARD = SerializationGuard::check;
 
     private static ObjectInputFilter.Status check(ObjectInputFilter.FilterInfo info) {
         if (info.arrayLength() > MAX_ARRAY_LENGTH || info.depth() > MAX_DEPTH || info.references() > MAX_REFERENCES) {

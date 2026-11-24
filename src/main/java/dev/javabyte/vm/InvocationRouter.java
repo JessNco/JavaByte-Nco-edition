@@ -387,6 +387,14 @@ public final class InvocationRouter {
         // checked before class availability because a stand-in may imitate a class that the
         // analysis JDK no longer ships.
         if (HostBridge.isSimulated(receiver)) {
+            // "Safe by construction" covers the methods the simulation itself declares. One it
+            // merely inherits from the JDK class it extends (a protected or final method it
+            // could not override) is real JDK code, and is judged as a call on that class.
+            String inherited = vm.host.jdkDeclarer(owner, name, desc, receiver, special);
+            if (inherited != null && !(vm.policy.allows(inherited, name, desc) && !touchesFileSystem(inherited, desc)
+                    && !passesClassLoader(inherited, desc))) {
+                return blocked(inherited, name, desc, "method");
+            }
             traceHostCall(owner, name, desc, args);
             return vm.host.invoke(owner, name, desc, receiver, args, special);
         }

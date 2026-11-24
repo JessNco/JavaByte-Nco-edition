@@ -183,6 +183,46 @@ class TypeConfusionTest {
     }
 
     /**
+     * A simulated file is a real {@code File} subclass, so the static methods of {@code File}
+     * can be found through it. They are JDK code that the simulation never replaced, and
+     * the call site naming another class must not get them run.
+     */
+    @Test
+    void staticJdkMethodsAreNotReachedThroughASimulatedObject() throws Exception {
+        String prefix = "javabyte-confusion-" + System.nanoTime();
+        byte[] bytes = mainClass("ViaSim", OBJECT, main -> {
+            main.visitTypeInsn(NEW, "java/io/File");
+            main.visitInsn(DUP);
+            main.visitLdcInsn("anything");
+            main.visitMethodInsn(INVOKESPECIAL, "java/io/File", "<init>", "(Ljava/lang/String;)V", false);
+            main.visitLdcInsn(prefix);
+            main.visitLdcInsn(".tmp");
+            main.visitMethodInsn(INVOKEVIRTUAL, STRING, "createTempFile", "(Ljava/lang/String;Ljava/lang/String;)Ljava/io/File;", false);
+            main.visitInsn(POP);
+        });
+        Report report = run("ViaSim", Map.of("ViaSim.class", bytes));
+        try (java.util.stream.Stream<Path> files = java.nio.file.Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+            List<Path> created = files.filter(file -> file.getFileName().toString().startsWith(prefix)).toList();
+            for (Path file : created) {
+                java.nio.file.Files.deleteIfExists(file);
+            }
+            assertEquals(List.of(), created, "a real File.createTempFile ran");
+        }
+        assertEquals("method", Fixtures.only(report, "policy", "blocked").data().get("kind"));
+    }
+
+    /**
+     * A stream filter of the sample's own must not replace the deserialization guard: the JDK
+     * asks a stream's filter first and takes its "allowed" as final.
+     */
+    @Test
+    void aStreamFilterCannotSwitchTheDeserializationGuardOff() throws Exception {
+        Report report = Fixtures.run(Fixtures.config(Fixtures.jar(temp, Map.of(), dev.javabyte.guest.FilterBypass.class)));
+        assertEquals(List.of("rejected"), Fixtures.stdout(report), Fixtures.outcomes(report));
+        assertTrue(report.toJson().contains("deserialization-filter"), "the ignored filter should be reported");
+    }
+
+    /**
      * A class literal for a sample's own class is one of the emulator's objects. Its fields
      * are the emulator's state and must read as absent, whatever class the instruction names.
      */

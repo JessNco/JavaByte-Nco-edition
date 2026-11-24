@@ -64,16 +64,27 @@ permits them: the `.deb` installs such a profile for the app, and the namespace 
 the app's own process, so the profile applies. The child maps its own user and group to
 themselves, so Java sees the same user, home folder and file permissions as without isolation.
 
-The run also gets a mount namespace in which /run/user/<uid>, /run/dbus, /run/systemd,
-/run/nscd, /run/avahi-daemon, /run/cups and /tmp/.X11-unix are covered by empty read-only
-folders, because a network namespace alone does not hide sockets in the file system. The Docker
-and snapd sockets are covered by `/dev/null`, and the environment variables that point to these
-services (such as `DBUS_SESSION_BUS_ADDRESS` and `DISPLAY`) are removed. The rest of the file
-system is unchanged, so the sample, the runtime and the output folder are where they always
-are.
+The run also gets a mount namespace, because a network namespace alone does not hide sockets
+in the file system, and because a flaw in the emulator should not be able to write the
+person's files. (As first built, this covered a fixed list of service folders and left the
+file system writable. It is now as follows; the steps are in
+[DESIGN.md](../DESIGN.md#the-second-layer-an-isolated-process).)
 
-One limitation follows: a sample or output folder inside /run/user/<uid> (for example a GVFS
-mount of a network share) cannot be used with isolation on.
+- The whole file system is read-only, except the run's output folder and a private temporary
+  folder at /tmp that exists only for the run. Java's temporary files go there.
+- /run, /tmp and /dev/shm are covered by empty folders, so every socket there is gone, whether
+  or not its service is known. The sample, the settings file, the tool, the runtime, the
+  bridge's Python and the output folder are put back at their own paths when they lie inside
+  one, so a sample under /tmp works.
+- The environment variables that point to desktop services (such as
+  `DBUS_SESSION_BUS_ADDRESS` and `DISPLAY`) are removed, and the tool gets only a short list
+  of the rest.
+- Java has no capabilities in the namespace, so the run cannot undo any of this.
+- If any of it fails, the run does not start.
+
+Limitations: /tmp, /run or /dev/shm as a whole cannot be the output folder or the sample; a
+file that only the settings name (a library on `classpath`, say) is hidden if it lies in one
+of them; sockets elsewhere, for example under the home folder, can still be reached.
 
 At start the app checks once whether a namespace can be created. When it cannot (the
 AppImage on 24.04, or a system that turned namespaces off), starting a run asks first:

@@ -10,6 +10,13 @@
 # listener. With "expect-leaks" the result is inverted, for the control run against a build
 # with protections removed: it proves the harness can see a leak when there is one.
 #
+# This is about the window. Each analysis the app starts has an isolation of its own (no
+# network, a read-only file system, host service sockets hidden: crates/backend/src/isolation.rs),
+# which is tested where it is made, by `cargo test -p javabyte-gui-backend isolation` and
+# scripts/test-run-isolated.sh, with a stand-in for Java that tries to write to the home folder
+# and the shared /tmp. The app runs no analysis here, so that isolation never starts in this
+# test, and nothing here depends on /tmp being shared.
+#
 # A broken fake network fails the run instead of passing it: the listener must be ready within
 # five seconds and still running when the app has finished (check.py also checks that every
 # listener it depends on was opened).

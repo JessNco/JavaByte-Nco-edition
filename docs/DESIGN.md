@@ -277,6 +277,71 @@ What it does not guarantee:
 
 Treat JavaByte as strong containment for analysis, and still run it somewhere disposable.
 
+### The second layer: an isolated process
+
+Everything above depends on the emulator being right. `scripts/run-isolated.sh` and the desktop
+app (`gui/crates/backend/src/isolation.rs`) add a layer that does not: the Java process itself
+is confined by the kernel, so an escape of the kind an audit has found before (a path by which
+a sample made the emulator write a real file) ends at a refusal. The two implementations do the
+same things in the same order, one with `unshare` and `mount`, the other with system calls
+between `fork` and `exec` (so that Ubuntu 24.04's AppArmor profile for the app applies, and
+with nothing but async-signal-safe calls and memory prepared before the fork).
+
+1. New user, network and mount namespaces. The network namespace has only a loopback that is
+   down. Mount propagation is made private, so nothing done next reaches the real system.
+2. What the run is given by name is opened first, to be held on to: the sample, the config,
+   the jar, the Java runtime, the bridge's Python and the output folder.
+3. `/` and every mount below it are made read-only: `mount_setattr` with `AT_RECURSIVE` where
+   the kernel has it (5.12), otherwise one mount at a time over `/proc/self/mountinfo`, each
+   keeping its other settings (a namespace made by an ordinary user may not drop `nosuid` and
+   the like). A mount point the user cannot reach is skipped, as the run cannot reach it
+   either; any other failure stops the run.
+4. An empty `tmpfs` is mounted over each of `/run`, `/var/run`, `/tmp` and `/dev/shm`. This is
+   an allow-list, not a list of known services: whatever keeps a socket or shared memory
+   there is gone, known or not. The one over `/tmp` stays writable and is the run's private
+   temporary folder: `java.io.tmpdir` and `TMPDIR` name it, so `FileStubs.materialise` and the
+   native bridge's work folder land there, and it vanishes with the run.
+5. Each held path that lay inside a covered folder is mounted back at its own path (a bind
+   mount from the open file, as its name no longer leads to it), read-only because it is a
+   copy of a read-only mount. The output folder is mounted onto itself wherever it is, and
+   that one mount is made writable. The other covers are then made read-only as well.
+6. If the run was started in a folder inside a covered one, it is moved to an empty folder of
+   the same name in the new view. Left where it was, `..` would lead back into the original.
+7. Every capability is given up, and the bounding set emptied, so `exec` gives Java none, even
+   for root. Without `CAP_SYS_ADMIN` in the namespace that owns the mounts, nothing can be
+   unmounted or made writable. A namespace the sample makes for itself does not help it: the
+   mounts it inherits there are locked as they are.
+8. Java starts with a short list of environment variables.
+
+Any step that fails stops the run before Java starts. The shell script also reads the mount
+table back and refuses to go on if a reachable mount other than `/tmp` and the output folder
+is still writable.
+
+What this layer leaves open, on purpose or by nature:
+
+- Reading. Outside the covered folders the file system is readable as before: the config may
+  name files anywhere (`classpath`, `environment.files`), so there is no list of what a run
+  needs to read. With no network and nowhere to write, what is read has nowhere to go but the
+  report.
+- Sockets outside the covered folders. A read-only mount does not refuse `connect` on a Unix
+  socket, so one that a program keeps under the home folder is reachable.
+- Other processes' details in `/proc` (names and command lines) are visible: there is no
+  process namespace, because a fresh `/proc` cannot be mounted inside most containers. Their
+  files are not: the kernel refuses `/proc/<pid>/root` and `cwd` across user namespaces.
+- Files the config names under `/tmp`, `/run` or `/dev/shm` are hidden unless they are also
+  the sample, the config or the output folder.
+- CPU, memory and the size of the private temporary folder (half of memory, the `tmpfs`
+  default) are not limited beyond the emulator's own limits.
+
+`scripts/test-run-isolated.sh` and the tests in `isolation.rs` run a stand-in for Java that
+tries each of these: writing to the home folder, the shared `/tmp`, `/var/tmp` and next to the
+output folder; reaching a socket under `/tmp`; reading a variable from the environment; undoing
+the mounts. They are skipped where the system does not allow unprivileged namespaces.
+
+On Windows the sandbox add-on gives the same kind of layer with an AppContainer or Windows
+Sandbox ([gui/WINDOWS-SANDBOX.md](gui/WINDOWS-SANDBOX.md)); the program it starts gets the same
+short environment.
+
 ## Package map
 
 | Package | Contents |

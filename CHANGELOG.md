@@ -6,6 +6,24 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Security
+- An isolated run on Linux (the desktop app's default, and `scripts/run-isolated.sh`) now has a
+  read-only file system. It can write only to its output folder and to a private temporary
+  folder that replaces the shared `/tmp` for the run. Before, isolation removed the network and
+  hid a fixed list of service sockets, and left every file as writable as it is for the user,
+  so an escape from the emulator could still have written `~/.bashrc`.
+- `/run`, `/tmp` and `/dev/shm` are empty in an isolated run, instead of a fixed list of known
+  service folders being hidden: sockets of agents and services nobody listed are gone too. The
+  sample, the config, the tool, the Java runtime, the bridge's Python and the output folder
+  stay visible at their own paths, also under `/tmp`.
+- The isolated Java process has no capabilities in its namespace, so it cannot undo the mounts.
+  `scripts/run-isolated.sh` used to leave it with all of them.
+- If the isolation cannot be set up completely, the run does not start.
+- The desktop app starts the tool, and the Windows sandbox add-on starts the program in the
+  AppContainer, with a short list of environment variables. `scripts/run-isolated.sh` does the
+  same. Tokens and keys in the analyst's environment are no longer passed on.
+- `scripts/run-isolated.sh` now needs `setpriv` (util-linux) as well as `unshare`, and treats
+  `-o`/`--out` as the folder the run may write to (`./javabyte-out` for `run` without it). An
+  output folder set only in the config is not writable in an isolated run: pass it with `-o`.
 - JDK code can no longer reach the network on the sample's behalf. URLs in collections
   (`HashMap`, `HashSet`, `List.contains`) and `URL.sameFile` no longer cause real DNS lookups.
   `InetAddress.getCanonicalHostName` is simulated (event `net.dns-reverse`).

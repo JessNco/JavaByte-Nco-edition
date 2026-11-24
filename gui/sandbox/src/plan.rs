@@ -245,6 +245,65 @@ fn xml(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
+/// The environment variables a program in an AppContainer is started with: where Windows and
+/// the person's folders are, what the processor is, and Java's own options. Compared without
+/// regard to case, as Windows does. The desktop app passes the same short list to this helper;
+/// the helper does not rely on that.
+const PASSED_VARIABLES: &[&str] = &[
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "Path",
+    "PATHEXT",
+    "USERPROFILE",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "ProgramData",
+    "ALLUSERSPROFILE",
+    "PUBLIC",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+    "PROCESSOR_LEVEL",
+    "PROCESSOR_REVISION",
+    "OS",
+    "JAVA_TOOL_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+    "_JAVA_OPTIONS",
+    "JAVABYTE_BRIDGE_PYTHON",
+];
+
+/// The environment for a program in an AppContainer, from the helper's own (`inherited`): the
+/// variables in [`PASSED_VARIABLES`] and no others, so that whatever else the person's
+/// environment holds, such as access tokens for other services, is not there to be read if a
+/// sample ever got out of the emulator. `TEMP` and `TMP` name `temp`, the container's own
+/// folder, when there is one; otherwise they are passed on as they are. Sorted by name without
+/// regard to case, as Windows expects of an environment block.
+pub fn child_environment(inherited: impl IntoIterator<Item = (OsString, OsString)>, temp: Option<&Path>) -> Vec<(OsString, OsString)> {
+    let is = |name: &OsString, wanted: &str| name.to_str().is_some_and(|n| n.eq_ignore_ascii_case(wanted));
+    let is_temp = |name: &OsString| is(name, "TEMP") || is(name, "TMP");
+    let mut variables: Vec<(OsString, OsString)> =
+        inherited.into_iter().filter(|(name, _)| PASSED_VARIABLES.iter().any(|p| is(name, p)) || (temp.is_none() && is_temp(name))).collect();
+    if let Some(temp) = temp {
+        variables.push(("TEMP".into(), temp.into()));
+        variables.push(("TMP".into(), temp.into()));
+    }
+    variables.sort_by_key(|(name, _)| name.to_string_lossy().to_uppercase());
+    variables
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,5 +402,19 @@ mod tests {
         assert!(!stop.overdue(true, start + Duration::from_secs(600)), "Stop seen");
         assert!(!stop.overdue(true, start + Duration::from_secs(600) + STOP_GRACE));
         assert!(stop.overdue(true, start + Duration::from_secs(601) + STOP_GRACE));
+    }
+
+    /// A program in the container gets Windows' own variables and Java's options, the
+    /// container's folder for temporary files, and nothing else: a token is not passed on.
+    #[test]
+    fn the_container_gets_a_short_list_of_environment_variables() {
+        let inherited = [("windir", r"C:\Windows"), ("GITHUB_TOKEN", "s3cret"), ("systemroot", r"C:\Windows"), ("Path", r"C:\Windows\System32"), ("TEMP", r"C:\Users\a\Temp"), ("AWS_SECRET_ACCESS_KEY", "s3cret"), ("_JAVA_OPTIONS", "-Xmx1g")];
+        let inherited = || inherited.iter().map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let names = |variables: &[(OsString, OsString)]| variables.iter().map(|(name, value)| format!("{}={}", name.to_string_lossy(), value.to_string_lossy())).collect::<Vec<_>>();
+        let contained = child_environment(inherited(), Some(Path::new(r"C:\Container\Temp")));
+        assert_eq!(names(&contained), [r"Path=C:\Windows\System32", r"systemroot=C:\Windows", r"TEMP=C:\Container\Temp", r"TMP=C:\Container\Temp", r"windir=C:\Windows", "_JAVA_OPTIONS=-Xmx1g"]);
+        // Without a container folder, the person's own temporary folder is named as before.
+        let plain = child_environment(inherited(), None);
+        assert_eq!(names(&plain), [r"Path=C:\Windows\System32", r"systemroot=C:\Windows", r"TEMP=C:\Users\a\Temp", r"windir=C:\Windows", "_JAVA_OPTIONS=-Xmx1g"]);
     }
 }

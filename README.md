@@ -66,8 +66,9 @@ for Windows and Linux. It opens a sample or an earlier report, lets you change e
 the whole report: events, limits and gaps, saved files as text, hex or bytecode, and a
 comparison of two runs. It is built to WCAG 2.2 AA and its window has no network access. On
 Linux each run starts in its own user, network and mount namespace: it has no network
-interface, and the folders where desktop services keep their Unix sockets (D-Bus,
-systemd-resolved, nscd, Avahi, CUPS, X11, Wayland, Docker) are hidden from it. On Windows the
+interface, the file system is read-only except for the run's output folder and a private
+temporary folder, and the folders where desktop and agent services keep their Unix sockets
+(`/run`, `/tmp`, `/dev/shm`) are empty for it. On Windows the
 sandbox add-on runs each analysis with no network. The installers bring their own Java; see
 [docs/INSTALL.md](docs/INSTALL.md). Building it from source: [gui/README.md](gui/README.md).
 The design is in [docs/GUI-PLAN.md](docs/GUI-PLAN.md).
@@ -157,11 +158,34 @@ add a second layer that does not depend on the emulator being right:
 scripts/run-isolated.sh run sample.jar
 ```
 
-That runs the tool in a network namespace with no network interface at all. A network
-namespace does not hide host services' Unix sockets in the file system (D-Bus, X11 and
-others); the desktop app's isolation hides those too, and a container with `--network none`
-and only the output folder mounted is stronger still. See [docs/DESIGN.md](docs/DESIGN.md) for
-the reasoning and for what was borrowed from other projects.
+That runs the tool in user, network and mount namespaces of its own (Linux, no root needed).
+The desktop app does the same for each analysis. Inside:
+
+- **No network.** There is no network interface at all.
+- **A read-only file system.** `/` and every mount below it are read-only. The run can write
+  to two places only: its output folder (`-o`), and a private, empty `/tmp` that exists for
+  this run alone. A sample that got out of the emulator cannot write `~/.bashrc` or an
+  autostart entry.
+- **No host service sockets.** `/run`, `/tmp` and `/dev/shm`, where D-Bus, X11, Wayland,
+  Docker, SSH and GPG agents and the like keep their Unix sockets, are covered by empty
+  folders. Only what the run is given by name is put back, at its own path: the sample, the
+  config, the tool's jar, the Java runtime, the bridge's Python and the output folder. So a
+  sample kept under `/tmp` still works.
+- **A short environment.** Java is started with a short list of environment variables (path,
+  home folder, language, Java's own options), so tokens in your shell or session are not
+  there to be read. The desktop app does this on Windows too.
+- **No way back.** Java has no capabilities in its namespace, so nothing in the run can
+  unmount a cover or make a mount writable again.
+
+If any of this cannot be set up, the run does not start; it never starts less isolated.
+
+What it does not do: files outside `/run`, `/tmp` and `/dev/shm` stay readable (your home
+folder included), and a read-only mount does not stop a connection to a Unix socket, so a
+socket some program keeps under your home folder can still be reached. A file your config
+names that lies under `/tmp` (a library on `classpath`, say) is hidden from an isolated run;
+keep such files elsewhere. A container or virtual machine with no network and only the sample
+and the output folder mounted is stronger still. See [docs/DESIGN.md](docs/DESIGN.md) for the
+reasoning and for what was borrowed from other projects.
 
 ## Tested against real samples
 

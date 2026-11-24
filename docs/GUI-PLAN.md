@@ -219,7 +219,7 @@ spacing, and the isolation setting (Linux, and Windows with the sandbox add-on; 
 | `policy [--json]` | Tools → Policy |
 | `disasm FILE [--class NAME]` | Report → Files → a saved class, shown as bytecode |
 | exit codes 0/1/2/3 | Outcome shown in words; 1 is shown as a tool fault with a "copy details" button |
-| `scripts/run-isolated.sh` | Preferences → "Turn off the network for each analysis" (on by default; Linux, and Windows with the sandbox add-on) |
+| `scripts/run-isolated.sh` | Preferences → "Turn off the network for each analysis" (on by default; Linux, and Windows with the sandbox add-on). On Linux this is the same isolation: no network, a read-only file system but for the output folder and a private temporary folder, host service sockets hidden |
 | Plugins (`plugins:`) | Settings → Plugins, from the schema |
 | Native bridge | Settings → Plugins → Native bridge, available because it is bundled |
 
@@ -314,10 +314,17 @@ neither eyes nor screen readers are misled.
 - **Tauri permissions are minimal**: the screens can call a short list of typed backend
   commands and nothing else; file access is limited to files the user picked and the output
   folders.
-- **Linux isolation**: runs start in a network namespace with no network by default, as
-  `scripts/run-isolated.sh` does, and in a mount namespace that hides host services' Unix
-  sockets (D-Bus, systemd-resolved, X11 and others), which a network namespace alone does not.
-  The setting can be turned off, with an explanation.
+- **Linux isolation**: by default runs start as `scripts/run-isolated.sh` starts them: in a
+  network namespace with no network, and in a mount namespace where the file system is
+  read-only except for the run's output folder and a private temporary folder, and where
+  `/run`, `/tmp` and `/dev/shm` (host services' Unix sockets: D-Bus, systemd-resolved, X11,
+  agents and others) are empty but for what the run is given by name. If that cannot be set
+  up, the run does not start. The setting can be turned off, with an explanation.
+  ([DESIGN.md](DESIGN.md#the-second-layer-an-isolated-process) has the steps.)
+- **A short environment**: the tool is started with a short list of the app's environment
+  variables (path, home folder, language, Java's options), isolated or not, on Linux and
+  Windows; the sandbox add-on does the same for the program it starts. Tokens in the
+  person's environment are not passed on.
 - **Windows** has no equivalent without administrator rights or an extra part. The sandbox
   add-on, a separate download, adds one: each analysis in an AppContainer with no network, or
   in Windows Sandbox where available (see below). Without it, the GUI says so plainly on the
@@ -444,12 +451,14 @@ English is the only language at first, but nothing in the code holds user-visibl
 everywhere as the default, Windows Sandbox as the strongest choice where available, a separate
 download) and how it works. What follows is the exploration that led to it.
 
-**What it would add.** On Linux, runs already have no network. The add-on would give Windows a
+**What it would add.** On Linux, runs already have no network and a read-only file system.
+The add-on would give Windows a
 comparable second layer: if the emulator ever had a flaw, the Java process still could not
 reach the network or most of the disk.
 
 **Room left in the first release.** The backend starts Java through a small "launcher"
-interface. The first release has two launchers: plain (Windows) and network namespace (Linux).
+interface. The first release has two launchers: plain (Windows) and namespaces (Linux: no
+network, read-only file system).
 An add-on supplies another launcher, and Preferences lists whichever are installed. Nothing
 else in the GUI needs to change.
 

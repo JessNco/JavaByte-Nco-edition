@@ -41,7 +41,10 @@ javabyte-sandbox windows-sandbox [--map HOST=GUEST[:rw]]... [--stage FILE]... --
   object cannot be set up, or the program put in it, the program is ended before it runs and the
   helper exits with code 70. The Java runtime and the add-on are under Program Files, which
   Windows already lets every AppContainer read. A job object ends the whole process tree when
-  the run ends, and limits it to a few processes (Java, and the native bridge's Python).
+  the run ends, and limits it to a few processes (Java, and the native bridge's Python). The
+  program does not inherit the helper's environment: it gets a short list of variables
+  (Windows' own, the person's folders, Java's options), with `TEMP` and `TMP` naming the
+  container's folder, so tokens in the person's environment are not there to be read.
 - **`windows-sandbox`** writes a `.wsb` file with networking off, the folders mapped (`--map`;
   read-only unless `:rw`) and the sample copied into a folder of its own (`--stage`) under a
   safe name: characters other than ASCII letters, digits, space and `. - _ ( ) [ ] + ,` become

@@ -35,13 +35,15 @@ pub mod exit_code {
     pub const LIMIT_REACHED: i32 = 3;
 }
 
-/// How an analysis is kept from the network (docs/gui/PHASE5-PLAN.md, WINDOWS-SANDBOX.md).
+/// How an analysis is kept from the network and from the person's files
+/// (docs/gui/PHASE5-PLAN.md, WINDOWS-SANDBOX.md).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum RunIsolation {
     /// Not isolated: the tool's own simulation of the network is the only layer.
     #[default]
     None,
-    /// Linux: a new user, network and mount namespace, with host service sockets hidden
+    /// Linux: a new user, network and mount namespace, with the file system read-only except
+    /// for the run's folder and a private temporary folder, and host service sockets hidden
     /// (`crate::isolation`).
     Namespace,
     /// Windows: an AppContainer with no capabilities, through the sandbox add-on at this path.
@@ -139,20 +141,27 @@ impl Launcher {
     /// sandbox add-on, the files the run needs are named for it: the runtime, the tool and the
     /// bridge to read, the sample to read (copied into Windows Sandbox when it is a file), and
     /// the run's folder to write.
-    fn run_command(&self, request: &RunRequest, args: &[&std::ffi::OsStr]) -> Command {
+    ///
+    /// An error means the isolation could not be prepared, and the run must not start.
+    fn run_command(&self, request: &RunRequest, args: &[&std::ffi::OsStr]) -> std::io::Result<Command> {
         let (helper, sandbox) = match &self.isolation {
             RunIsolation::AppContainer(helper) => (helper, false),
             RunIsolation::WindowsSandbox(helper) => (helper, true),
-            #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
-            other => {
-                #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
-                let mut command = self.command(args);
-                #[cfg(target_os = "linux")]
-                if *other == RunIsolation::Namespace {
-                    crate::isolation::isolate(&mut command);
-                }
-                return command;
+            #[cfg(target_os = "linux")]
+            RunIsolation::Namespace => {
+                // Java's temporary files go to the run's private folder, the one place it may
+                // write besides the run's folder.
+                let mut command = Command::new(&self.java);
+                command.arg(format!("-Djava.io.tmpdir={}", crate::isolation::PRIVATE_TEMP)).arg("-jar").arg(&self.jar).args(args);
+                self.prepare(&mut command);
+                // The bridge's Python is at <home>/bin/python3, and needs the rest of its home.
+                let bridge_home = self.bridge_python.as_ref().and_then(|p| p.parent()).and_then(Path::parent).map(Path::to_path_buf);
+                let readable = [Some(self.java_home()), Some(self.jar.clone()), bridge_home, Some(request.sample.clone()), request.config.clone()];
+                let access = crate::isolation::Access { writable: Some(request.output.clone()), readable: readable.into_iter().flatten().collect() };
+                crate::isolation::isolate(&mut command, &access)?;
+                return Ok(command);
             }
+            _ => return Ok(self.command(args)),
         };
         let mut command = Command::new(helper);
         let bridge_root = self.bridge_python.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf);
@@ -184,11 +193,16 @@ impl Launcher {
         }
         command.arg("--").arg(&self.java).arg("-jar").arg(&self.jar).args(args);
         self.prepare(&mut command);
-        command
+        Ok(command)
     }
 
-    /// The environment and window settings every command shares.
+    /// The environment and window settings every command shares. The tool gets a short list
+    /// of the app's environment variables ([`passes_to_the_tool`]) and no others: whatever
+    /// else the person's environment holds, such as access tokens for other services, is not
+    /// there to be read if a sample ever got out of the emulator.
     fn prepare(&self, command: &mut Command) {
+        command.env_clear();
+        command.envs(std::env::vars_os().filter(|(name, _)| passes_to_the_tool(name)));
         if let Some(python) = &self.bridge_python {
             command.env("JAVABYTE_BRIDGE_PYTHON", python);
         }
@@ -279,7 +293,8 @@ impl Launcher {
             args.push("-s".as_ref());
             args.push(override_.as_ref());
         }
-        let command = self.run_command(request, &args);
+        let start_failed = |e: std::io::Error| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string());
+        let command = self.run_command(request, &args).map_err(start_failed)?;
         Run::spawn(command).map_err(|e| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string()))
     }
 }
@@ -323,6 +338,58 @@ impl Run {
 /// Starts `command` without a console window on Windows, so none flashes up behind the app
 /// for each run or check. Does nothing on other systems. Every process the backend starts goes
 /// through here, so the flag is written once.
+/// The environment variables the tool, Java and the sandbox add-on are started with: where
+/// programs and the person's folders are, the language, the time zone, and Java's own options.
+/// Names are compared without regard to case on Windows, as Windows does.
+const PASSED_VARIABLES: &[&str] = if cfg!(windows) {
+    &[
+        "SystemRoot",
+        "SystemDrive",
+        "windir",
+        "ComSpec",
+        "Path", // not-ui-text: a variable's name
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "USERNAME",
+        "USERDOMAIN",
+        "COMPUTERNAME",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "ProgramData",
+        "ALLUSERSPROFILE",
+        "PUBLIC",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+        "CommonProgramFiles",
+        "CommonProgramFiles(x86)",
+        "CommonProgramW6432",
+        "NUMBER_OF_PROCESSORS",
+        "PROCESSOR_ARCHITECTURE",
+        "PROCESSOR_IDENTIFIER",
+        "PROCESSOR_LEVEL",
+        "PROCESSOR_REVISION",
+        "OS",
+        "JAVA_TOOL_OPTIONS",
+        "JDK_JAVA_OPTIONS",
+        "_JAVA_OPTIONS",
+        "JAVABYTE_BRIDGE_PYTHON",
+    ]
+} else {
+    &["PATH", "HOME", "USER", "LOGNAME", "LANG", "LANGUAGE", "TZ", "TMPDIR", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JAVABYTE_BRIDGE_PYTHON"]
+};
+
+/// Whether the tool is started with this variable of the app's environment
+/// ([`PASSED_VARIABLES`], and the `LC_` language settings).
+fn passes_to_the_tool(name: &std::ffi::OsStr) -> bool {
+    let Some(name) = name.to_str() else { return false };
+    if cfg!(windows) { PASSED_VARIABLES.iter().any(|p| p.eq_ignore_ascii_case(name)) } else { PASSED_VARIABLES.contains(&name) || name.starts_with("LC_") }
+}
+
 pub(crate) fn no_console(command: &mut Command) {
     #[cfg(windows)]
     {
@@ -751,7 +818,7 @@ mod isolation_tests {
 
     #[test]
     fn an_appcontainer_run_names_what_it_may_read_and_write() {
-        let command = launcher(RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into())).run_command(&request(), &["run".as_ref()]);
+        let command = launcher(RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into())).run_command(&request(), &["run".as_ref()]).unwrap();
         assert_eq!(command.get_program(), "/opt/jb/sandbox/javabyte-sandbox.exe");
         let args = args(&command);
         let reads: Vec<&str> = args.windows(2).filter(|w| w[0] == "--read").map(|w| w[1].as_str()).collect();
@@ -764,7 +831,7 @@ mod isolation_tests {
     #[test]
     fn a_windows_sandbox_run_maps_folders_and_stages_the_sample() {
         let sandbox = launcher(RunIsolation::WindowsSandbox("/opt/jb/sandbox/javabyte-sandbox.exe".into()));
-        let args = args(&sandbox.run_command(&request(), &["run".as_ref()]));
+        let args = args(&sandbox.run_command(&request(), &["run".as_ref()]).unwrap());
         assert_eq!(args[0], "windows-sandbox");
         let maps: Vec<&str> = args.windows(2).filter(|w| w[0] == "--map").map(|w| w[1].as_str()).collect();
         assert_eq!(maps, [r"/opt/jb/runtime=C:\JavaByteRuntime", r"/opt/jb=C:\JavaByteTool", r"/opt/jb/bridge/python=C:\JavaByteBridge", r"/runs/one=C:\JavaByteRun:rw"]);
@@ -776,7 +843,52 @@ mod isolation_tests {
 
     #[test]
     fn without_isolation_java_starts_directly() {
-        let command = launcher(RunIsolation::None).run_command(&request(), &["run".as_ref()]);
+        let command = launcher(RunIsolation::None).run_command(&request(), &["run".as_ref()]).unwrap();
         assert_eq!(command.get_program(), "/opt/jb/runtime/bin/java");
+    }
+
+    /// The tool sees where programs and the home folder are, the language and Java's options,
+    /// and nothing else of the app's environment: a token there is not passed on.
+    #[test]
+    fn the_tool_gets_a_short_list_of_environment_variables() {
+        let secret = "JAVABYTE_TEST_ACCESS_TOKEN";
+        // SAFETY: no other test reads or writes this variable.
+        unsafe { std::env::set_var(secret, "s3cret") };
+        for isolation in [RunIsolation::None, RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into())] {
+            let command = launcher(isolation).run_command(&request(), &["run".as_ref()]).unwrap();
+            let passed: Vec<String> = command.get_envs().filter(|(_, value)| value.is_some()).map(|(name, _)| name.to_string_lossy().into_owned()).collect();
+            assert!(!passed.iter().any(|name| name == secret), "{passed:?}");
+            assert!(passed.iter().all(|name| passes_to_the_tool(name.as_ref())), "{passed:?}");
+            assert!(passed.iter().any(|name| name == "JAVABYTE_BRIDGE_PYTHON"));
+            if std::env::var_os("PATH").is_some() {
+                assert!(passed.iter().any(|name| name.eq_ignore_ascii_case("PATH")), "{passed:?}");
+            }
+        }
+        for name in ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "LD_PRELOAD", "PYTHONPATH", "DBUS_SESSION_BUS_ADDRESS"] {
+            assert!(!passes_to_the_tool(name.as_ref()), "{name}");
+        }
+        assert!(passes_to_the_tool(if cfg!(windows) { "systemroot" } else { "LC_ALL" }.as_ref()));
+    }
+
+    /// An isolated run on Linux names its folder as the one place to write, and tells Java to
+    /// keep its temporary files in the run's private folder. What cannot be prepared is an
+    /// error, so the run does not start.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_namespace_run_uses_the_private_temporary_folder_or_does_not_start() {
+        let folder = std::env::temp_dir().join(format!("javabyte-namespace-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let mut request = request();
+        request.output = folder.join("out");
+        let command = launcher(RunIsolation::Namespace).run_command(&request, &["run".as_ref()]).unwrap();
+        assert_eq!(args(&command), ["-Djava.io.tmpdir=/tmp", "-jar", "/opt/jb/javabyte.jar", "run"]);
+        let temp = command.get_envs().find(|(name, _)| *name == "TMPDIR").and_then(|(_, value)| value);
+        assert_eq!(temp, Some("/tmp".as_ref()));
+        assert!(request.output.is_dir(), "the run's folder is made before the run, to be mounted");
+
+        std::fs::write(folder.join("file"), "").unwrap();
+        request.output = folder.join("file/out");
+        assert!(launcher(RunIsolation::Namespace).run_command(&request, &["run".as_ref()]).is_err());
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

@@ -510,6 +510,10 @@ final class ReflectionStubs {
         return data == null ? null : new ByteArrayInputStream(data);
     }
 
+    /**
+     * The {@code jar:} URL of a resource in the sample, or null if it has none; nothing can be
+     * fetched through it except by the stubs.
+     */
     static Object resourceUrl(VirtualMachine vm, String path) throws java.net.MalformedURLException {
         boolean found = vm.classes.resource(path) != null;
         vm.events.addOnce("resource-url:" + path, "resource", "locate", "name", path, "found", found);
@@ -684,7 +688,7 @@ final class ReflectionStubs {
             if (isSetter) {
                 Object value = boxed ? Values.unbox(ctx.arg(1), type) : ctx.arg(1);
                 if (Modifier.isStatic(real.getModifiers())) {
-                    vm.fields.putHostStatic(owner, real.getName(), type.getDescriptor(), value);
+                    vm.fields.putHostStatic(owner, real.getName(), value);
                 } else {
                     vm.host.putField(ctx.arg(0), owner, real.getName(), value);
                 }

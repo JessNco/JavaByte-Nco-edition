@@ -393,6 +393,10 @@ public final class TypeSystem {
         return host != null && vm.policy.knowsClass(internalNameOrDescriptor) ? host : Object.class;
     }
 
+    /**
+     * The primitive class for a primitive ASM type; {@code void.class} for anything else, which
+     * callers use as "not a primitive".
+     */
     public Class<?> primitiveClass(Type type) {
         return switch (type.getSort()) {
             case Type.BOOLEAN -> boolean.class;

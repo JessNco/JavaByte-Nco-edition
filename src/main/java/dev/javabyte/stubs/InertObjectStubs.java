@@ -140,12 +140,7 @@ final class InertObjectStubs {
             throw keyStore ? new java.security.KeyStoreException(algorithm + " not found")
                     : new java.security.NoSuchAlgorithmException(algorithm + " not available");
         }
-        if (ctx.desc.contains("Ljava/io/File;")) {
-            // KeyStore.Builder.newInstance(type, provider, file, protection) reads that file
-            // later. A stub runs before the router's own check for file parameters, so the
-            // check is repeated here.
-            return vm.router.blocked(ctx.owner, ctx.name, ctx.desc, "method");
-        }
+        // A builder overload that names a file to read later is refused by proceed() itself.
         return ctx.proceed();
     }
 

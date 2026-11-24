@@ -35,6 +35,7 @@ final class InvokeStubs {
 
     private InvokeStubs() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
         String handles = "java/lang/invoke/MethodHandles";

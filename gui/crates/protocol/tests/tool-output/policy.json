@@ -590,6 +590,16 @@
     "section" : "collections and utilities",
     "note" : "Fork/join tasks run on the common pool's threads when forked."
   }, {
+    "rule" : "java/util/concurrent/StructuredTaskScope",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Structured concurrency starts a real thread for every fork (a virtual one, or one from a factory the sample supplies)."
+  }, {
+    "rule" : "java/util/concurrent/StructuredTaskScope$*",
+    "allow" : false,
+    "section" : "collections and utilities",
+    "note" : "Structured concurrency starts a real thread for every fork (a virtual one, or one from a factory the sample supplies)."
+  }, {
     "rule" : "java/util/Locale#setDefault",
     "allow" : false,
     "section" : "collections and utilities",

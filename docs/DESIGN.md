@@ -51,13 +51,18 @@ Reflection (`Method.invoke`, `Constructor.newInstance`, `Field.get`), method han
 all re-enter the router. A reflective `Runtime.exec` meets the same stub as a direct one; this is
 covered by a test.
 
-Guest code reaches the JDK through two entry points only: `InvocationRouter` (`hostCall` for
-methods, `constructHost` for constructors) and `Fields` (fields of JDK classes). Static JDK
-field reads are policy-checked, static writes are never performed, and instance fields are
-reached only on host objects the guest obtained through checked calls, and only when public.
-The router also refuses any allow-listed JDK method or constructor whose parameters include a
-`ClassLoader` (such as `ResourceBundle.Control.newBundle`), because the JDK code would then ask
-that loader for classes or resources where no stub sees it.
+Guest code reaches the JDK through `InvocationRouter` and `Fields` only. The router decides
+every method (`hostCall`), every constructor (`constructHost`) and the superclass constructor
+of a sample's own subclass (`construct`); a stub it chose may then pass its call on to the JDK
+(`CallContext.proceed`). `Fields` handles fields of JDK classes: static reads are
+policy-checked, static writes are never performed, and instance fields are reached only on
+host objects the guest obtained through checked calls, and only when public (or, for a
+sample's subclass, protected in its JDK superclass).
+
+The router also refuses any allow-listed JDK method or constructor declared to take a `File`,
+a `Path` or a `ClassLoader`, and so does a stub's pass-through. A simulated file is a real
+`File`, so the first two would act on the real disk; and JDK code given a loader (as in
+`ResourceBundle.Control.newBundle`) asks it for classes or resources where no stub sees it.
 
 There is no verifier, so the class a call names is only the sample's claim about the receiver.
 Three rules keep that claim from deciding anything:

@@ -16,6 +16,9 @@ public final class GuestThrow extends RuntimeException {
      */
     public final Object value;
 
+    /**
+     * @param value the object the guest threw: a real {@code Throwable}, or a shell for a guest exception class
+     */
     public GuestThrow(Object value) {
         // No message, cause, suppression or host stack trace: this is control flow on a hot path.
         super(null, null, false, false);

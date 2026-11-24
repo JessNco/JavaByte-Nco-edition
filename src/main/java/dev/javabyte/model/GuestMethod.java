@@ -61,6 +61,10 @@ public final class GuestMethod {
     public boolean traceCalls;
     public boolean traceInstructions;
 
+    /**
+     * Prepares a method for the interpreter: its instructions as an array, jump targets and
+     * handlers as indexes into it.
+     */
     GuestMethod(GuestClass owner, MethodNode node) {
         this.owner = owner;
         this.node = node;

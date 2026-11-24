@@ -47,7 +47,8 @@ public final class Fields {
         return vm.router.blocked(hostOwner, name, "()" + desc, "field");
     }
 
-    public void putHostStatic(String owner, String name, String desc, Object value) {
+    /** A write to a static field that no interpreted class declares: reported, never performed. */
+    public void putHostStatic(String owner, String name, Object value) {
         // Writing a JDK static would change the analysis JVM itself, so it is never performed.
         vm.events.addOnce(owner + name, "policy", "blocked-field-write", "field", hostOwner(owner) + '.' + name,
                 "value", Values.describe(value));
@@ -58,10 +59,13 @@ public final class Fields {
      *
      * <p>A JDK object's instance field needs no policy check. The guest can only hold host
      * objects that policy-checked calls, constructors or stubs gave it, and the host bridge
-     * reaches only public fields ({@code Class.getField}) or the accessors generated for a
-     * shell's superclass. A public field of an object the guest already holds can do nothing
-     * that its public methods could not. The simulated classes in {@code dev.javabyte.env}
-     * declare no public fields, which keeps emulator state out of reach; keep it that way.
+     * finds a field only if it is public and declared by a JDK class, or by a
+     * {@link dev.javabyte.host.StandIn} that imitates one ({@code Dimension.width}), plus the
+     * protected fields of a shell's JDK superclass through generated accessors. A public
+     * field of an object the guest already holds can do nothing that its public methods
+     * could not. Fields of every other emulator class are never found, whatever the
+     * instruction names. Keep it that way: a {@code StandIn} declares a public field only
+     * where the class it stands for has one.
      *
      * @param ref  the resolved guest field, or null if the field belongs to a JDK class
      * @param insn the instruction, for the names when {@code ref} is null

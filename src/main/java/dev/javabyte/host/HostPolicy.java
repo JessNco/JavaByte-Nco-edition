@@ -86,10 +86,12 @@ public final class HostPolicy {
         cache.clear();
     }
 
+    /** Adds an allow rule from the config ({@code policy.allow}); same syntax as a line of the policy file. */
     public void allow(String rule) {
         addLine(rule);
     }
 
+    /** Adds a deny rule from the config ({@code policy.deny}); a deny always wins over an allow. */
     public void deny(String rule) {
         addLine("!" + rule);
     }

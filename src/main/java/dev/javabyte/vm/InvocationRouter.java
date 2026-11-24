@@ -20,8 +20,11 @@ import org.objectweb.asm.tree.FieldInsnNode;
 
 /**
  * Decides what every call made by guest code actually does. This is the emulator's security
- * boundary for code: a JDK method is reached only through {@link #hostCall} and a JDK
- * constructor only through {@link #constructHost}. The one other route to the JDK is field
+ * boundary for code. JDK code runs on the guest's behalf in three places only, all decided
+ * here: a method through {@link #hostCall}, a constructor through {@link #constructHost}, and
+ * the superclass constructor of a sample's own subclass through {@link #construct}. A stub
+ * may pass its call on to the JDK ({@link CallContext#proceed}); that is the stub's
+ * decision, made after this class chose the stub. The one other route to the JDK is field
  * access, which goes through {@link Fields}; it explains why that route needs less checking.
  *
  * <p>For each call the order of precedence is:
@@ -32,8 +35,11 @@ import org.objectweb.asm.tree.FieldInsnNode;
  *   <li>the real JDK member, if the host policy allows it;
  *   <li>otherwise the call is blocked and reported.
  * </ol>
- * Reflection, method handles and lambdas are all funnelled back through the same entry points,
- * so none of them can be used to side-step the order above.
+ * Steps 3 to 5 are {@link #hostCall}, which spells them out: there is no verifier, so the class
+ * a call names is only the sample's claim, and the receiver's real class is consulted too.
+ *
+ * <p>Reflection, method handles and lambdas are all funnelled back through the same entry
+ * points, so none of them can be used to side-step the order above.
  */
 public final class InvocationRouter {
 
@@ -61,6 +67,7 @@ public final class InvocationRouter {
 
     // ------------------------------------------------------------------ static
 
+    /** {@code invokestatic}: the sample's own static method, or else a call on the JDK class it names or inherits from. */
     public Object invokeStatic(String owner, String name, String desc, Object[] args) {
         GuestClass cls = vm.classes.find(owner);
         if (cls == null) {
@@ -77,6 +84,12 @@ public final class InvocationRouter {
 
     // ------------------------------------------------------------------ virtual and interface
 
+    /**
+     * {@code invokevirtual} and {@code invokeinterface}. What the receiver is decides, in this
+     * order: an instance of an interpreted class (its own method, then {@code Object}'s, then
+     * its JDK ancestor's), a guest lambda, a guest proxy, an array, a guest lambda behind a
+     * JDK proxy, and finally any other host object, which goes to {@link #hostCall}.
+     */
     public Object invokeVirtual(String owner, String name, String desc, Object receiver, Object[] args) {
         if (receiver == null) {
             throw vm.implicitExceptions.nullPointer("Cannot invoke \"" + owner.replace('/', '.') + '.' + name
@@ -172,6 +185,7 @@ public final class InvocationRouter {
         return Values.unbox(result, Type.getReturnType(desc));
     }
 
+    /** The public method with exactly this name and descriptor, for the reflective description a proxy's handler gets. */
     private static java.lang.reflect.Method findPublicMethod(Class<?> type, String name, String desc) {
         for (java.lang.reflect.Method candidate : type.getMethods()) {
             if (candidate.getName().equals(name) && Type.getMethodDescriptor(candidate).equals(desc)) {
@@ -183,6 +197,7 @@ public final class InvocationRouter {
 
     // ------------------------------------------------------------------ special (super and private)
 
+    /** {@code invokespecial} other than a constructor: a {@code super.method()} or private call, never dispatched on the receiver's class. */
     public Object invokeSpecial(String owner, String name, String desc, Object receiver, Object[] args) {
         if (receiver == null) {
             throw vm.implicitExceptions.nullPointer("Cannot invoke \"" + owner.replace('/', '.') + '.' + name
@@ -247,8 +262,9 @@ public final class InvocationRouter {
         // about PrintStream(String fileName), which opens a file. No stub can stand in here,
         // because the object must be the shell itself, so a constructor that is not allowed
         // is not run: the class is built as if that superclass were unavailable.
-        boolean permitted = vm.shells.hasSimulatedBase(pending.state.type)
-                || (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc));
+        // A simulated base's constructors are the emulator's own code (SimBaseClassLoader and the
+        // like), so there is no JDK constructor to judge.
+        boolean permitted = vm.shells.hasSimulatedBase(pending.state.type) || mayRun(owner, "<init>", desc);
         if (!permitted) {
             blocked(owner, "<init>", desc, "constructor");
         }
@@ -265,7 +281,7 @@ public final class InvocationRouter {
             vm.events.addOnce(owner, "gap", "missing-class", "class", owner);
             return new PhantomObject(owner);
         }
-        if (vm.policy.allows(owner, "<init>", desc) && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc)) {
+        if (mayRun(owner, "<init>", desc)) {
             traceHostCall(owner, "<init>", desc, args);
             return vm.host.construct(owner, desc, args);
         }
@@ -350,9 +366,27 @@ public final class InvocationRouter {
     // ------------------------------------------------------------------ the host boundary
 
     /**
-     * Performs a call whose implementation is not guest bytecode.
+     * Performs a call whose implementation is not guest bytecode. In order:
+     * <ol>
+     *   <li>{@code clone()} on an array;
+     *   <li>refusal of the emulator's own generated members ({@code javabyte$...});
+     *   <li>a config hook;
+     *   <li>a stub registered for the named class or one of its supertypes;
+     *   <li>a stub found from the receiver's real class;
+     *   <li>phantom, plain-object and mirror receivers, answered neutrally;
+     *   <li>a simulated receiver: its own methods run, JDK methods it merely inherits need the policy;
+     *   <li>a class the analysis JDK lacks, answered neutrally;
+     *   <li>a deny rule on the receiver's real class;
+     *   <li>the policy for the named class, only if the method resolves there and the receiver
+     *       is an instance of the class declaring it;
+     *   <li>an allow-listed supertype of the receiver that has the method;
+     *   <li>blocked.
+     * </ol>
+     * Wherever the policy is asked (steps 7, 10 and 11), a member declared to take a
+     * {@code File}, a {@code Path} or a {@code ClassLoader} is refused as well.
      *
-     * @param owner   internal name of the JDK class the call resolves to
+     * @param owner   internal name of the JDK class the call site names (a guest class already
+     *                mapped to its JDK ancestor); a claim, not a fact about the receiver
      * @param special true for a non-virtual call
      */
     public Object hostCall(String owner, String name, String desc, Object receiver, Object[] args, boolean special) {
@@ -362,7 +396,7 @@ public final class InvocationRouter {
             // native, so it cannot be called from here; every route arrives at this point.
             return cloneArray(receiver);
         }
-        if (name.startsWith(EMULATOR_MEMBER_PREFIX)) {
+        if (name.startsWith(HostBridge.EMULATOR_MEMBER_PREFIX)) {
             // The accessors generated on shell classes are the emulator's own plumbing. They are
             // public so that the host bridge can call them, never so that a sample can.
             return blocked(owner, name, desc, "method");
@@ -404,8 +438,7 @@ public final class InvocationRouter {
             // merely inherits from the JDK class it extends (a protected or final method it
             // could not override) is real JDK code, and is judged as a call on that class.
             String inherited = vm.host.jdkDeclarer(owner, name, desc, receiver, special);
-            if (inherited != null && !(vm.policy.allows(inherited, name, desc) && !touchesFileSystem(inherited, desc)
-                    && !passesClassLoader(inherited, desc))) {
+            if (inherited != null && !mayRun(inherited, name, desc)) {
                 return blocked(inherited, name, desc, "method");
             }
             traceHostCall(owner, name, desc, args);
@@ -423,21 +456,17 @@ public final class InvocationRouter {
         // class's and the receiver really is an instance of it. Otherwise a call site naming
         // an allowed class (String, say) with some other object underneath would be approved
         // for the name and then run whatever same-named method the object has.
-        if (vm.host.resolvesOn(owner, name, desc, receiver) && vm.policy.allows(owner, name, desc)
-                && !touchesFileSystem(owner, desc) && !passesClassLoader(owner, desc)) {
+        if (vm.host.resolvesOn(owner, name, desc, receiver) && mayRun(owner, name, desc)) {
             traceHostCall(owner, name, desc, args);
             return vm.host.invoke(owner, name, desc, receiver, args, special);
         }
         String viaReceiver = receiver == null ? null : allowedSupertype(receiver.getClass(), name, desc);
-        if (viaReceiver != null && !touchesFileSystem(viaReceiver, desc) && !passesClassLoader(viaReceiver, desc)) {
+        if (viaReceiver != null && !refusesParameters(viaReceiver, desc)) {
             traceHostCall(viaReceiver, name, desc, args);
             return vm.host.invoke(viaReceiver, name, desc, receiver, args, special);
         }
         return blocked(owner, name, desc, "method");
     }
-
-    /** Prefix of every member the emulator generates on shell classes for its own use. */
-    private static final String EMULATOR_MEMBER_PREFIX = "javabyte$";
 
     /**
      * What the receiver's real class says about a call, beyond what the named class said.
@@ -482,13 +511,7 @@ public final class InvocationRouter {
         Stub stub = null;
         String stubOwner = null;
         boolean denied = false;
-        java.util.Deque<Class<?>> work = new java.util.ArrayDeque<>(java.util.List.of(receiverClass));
-        java.util.Set<Class<?>> visited = new java.util.HashSet<>();
-        while (!work.isEmpty()) {
-            Class<?> current = work.poll();
-            if (!visited.add(current)) {
-                continue;
-            }
+        for (Class<?> current : dev.javabyte.host.StubRegistry.supertypes(receiverClass)) {
             String internalName = Type.getInternalName(current);
             if (vm.host.findClass(internalName) != null) {
                 if (stub == null) {
@@ -499,10 +522,6 @@ public final class InvocationRouter {
                 }
                 denied |= vm.policy.denies(internalName, name, desc);
             }
-            if (current.getSuperclass() != null) {
-                work.add(current.getSuperclass());
-            }
-            work.addAll(java.util.List.of(current.getInterfaces()));
         }
         if (stub == null && !denied) {
             return NO_RECEIVER_RULES;
@@ -519,7 +538,8 @@ public final class InvocationRouter {
         return current == null ? "java/lang/Object" : Type.getInternalName(current);
     }
 
-    private final java.util.Map<String, java.util.Optional<String>> receiverCache = new java.util.HashMap<>();
+    /** Answers of {@link #allowedSupertype}, by receiver class and method signature. */
+    private final java.util.Map<String, java.util.Optional<String>> allowedSupertypeCache = new java.util.HashMap<>();
 
     /**
      * Finds an allow-listed class or interface of the receiver that has the method.
@@ -533,28 +553,19 @@ public final class InvocationRouter {
      * @return the internal name to call through, or null
      */
     private String allowedSupertype(Class<?> receiverClass, String name, String desc) {
-        return receiverCache.computeIfAbsent(receiverClass.getName() + '.' + name + desc, key -> {
-            java.util.Deque<Class<?>> work = new java.util.ArrayDeque<>(java.util.List.of(receiverClass));
-            java.util.Set<Class<?>> visited = new java.util.HashSet<>();
-            while (!work.isEmpty()) {
-                Class<?> current = work.poll();
-                if (!visited.add(current)) {
-                    continue;
-                }
+        return allowedSupertypeCache.computeIfAbsent(receiverClass.getName() + '.' + name + desc, key -> {
+            for (Class<?> current : dev.javabyte.host.StubRegistry.supertypes(receiverClass)) {
                 String internalName = Type.getInternalName(current);
                 if (java.lang.reflect.Modifier.isPublic(current.getModifiers()) && vm.host.findClass(internalName) != null
                         && vm.policy.allows(internalName, name, desc) && declares(current, name, desc)) {
                     return java.util.Optional.of(internalName);
                 }
-                if (current.getSuperclass() != null) {
-                    work.add(current.getSuperclass());
-                }
-                work.addAll(java.util.List.of(current.getInterfaces()));
             }
             return java.util.Optional.empty();
         }).orElse(null);
     }
 
+    /** True if the class has a public method of this name taking these parameters, whatever it returns. */
     private static boolean declares(Class<?> cls, String name, String desc) {
         String parameters = desc.substring(0, desc.indexOf(')') + 1);
         for (java.lang.reflect.Method method : cls.getMethods()) {
@@ -626,6 +637,15 @@ public final class InvocationRouter {
     private static boolean passesClassLoader(String owner, String desc) {
         return desc.substring(0, desc.indexOf(')')).contains("Ljava/lang/ClassLoader;")
                 && !LOADER_INERT_OWNERS.contains(owner);
+    }
+
+    /**
+     * The one test for running a JDK member for real: the policy allows it, and it is not
+     * declared to take a file, a path or a class loader ({@link #refusesParameters}). Every
+     * place that runs JDK code on the policy's word asks here, so none can forget a part.
+     */
+    private boolean mayRun(String owner, String name, String desc) {
+        return vm.policy.allows(owner, name, desc) && !refusesParameters(owner, desc);
     }
 
     /**
@@ -877,7 +897,7 @@ public final class InvocationRouter {
                 if (ref != null) {
                     vm.fields.putStatic(ref, all[0]);
                 } else {
-                    vm.fields.putHostStatic(insn.owner, insn.name, insn.desc, all[0]);
+                    vm.fields.putHostStatic(insn.owner, insn.name, all[0]);
                 }
                 return null;
         }

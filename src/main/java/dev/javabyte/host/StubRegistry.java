@@ -79,22 +79,11 @@ public final class StubRegistry {
         if (start == null) {
             return null;
         }
-        Deque<Class<?>> work = new ArrayDeque<>();
-        Set<Class<?>> visited = new HashSet<>();
-        work.add(start);
-        while (!work.isEmpty()) {
-            Class<?> current = work.poll();
-            if (!visited.add(current)) {
-                continue;
-            }
+        for (Class<?> current : supertypes(start)) {
             Stub inherited = direct(current.getName().replace('.', '/'), name, desc);
             if (inherited != null) {
                 return inherited;
             }
-            if (current.getSuperclass() != null) {
-                work.add(current.getSuperclass());
-            }
-            work.addAll(java.util.List.of(current.getInterfaces()));
         }
         // An interface has no superclass, yet it has Object's public methods (JLS 9.2), and javac
         // names the interface when it compiles path.getClass() on a Path. Resolution looks in
@@ -104,6 +93,31 @@ public final class StubRegistry {
             return direct("java/lang/Object", name, desc);
         }
         return null;
+    }
+
+    /**
+     * A class and everything it extends or implements, nearest first (breadth first: the class,
+     * then its superclass and interfaces, then theirs), each once. This is the order in which
+     * a stub, a deny rule or an allowed supertype is looked for, so that the most specific
+     * answer wins; the router uses it for the same walks.
+     */
+    public static java.util.List<Class<?>> supertypes(Class<?> start) {
+        java.util.List<Class<?>> found = new java.util.ArrayList<>();
+        Deque<Class<?>> work = new ArrayDeque<>();
+        Set<Class<?>> visited = new HashSet<>();
+        work.add(start);
+        while (!work.isEmpty()) {
+            Class<?> current = work.poll();
+            if (!visited.add(current)) {
+                continue;
+            }
+            found.add(current);
+            if (current.getSuperclass() != null) {
+                work.add(current.getSuperclass());
+            }
+            work.addAll(java.util.List.of(current.getInterfaces()));
+        }
+        return found;
     }
 
     /** The public instance methods of {@code Object}, which every interface type also has. */

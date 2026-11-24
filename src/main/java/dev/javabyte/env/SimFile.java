@@ -21,6 +21,10 @@ public final class SimFile extends File {
     private final transient VirtualFileSystem fs;
     private final String path;
 
+    /**
+     * A file on the virtual disk. The real {@code File} underneath has a fixed, meaningless path,
+     * so JDK code that reads it directly learns nothing and reaches nothing of the guest's.
+     */
     public SimFile(VirtualFileSystem fs, String path) {
         // The superclass needs some path; it is never used because every method is overridden.
         super("javabyte-virtual");

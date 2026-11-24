@@ -98,13 +98,6 @@ public final class VirtualClock {
         this.instructionsAtLastRead = executedInstructions.getAsLong();
     }
 
-    /** Moves time forward by a sleep or timed wait. Negative values are ignored. */
-    public void advance(long byMillis) {
-        if (byMillis > 0) {
-            advanceNanos(byMillis > Long.MAX_VALUE / 1_000_000L ? Long.MAX_VALUE : byMillis * 1_000_000L);
-        }
-    }
-
     /** Moves time forward by {@code byNanos}, saturating rather than overflowing. */
     public void advanceNanos(long byNanos) {
         if (byNanos > 0) {

@@ -162,15 +162,6 @@ public final class ConfigLoader {
         node.set(path[path.length - 1], YAML.readTree(override.substring(eq + 1)));
     }
 
-    /** Checks a bound config and throws if anything is wrong; every problem is in the message. */
-    public static EmulatorConfig validate(EmulatorConfig config) {
-        List<Problem> found = problems(config);
-        if (!found.isEmpty()) {
-            throw ConfigException.of(found);
-        }
-        return config;
-    }
-
     /**
      * Problems in a bound config: allowed values (from {@link ConfigDoc}), numbers that must be
      * positive, addresses that must be well formed, and rules involving more than one value,
@@ -329,6 +320,7 @@ public final class ConfigLoader {
         }
     }
 
+    /** A config as YAML, every option included; what {@code defaults} prints and what the report embeds. */
     public static String toYaml(EmulatorConfig config) {
         try {
             return YAML.writeValueAsString(config);

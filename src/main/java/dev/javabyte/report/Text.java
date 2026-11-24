@@ -16,7 +16,11 @@ public final class Text {
 
     /**
      * The text on one line, with every control, line-breaking, bidirectional and invisible
-     * formatting character written as a {@code \}{@code uXXXX} escape.
+     * (zero-width) character written as a {@code \}{@code uXXXX} escape.
+     *
+     * <p>A backslash is left as it is. So escaping twice changes nothing, but an escape cannot
+     * be told from the same six characters written out by the sample; where that matters,
+     * read the JSON report, which carries the exact strings.
      */
     public static String visible(String text) {
         return escape(text, false);
@@ -49,6 +53,9 @@ public final class Text {
 
     private static boolean needsEscape(char c) {
         return c < 0x20 || (c >= 0x7f && c <= 0x9f)       // C0 and C1 controls, DEL
+                || c == 0x00ad                               // soft hyphen
+                || (c >= 0x200b && c <= 0x200d)              // zero-width space and joiners
+                || (c >= 0x2060 && c <= 0x2064)              // word joiner, invisible operators
                 || c == 0x061c || c == 0x200e || c == 0x200f // bidirectional marks
                 || (c >= 0x2028 && c <= 0x202e)              // line and paragraph separators, bidi embeddings
                 || (c >= 0x2066 && c <= 0x2069)              // bidi isolates

@@ -31,6 +31,7 @@ public final class Hooks {
     private final List<Pattern> traceInstructions = new ArrayList<>();
     private final Map<String, Optional<Hook>> hostCache = new HashMap<>();
 
+    /** Reads the {@code hooks} section of the config into patterns. */
     Hooks(EmulatorConfig config) {
         for (EmulatorConfig.Hook hook : config.hooks) {
             register(hook.method, hook.action, hook.value);

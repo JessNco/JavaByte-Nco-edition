@@ -69,12 +69,12 @@ final class ManagementStubs {
                     return kind == Bean.PROCESS_HANDLE ? Long.hashCode(pid) : System.identityHashCode(proxy);
                 case "equals":
                     return args[0] == proxy || (kind == Bean.PROCESS_HANDLE && args[0] instanceof ProcessHandle other
-                            && answer(vm, kind, pid, "pid", new Object[0]).equals(other.pid()));
+                            && answer(vm, kind, pid, "pid").equals(other.pid()));
                 case "toString":
                     return kind == Bean.PROCESS_HANDLE ? String.valueOf(pid)
                             : kind.implementation.replace('/', '.') + '@' + Integer.toHexString(System.identityHashCode(proxy));
                 default:
-                    Object value = answer(vm, kind, pid, method.getName(), args == null ? new Object[0] : args);
+                    Object value = answer(vm, kind, pid, method.getName());
                     return value != UNKNOWN ? asType(value, method.getReturnType()) : neutral(method.getReturnType());
             }
         }
@@ -86,6 +86,7 @@ final class ManagementStubs {
     /** Marks a method the simulated bean does not describe. */
     private static final Object UNKNOWN = new Object();
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         String factory = "java/lang/management/ManagementFactory";
         vm.stubs.on(factory, "getRuntimeMXBean", ctx -> bean(vm, Bean.RUNTIME, vm.env.machine.processId));
@@ -131,7 +132,7 @@ final class ManagementStubs {
             if (OBJECT_METHODS.contains(ctx.name)) {
                 return objectMethod(ctx);
             }
-            Object value = answer(vm, kind, pidOf(ctx), ctx.name, ctx.args);
+            Object value = answer(vm, kind, pidOf(ctx), ctx.name);
             return value != UNKNOWN ? toGuest(value, ctx.desc) : vm.router.blocked(ctx.owner, ctx.name, ctx.desc, "method");
         });
     }
@@ -224,7 +225,7 @@ final class ManagementStubs {
      * the real JVM (thread dumps, heap dumps, verbose logging switches) are left unknown and so
      * are blocked and reported.
      */
-    static Object answer(VirtualMachine vm, Bean kind, long pid, String name, Object[] args) {
+    static Object answer(VirtualMachine vm, Bean kind, long pid, String name) {
         // Which facts a sample reads about its machine is a fingerprint of its checks, as with
         // system properties, so the first read of each is recorded.
         vm.events.addOnce("bean:" + kind + '.' + name, "system", "management", "bean", kind.interfaces[kind.interfaces.length - 1],

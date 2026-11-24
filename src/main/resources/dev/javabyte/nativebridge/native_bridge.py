@@ -12,15 +12,14 @@ Protocol: one JSON object per line. JavaByte sends requests on stdin and reads s
     request   {"op": "load", "path": ...}            -> {"result": {"exports": {...}}}
               {"op": "call", "address": n, "self": handle, "args": [{"t": "I", "v": 1}, ...], "ret": "I"}
                                                       -> {"result": {"v": ...}}
-              {"op": "shutdown"}                      (optional; no reply, the helper exits)
     error     {"error": text}                         (helper -> JavaByte, instead of a result)
     callback  {"callback": name, ...}                 (helper -> JavaByte, which answers {"v": ...})
     event     {"event": {...}}                        (helper -> JavaByte, no answer)
 
 "self" is the handle of the receiver for an instance method, or of the class for a static one,
 as JNI passes it. Any request may get {"error": text} instead of its result; JavaByte then
-treats the bridge as unavailable for that request. JavaByte does not currently send "shutdown":
-it ends the helper process when the run is over.
+treats the bridge as unavailable for that request. There is no request to stop: JavaByte ends
+the helper process when the run is over.
 
 While a request is being served the helper may send any number of callbacks and events before
 the final result. JavaByte answers every callback before it sends anything else, and never sends
@@ -573,8 +572,6 @@ class Bridge:
         for line in sys.stdin:
             request = json.loads(line)
             try:
-                if request["op"] == "shutdown":
-                    return
                 if request["op"] == "load":
                     self.send({"result": self.load(request["path"])})
                 elif request["op"] == "call":

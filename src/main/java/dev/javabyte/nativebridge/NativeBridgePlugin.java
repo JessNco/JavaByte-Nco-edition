@@ -643,7 +643,7 @@ public final class NativeBridgePlugin implements EmulatorPlugin {
             } else if (ref != null) {
                 vm.fields.putStatic(ref, value);
             } else {
-                vm.fields.putHostStatic(owner, fieldName, descriptor, value);
+                vm.fields.putHostStatic(owner, fieldName, value);
             }
             return 0;
         }

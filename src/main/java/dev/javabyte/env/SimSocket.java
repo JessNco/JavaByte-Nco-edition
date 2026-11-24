@@ -34,6 +34,7 @@ public final class SimSocket extends Socket {
     private boolean closed;
     private int soTimeout;
 
+    /** An unconnected simulated socket; {@code connect} asks the network simulator for the conversation. */
     public SimSocket(NetworkSimulator network) throws SocketException {
         super((SocketImpl) null);
         this.network = network;

@@ -45,6 +45,7 @@ final class ThreadStubs {
 
     private ThreadStubs() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
         String thread = "java/lang/Thread";
@@ -391,7 +392,7 @@ final class ThreadStubs {
             Object[] args = hasExecutor ? java.util.Arrays.copyOf(ctx.args, ctx.args.length - 1) : ctx.args;
             String desc = Type.getMethodDescriptor(Type.getReturnType(ctx.desc), kept);
             String name = ctx.name.substring(0, ctx.name.length() - "Async".length());
-            return ctx.vm.host.invoke(ctx.owner, name, desc, ctx.receiver, args, false);
+            return ctx.proceedAs(name, desc, args);
         }
         return ctx.proceed();
     }
@@ -598,7 +599,7 @@ final class ThreadStubs {
             if (ctx.desc.contains("Z)")) {
                 Object[] args = ctx.args.clone();
                 args[args.length - 1] = 0;
-                return vm.host.invoke(ctx.owner, ctx.name, ctx.desc, null, args, false);
+                return ctx.proceedWith(args);
             }
             return ctx.proceed();
         });
@@ -609,7 +610,7 @@ final class ThreadStubs {
             if (ctx.receiver instanceof ConcurrentHashMap<?, ?> && ctx.desc.startsWith("(J")) {
                 Object[] args = ctx.args.clone();
                 args[0] = Long.MAX_VALUE;
-                return vm.host.invoke(ctx.owner, ctx.name, ctx.desc, ctx.receiver, args, false);
+                return ctx.proceedWith(args);
             }
             return ctx.proceed(); // the ordinary Map forms, such as forEach(BiConsumer)
         };

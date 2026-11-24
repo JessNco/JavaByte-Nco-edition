@@ -18,18 +18,36 @@ import java.util.Optional;
 import org.objectweb.asm.Type;
 
 /**
- * Performs calls into the real JDK on behalf of guest code, by reflection.
+ * Performs calls into the real JDK on behalf of guest code, by reflection: finding the member,
+ * converting values in both directions, and turning host exceptions into guest exceptions.
  *
- * <p>This class does not decide <em>whether</em> a call is allowed; the router does that before
- * calling in. It only deals with the mechanics: finding the member, converting values in both
- * directions, and turning host exceptions into guest exceptions.
+ * <p>Policy is the router's business and is decided before it calls in. This class enforces
+ * what must hold whatever the policy says:
+ * <ul>
+ *   <li>only classes of the boot and platform loaders are host classes ({@link #findClass});
+ *   <li>a method runs only on a receiver that is an instance of the class declaring it;
+ *       simulated objects, which imitate a class without extending it, are the one exception
+ *       (see {@code resolve});
+ *   <li>access is never forced on a JDK member;
+ *   <li>only fields declared by a JDK class, or by a {@link StandIn} imitating one, are reachable.
+ * </ul>
  */
 public final class HostBridge {
 
+    /**
+     * Prefix of every member the emulator generates on shell classes for its own use. Guest
+     * code may not name such a member; the router refuses any call that does.
+     */
+    public static final String EMULATOR_MEMBER_PREFIX = "javabyte$";
     /** Prefix of generated accessors that let the interpreter make non-virtual calls on shells. */
-    public static final String SUPER_PREFIX = "javabyte$super$";
-    public static final String GETTER_PREFIX = "javabyte$get$";
-    public static final String SETTER_PREFIX = "javabyte$set$";
+    public static final String SUPER_PREFIX = EMULATOR_MEMBER_PREFIX + "super$";
+    /**
+     * Prefixes of the accessors a shell generates for the protected fields of its JDK
+     * superclass: one getter (and, unless the field is final, one setter) per field name, the
+     * nearest class's field winning.
+     */
+    public static final String GETTER_PREFIX = EMULATOR_MEMBER_PREFIX + "get$";
+    public static final String SETTER_PREFIX = EMULATOR_MEMBER_PREFIX + "set$";
 
     private final VirtualMachine vm;
     private final ClassLoader loader = HostBridge.class.getClassLoader();
@@ -58,9 +76,7 @@ public final class HostBridge {
                 while (element.isArray()) {
                     element = element.getComponentType();
                 }
-                ClassLoader owner = element.getClassLoader();
-                boolean isJdk = owner == null || owner == ClassLoader.getPlatformClassLoader();
-                return isJdk ? Optional.of(cls) : Optional.empty();
+                return isJdkClass(element) ? Optional.of(cls) : Optional.empty();
             } catch (ClassNotFoundException | LinkageError e) {
                 return Optional.empty();
             }
@@ -72,7 +88,8 @@ public final class HostBridge {
      * {@link StandIn} implementation, wherever it lives (for example
      * {@code SystemStubs.LegacyBase64}), classes in the {@code env} package, and JDK proxies whose
      * handler is emulator code (guest lambdas and simulated management beans). Calls on such
-     * objects are safe by construction.
+     * objects are safe by construction for the methods the simulation itself declares; what
+     * it inherits from a JDK class is judged separately (see {@link #jdkDeclarer}).
      */
     public static boolean isSimulated(Object value) {
         if (value == null) {
@@ -181,6 +198,20 @@ public final class HostBridge {
         }
     }
 
+    /** The method of the named JDK class with this name and descriptor, or null; remembered per signature. */
+    private Method named(String owner, String name, String desc) {
+        return methods.computeIfAbsent(owner + '.' + name + desc, key -> {
+            Class<?> cls = findClass(owner);
+            return Optional.ofNullable(cls == null ? null : findMethod(cls, name, desc));
+        }).orElse(null);
+    }
+
+    /**
+     * The method a call runs, or null if there is none to run. In order: for a non-virtual call
+     * on a shell, the shell's accessor that calls its JDK superclass directly; the method of
+     * the named class, if the receiver is an instance of the class that declares it; and for a
+     * simulated receiver only, the same-named method of the receiver's own class.
+     */
     private Method resolve(String owner, String name, String desc, Object receiver, boolean special) {
         if (special && receiver instanceof GuestInstance) {
             Method accessor = findMethod(receiver.getClass(), SUPER_PREFIX + name, desc);
@@ -188,10 +219,7 @@ public final class HostBridge {
                 return accessor;
             }
         }
-        Method method = methods.computeIfAbsent(owner + '.' + name + desc, key -> {
-            Class<?> cls = findClass(owner);
-            return Optional.ofNullable(cls == null ? null : findMethod(cls, name, desc));
-        }).orElse(null);
+        Method method = named(owner, name, desc);
         if (receiver != null && (method == null
                 || (!Modifier.isStatic(method.getModifiers()) && !method.getDeclaringClass().isInstance(receiver)))) {
             if (!isSimulated(receiver)) {
@@ -215,10 +243,7 @@ public final class HostBridge {
      * named class describe the code that would actually run.
      */
     public boolean resolvesOn(String owner, String name, String desc, Object receiver) {
-        Method method = methods.computeIfAbsent(owner + '.' + name + desc, key -> {
-            Class<?> cls = findClass(owner);
-            return Optional.ofNullable(cls == null ? null : findMethod(cls, name, desc));
-        }).orElse(null);
+        Method method = named(owner, name, desc);
         if (method == null) {
             return false;
         }
@@ -356,6 +381,7 @@ public final class HostBridge {
 
     // ------------------------------------------------------------------ fields
 
+    /** Reads a public static field of a JDK class. The router has already consulted the policy. */
     public Object getStatic(String owner, String name) {
         Field field = findField(findClass(owner), name);
         if (field == null) {
@@ -368,6 +394,10 @@ public final class HostBridge {
         }
     }
 
+    /**
+     * Reads an instance field of a host object. {@code owner} is used only in messages: the
+     * field is looked up on the object's real class, and only as {@link #findField} allows.
+     */
     public Object getField(Object target, String owner, String name) {
         try {
             if (target instanceof GuestInstance) {
@@ -388,6 +418,7 @@ public final class HostBridge {
         }
     }
 
+    /** Writes an instance field of a host object, under the same rule as {@link #getField}. */
     public void putField(Object target, String owner, String name, Object value) {
         try {
             if (target instanceof GuestInstance) {
@@ -433,6 +464,7 @@ public final class HostBridge {
         return owner == null || owner == ClassLoader.getPlatformClassLoader();
     }
 
+    /** By name alone: the callers have no descriptor, and a shell has at most one accessor per field name. */
     private static Method findMethodByName(Class<?> cls, String name) {
         for (Method method : cls.getMethods()) {
             if (method.getName().equals(name)) {

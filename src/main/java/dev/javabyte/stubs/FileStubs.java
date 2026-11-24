@@ -45,6 +45,7 @@ final class FileStubs {
 
     private FileStubs() {}
 
+    /** Installs this class's stubs on the machine; called once per run from {@code BuiltinStubs}. */
     static void install(VirtualMachine vm) {
         StubRegistry stubs = vm.stubs;
         VirtualFileSystem fs = vm.env.files;
@@ -102,26 +103,8 @@ final class FileStubs {
         // The copy's path is the analysis machine's, so the guest is told the path it asked for.
         java.util.Map<java.util.zip.ZipFile, String> archiveNames =
                 java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
-        stubs.on("java/util/zip/ZipFile", "<init>", ctx -> {
-            File copy = materialise(fs, path(ctx.arg(0)));
-            try {
-                java.util.zip.ZipFile archive = new java.util.zip.ZipFile(copy);
-                archiveNames.put(archive, path(ctx.arg(0)));
-                return archive;
-            } finally {
-                discard(copy);
-            }
-        });
-        stubs.on("java/util/jar/JarFile", "<init>", ctx -> {
-            File copy = materialise(fs, path(ctx.arg(0)));
-            try {
-                java.util.jar.JarFile archive = new java.util.jar.JarFile(copy);
-                archiveNames.put(archive, path(ctx.arg(0)));
-                return archive;
-            } finally {
-                discard(copy);
-            }
-        });
+        stubs.on("java/util/zip/ZipFile", "<init>", ctx -> openArchive(fs, path(ctx.arg(0)), java.util.zip.ZipFile::new, archiveNames));
+        stubs.on("java/util/jar/JarFile", "<init>", ctx -> openArchive(fs, path(ctx.arg(0)), java.util.jar.JarFile::new, archiveNames));
         stubs.on("java/util/zip/ZipFile", "getName", ctx -> {
             String name = ctx.receiver instanceof java.util.zip.ZipFile archive ? archiveNames.get(archive) : null;
             return name != null ? name : "archive.zip";
@@ -254,6 +237,28 @@ final class FileStubs {
         copy.deleteOnExit();
         java.nio.file.Files.write(copy.toPath(), data);
         return copy;
+    }
+
+    /** How {@code ZipFile} and {@code JarFile} are opened from a real file. */
+    @FunctionalInterface
+    private interface ArchiveOpener<T extends java.util.zip.ZipFile> {
+        T open(File file) throws IOException;
+    }
+
+    /**
+     * Opens the archive at a virtual path through a temporary real copy, removes the copy, and
+     * remembers the path the guest asked for, which is what {@code getName()} answers.
+     */
+    private static <T extends java.util.zip.ZipFile> T openArchive(VirtualFileSystem fs, String guestPath,
+            ArchiveOpener<T> opener, java.util.Map<java.util.zip.ZipFile, String> names) throws IOException {
+        File copy = materialise(fs, guestPath);
+        try {
+            T archive = opener.open(copy);
+            names.put(archive, guestPath);
+            return archive;
+        } finally {
+            discard(copy);
+        }
     }
 
     /**

@@ -197,6 +197,7 @@ public final class NativeLibraryInfo {
         return out.toString();
     }
 
+    /** The description as it appears in {@code inspect --json}. */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("format", format);

@@ -85,6 +85,13 @@ public final class Scheduler {
     private final Map<Object, Monitor> monitors = new IdentityHashMap<>();
     private final Map<Object, List<Carrier>> waiters = new IdentityHashMap<>();
     private final Carrier main = new Carrier("main", null, null);
+    /**
+     * The carrier holding the baton. Like the rest of this class's state it is neither volatile
+     * nor locked, although many host threads touch it: only the carrier holding the baton
+     * does, and the baton is handed over with {@code Semaphore.release}/{@code acquire} (or
+     * {@code Thread.start}), which gives the next holder a happens-before edge over everything
+     * the previous one wrote.
+     */
     private Carrier current = main;
     private int submitted;
     private int sliceChecks;
@@ -459,13 +466,23 @@ public final class Scheduler {
         while (!ready.getAsBoolean()) {
             // A thread in a timed wait will move virtual time on when everyone is stuck, which
             // may unblock this one, so "forever" is only certain when there is none.
-            if (runnable.isEmpty() || (++fruitlessPolls > 2 * (runnable.size() + 1) && !anyTimedWaiter())) {
+            if (runnable.isEmpty() || (pollWasFruitless() && !anyTimedWaiter())) {
                 fruitlessPolls = 0;
                 throw new EmulationAbort(EmulationAbort.Reason.BLOCKED, what + " would block forever");
             }
             yieldToOthers(what);
         }
         fruitlessPolls = 0;
+    }
+
+    /**
+     * Counts one more look at a condition that was still false, and says whether everyone is
+     * now taken to be stuck. Two full rounds of the other runnable threads (plus one, so a
+     * lone waiter is not condemned on its first look) is long enough for any thread that
+     * could make the condition true to have had its turn twice.
+     */
+    private boolean pollWasFruitless() {
+        return ++fruitlessPolls > 2 * (runnable.size() + 1);
     }
 
     /** True if a runnable carrier is in a timed wait. */
@@ -544,7 +561,7 @@ public final class Scheduler {
                 if (now >= deadline) {
                     return false;
                 }
-                boolean stuck = runnable.isEmpty() || ++fruitlessPolls > 2 * (runnable.size() + 1);
+                boolean stuck = runnable.isEmpty() || pollWasFruitless();
                 if (stuck || turns >= patience) {
                     // Out of patience, a thread may only let its own time pass, and only if no
                     // other deadline comes first: that other waiter decides for itself. When
@@ -646,6 +663,8 @@ public final class Scheduler {
                 current = carrier;
                 carrier.turn.release();
                 try {
+                    // Unwinding takes microseconds. The bound is for a carrier stuck inside a real
+                    // JDK call, which must not hold up the report; it is a daemon and is left behind.
                     carrier.host.join(2_000);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

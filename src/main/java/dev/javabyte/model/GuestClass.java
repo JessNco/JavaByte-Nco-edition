@@ -94,6 +94,7 @@ public final class GuestClass {
         return ABSENT_JDK_CLASS.equals(origin);
     }
 
+    /** Wraps a parsed class: indexes its methods and assigns its fields their storage slots. */
     GuestClass(ClassRepository repository, ClassNode node, byte[] bytes, String origin) {
         this.repository = repository;
         this.node = node;

@@ -79,6 +79,12 @@ public final class ShellFactory {
         this.vm = vm;
     }
 
+    /** True if the guest class's shell is built on one of the {@link #SIMULATED_BASES}. */
+    public boolean hasSimulatedBase(GuestClass guest) {
+        Class<?> shell = guest.shellClass;
+        return shell != null && SIMULATED_BASES.containsValue(jdkBase(shell));
+    }
+
     /** The guest class a generated shell class stands for, or null if it is not a shell. */
     public GuestClass guestFor(Class<?> shell) {
         return guestByShell.get(shell);
@@ -105,7 +111,8 @@ public final class ShellFactory {
      * Creates the shell object for a guest instance whose constructor has reached its JDK
      * superclass constructor call.
      *
-     * @param ctorOwner the JDK class named by that call
+     * @param ctorOwner the JDK class named by that call, or null if policy does not allow that
+     *                  constructor, in which case it is not run
      */
     public Object instantiate(InstanceState state, String ctorOwner, String desc, Object[] args) {
         Class<?> shell = state.type.shellClass;
@@ -113,11 +120,16 @@ public final class ShellFactory {
         Object[] effectiveArgs = args;
         if (constructor == null || !reportedBaseName(shell).equals(ctorOwner)) {
             // The sample's direct superclass is unavailable or blocked, so the shell extends
-            // Object instead and there is nothing to pass the arguments to.
-            constructor = findConstructor(shell, "()V");
+            // Object instead and there is nothing to pass the arguments to. Or the superclass
+            // is there but this constructor of it is not allowed: then only a no-argument
+            // constructor, if policy allows that one, can build the object.
+            String base = reportedBaseName(shell);
+            boolean plainAllowed = jdkBase(shell) == Object.class || SIMULATED_BASES.containsKey(base)
+                    || vm.policy.allows(base, "<init>", "()V");
+            constructor = plainAllowed ? findConstructor(shell, "()V") : null;
             effectiveArgs = new Object[0];
             vm.events.addOnce(state.type.name + ctorOwner, "gap", "phantom-superclass",
-                    "class", state.type.name, "superclass", ctorOwner);
+                    "class", state.type.name, "superclass", ctorOwner == null ? base : ctorOwner);
         }
         if (constructor == null) {
             throw vm.raise(new InstantiationError(state.type.dottedName()));

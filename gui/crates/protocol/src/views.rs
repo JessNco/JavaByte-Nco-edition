@@ -286,6 +286,44 @@ pub fn artifact_kind(path: &str) -> &'static str {
     }
 }
 
+/// Extensions of files the Windows shell reads by itself; the tool's `SHELL_READ_EXTENSIONS`.
+const SHELL_READ_EXTENSIONS: &[&str] = &["lnk", "url", "scf", "pif", "library-ms", "searchconnector-ms", "search-ms", "website", "theme", "themepack", "contact"];
+
+/// The name the tool saves a file under, for a path or class name the sample chose: the tool's
+/// `Artifacts.sanitise`. Each part keeps only ASCII letters, digits, `.`, `_`, `$`, space and
+/// `-` (anything else becomes `_`) and at most 120 characters; a trailing dot or space becomes
+/// `_`, a Windows device name (`aux.class`, `NUL`) gets a leading `_`, and a file the Windows
+/// shell reads by itself (`desktop.ini`, `x.lnk`, `x.url`) gets `.saved` appended.
+fn saved_name(name: &str) -> String {
+    let parts: Vec<String> = name
+        .split(['/', '\\'])
+        .filter_map(|part| {
+            // The tool counts as Java does, where a character outside the basic plane is two.
+            let mut clean: String = part.chars().flat_map(|c| if c.is_ascii_alphanumeric() || "._$ -".contains(c) { vec![c] } else { vec!['_'; c.len_utf16()] }).take(120).collect();
+            if clean.chars().all(|c| c == '.') {
+                return None;
+            }
+            if clean.ends_with(['.', ' ']) {
+                clean.pop();
+                clean.push('_');
+            }
+            let stem = clean.split('.').next().unwrap_or_default().trim_end_matches(' ').to_ascii_uppercase();
+            let numbered = |prefix: &str| stem.strip_prefix(prefix).is_some_and(|n| n.len() == 1 && n.as_bytes()[0].is_ascii_digit());
+            let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT");
+            let mut saved = if device { format!("_{clean}") } else { clean };
+            // Files the Windows shell reads by itself when a folder is opened are saved as `.saved`.
+            let lower = saved.to_ascii_lowercase();
+            let shell_reads = matches!(lower.as_str(), "desktop.ini" | "autorun.inf" | "thumbs.db")
+                || lower.rsplit_once('.').is_some_and(|(_, extension)| SHELL_READ_EXTENSIONS.contains(&extension));
+            if shell_reads {
+                saved.push_str(".saved"); // not-ui-text: part of a file name
+            }
+            Some(saved)
+        })
+        .collect();
+    if parts.is_empty() { "unnamed".into() } else { parts.join("/") }
+}
+
 /// Where each saved file came from, from the report's events: the file path the sample wrote,
 /// the address a request body was sent to, or the name of a class it defined.
 pub fn artifact_origins(report: &Report) -> std::collections::BTreeMap<String, String> {
@@ -301,13 +339,13 @@ pub fn artifact_origins(report: &Report) -> std::collections::BTreeMap<String, S
             ("file", "write") => {
                 if let Some(path) = text(event, "path") {
                     // The tool saves C:\a\b as dropped/C_/a/b and /a/b as dropped/a/b.
-                    let saved = format!("dropped/{}", path.replace(':', "_").replace('\\', "/").trim_start_matches('/'));
+                    let saved = format!("dropped/{}", saved_name(&path));
                     out.entry(saved).or_insert(path);
                 }
             }
             ("class", _) => {
                 if let Some(name) = text(event, "name").or_else(|| text(event, "class")) {
-                    let saved = format!("defined-classes/{}.class", name.replace('.', "/"));
+                    let saved = format!("defined-classes/{}", saved_name(&format!("{}.class", name.replace('.', "/"))));
                     out.entry(saved).or_insert(name);
                 }
             }
@@ -651,6 +689,33 @@ mod follow_up_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The same cases as the tool's `ArtifactsTest`, so the two rules stay one.
+    #[test]
+    fn saved_names_follow_the_tool() {
+        for (name, saved) in [
+            ("a/aux.class", "a/_aux.class"),
+            ("C:\\Users\\NUL", "C_/Users/_NUL"),
+            ("con/x.bin", "_con/x.bin"),
+            ("COM1.tar.gz", "_COM1.tar.gz"),
+            ("lpt9 .txt", "_lpt9 .txt"),
+            ("CONOUT$", "_CONOUT$"),
+            ("prn.", "prn_"),
+            ("x.", "x_"),
+            ("a /b..", "a_/b._"),
+            ("/tmp/../r\u{e9}sum\u{e9} \u{1F600}.jar", "tmp/r_sum_ __.jar"),
+            ("", "unnamed"),
+            ("Startup/desktop.ini", "Startup/desktop.ini.saved"),
+            ("a/Invoice.URL", "a/Invoice.URL.saved"),
+            ("a/x.lnk/y.jar", "a/x.lnk.saved/y.jar"),
+            ("C:\\nul.txt", "C_/_nul.txt"),
+        ] {
+            assert_eq!(saved_name(name), saved, "{name:?}");
+        }
+        for name in ["console.log", "null", "COM10", "com", "LPT", "a.nul", "x.con.jar", "auxiliary/Aux1.class", "C_/Users/Public/stage.bin", "payload$1.class", "My Documents/a b.txt", ".hidden"] {
+            assert_eq!(saved_name(name), name);
+        }
+    }
 
     fn inspection(main: Option<&str>, agent: Option<&str>, candidates: &[&str]) -> Inspection {
         serde_json::from_value(serde_json::json!({

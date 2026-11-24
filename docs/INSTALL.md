@@ -30,19 +30,39 @@ On Linux:
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-When a release is signed, it also has `SHA256SUMS.asc` and the public key
-`javabyte-signing-key.asc`. Check the signature (once you have imported the key, only the
-second command is needed):
+The checksums only show that a file matches the list. To know the list itself is the project's,
+check its signature, `SHA256SUMS.asc`. Every release has it; a release without it is not from
+this project.
+
+The public key is deliberately **not** among the release's files: a key that comes with the
+files it signs proves nothing. It is in the repository, as
+[`docs/javabyte-signing-key.asc`](javabyte-signing-key.asc). Its fingerprint is:
+
+```text
+(no signed release has been made yet; the fingerprint will be written here with the key)
+```
+
+Import the key (only needed once):
 
 ```bash
 gpg --import javabyte-signing-key.asc
 ```
 
+Check that the fingerprint gpg shows is the one above:
+
+```bash
+gpg --fingerprint "JavaByte releases"
+```
+
+Then check the signature:
+
 ```bash
 gpg --verify SHA256SUMS.asc SHA256SUMS
 ```
 
-"Good signature" means the checksums are the ones the project published.
+"Good signature", with the fingerprint above, means the checksums are the ones the project
+published. gpg also warns that the key "is not certified with a trusted signature": that is
+expected, and is why you compare the fingerprint yourself.
 
 ## Windows
 
@@ -88,7 +108,8 @@ sudo apt install ./JavaByte-0.2.0-linux-x86_64.deb
 
 Then start JavaByte from the applications menu, or run `javabyte-gui`.
 
-**Network isolation:** each analysis runs with the network turned off, and with the sockets of
+**Network isolation:** each analysis runs with the network turned off, with the file system
+read-only except for its output folder and a private temporary folder, and with the sockets of
 desktop services (D-Bus, X11 and others) hidden from it, as a second layer of protection. Ubuntu
 24.04 allows this only to programs that have permission, and the `.deb` adds that permission (a
 small AppArmor profile). Preferences shows whether isolation is available.

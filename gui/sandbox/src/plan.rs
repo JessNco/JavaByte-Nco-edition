@@ -99,7 +99,7 @@ pub fn to_guest(text: &str, maps: &[Mapping], staged: &[&Path]) -> String {
         let mut last = 0;
         for (at, _) in lower.match_indices(&wanted) {
             // Only whole path segments: what follows must end the path, start a new segment, or
-            // close the quotes around it (the app passes `sample='<path>'`, quoted as YAML).
+            // close the quotes around it (`sample='<path>'`; see [`argument_to_guest`]).
             let next = out[at + wanted.len()..].chars().next();
             if matches!(next, None | Some('\\') | Some('/') | Some('"') | Some('\'') | Some(' ') | Some(';')) {
                 result.push_str(&out[last..at]);
@@ -111,6 +111,67 @@ pub fn to_guest(text: &str, maps: &[Mapping], staged: &[&Path]) -> String {
         out = result;
     }
     out
+}
+
+/// One argument of the program as it must read inside the sandbox.
+///
+/// The app names the sample twice: as a path, and as the setting `sample=<path>`, where the
+/// path is written as a YAML value. A current app writes both as sandbox paths already, and they
+/// pass through unchanged. An older one writes the path on this computer, quoted as YAML needs:
+/// `''` for a `'` in the path, or double quotes with escapes for characters YAML treats
+/// specially (a byte order mark, a line separator, a C1 control: all legal in a file name, and
+/// chosen by the sample's author). Searching that text for the path misses it, and the run was
+/// then refused or pointed at a file that does not exist inside. So the value is read as YAML,
+/// the path it holds is rewritten, and it is written again in single quotes.
+pub fn argument_to_guest(arg: &str, maps: &[Mapping], staged: &[&Path]) -> String {
+    if let Some(path) = arg.strip_prefix("sample=").and_then(yaml_quoted) {
+        let guest = to_guest(&path, maps, staged);
+        // Only a value that held a host path and now holds none of what YAML cannot carry in
+        // single quotes; anything else is left to the search below.
+        if guest != path && !guest.chars().any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{feff}')) {
+            return format!("sample='{}'", guest.replace('\'', "''"));
+        }
+    }
+    to_guest(arg, maps, staged)
+}
+
+/// The text of a quoted YAML value on one line: `'...'` with `''` for a quote, or `"..."` with
+/// backslash escapes. `None` for anything else, including a value that is not quoted.
+fn yaml_quoted(value: &str) -> Option<String> {
+    if let Some(inner) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+        // Every quote inside must be doubled.
+        return (!inner.replace("''", "").contains('\'')).then(|| inner.replace("''", "'"));
+    }
+    let inner = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            return None;
+        }
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let escape = chars.next()?;
+        let digits = match escape {
+            'x' => 2,
+            'u' => 4,
+            'U' => 8,
+            _ => 0,
+        };
+        let code: String = chars.by_ref().take(digits).collect();
+        out.push(match escape {
+            '\\' | '"' | '/' => escape,
+            '0' => '\0',
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            'x' | 'u' | 'U' if code.len() == digits && code.chars().all(|d| d.is_ascii_hexdigit()) => char::from_u32(u32::from_str_radix(&code, 16).ok()?)?,
+            _ => return None,
+        });
+    }
+    Some(out)
 }
 
 /// The file names staged files have in the sandbox, in the same order.
@@ -152,7 +213,8 @@ pub fn staged_names(files: &[&Path]) -> Vec<String> {
 /// `%` is refused rather than written as `%%`: the program runs on the right of a pipe, and cmd
 /// runs each side of a pipe in a new cmd that expands `%NAME%` a second time, where nothing can
 /// escape it. No text the sample's author chooses reaches this check: staged files get safe
-/// names ([`staged_names`]), and mapped folders are replaced by their sandbox paths.
+/// names ([`staged_names`]), mapped folders are replaced by their sandbox paths, and the app
+/// names the sample by its sandbox path ([`argument_to_guest`] covers an app that does not).
 pub fn unsafe_for_cmd(arg: &str) -> bool {
     arg.contains(['%', '"', '\n', '\r'])
 }
@@ -245,6 +307,62 @@ fn xml(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
+/// The environment variables a program in an AppContainer is started with: where Windows and
+/// the person's folders are and what the processor is; not the ones a JVM reads options from. Compared without
+/// regard to case, as Windows does. The desktop app passes the same short list to this helper;
+/// the helper does not rely on that.
+const PASSED_VARIABLES: &[&str] = &[
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "Path",
+    "PATHEXT",
+    "USERPROFILE",
+    "USERNAME",
+    "USERDOMAIN",
+    "COMPUTERNAME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "ProgramData",
+    "ALLUSERSPROFILE",
+    "PUBLIC",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+    "PROCESSOR_LEVEL",
+    "PROCESSOR_REVISION",
+    "OS",
+    "JAVABYTE_BRIDGE_PYTHON",
+];
+
+/// The environment for a program in an AppContainer, from the helper's own (`inherited`): the
+/// variables in [`PASSED_VARIABLES`] and no others, so that whatever else the person's
+/// environment holds, such as access tokens for other services, is not there to be read if a
+/// sample ever got out of the emulator. `TEMP` and `TMP` name `temp`, the container's own
+/// folder, when there is one; otherwise they are passed on as they are. Sorted by name without
+/// regard to case, as Windows expects of an environment block.
+pub fn child_environment(inherited: impl IntoIterator<Item = (OsString, OsString)>, temp: Option<&Path>) -> Vec<(OsString, OsString)> {
+    let is = |name: &OsString, wanted: &str| name.to_str().is_some_and(|n| n.eq_ignore_ascii_case(wanted));
+    let is_temp = |name: &OsString| is(name, "TEMP") || is(name, "TMP");
+    let mut variables: Vec<(OsString, OsString)> =
+        inherited.into_iter().filter(|(name, _)| PASSED_VARIABLES.iter().any(|p| is(name, p)) || (temp.is_none() && is_temp(name))).collect();
+    if let Some(temp) = temp {
+        variables.push(("TEMP".into(), temp.into()));
+        variables.push(("TMP".into(), temp.into()));
+    }
+    variables.sort_by_key(|(name, _)| name.to_string_lossy().to_uppercase());
+    variables
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,6 +426,57 @@ mod tests {
         assert_eq!(script.matches('%').count(), 2, "only %ERRORLEVEL% is left: {script}");
     }
 
+    /// The names from a security audit: a `'`, a byte order mark, a line separator, a C1
+    /// control and DEL, as an app from before the fix writes them in `sample=`. Each used to be
+    /// missed by the search for the host path; the escaped ones were then refused for their `"`.
+    #[test]
+    fn the_sample_setting_is_rewritten_however_yaml_quoted_it() {
+        let cases = [
+            ("D:\\in\\it's.jar", "sample='D:\\in\\it''s.jar'", "it_s.jar"),
+            ("D:\\in\\in\u{feff}voice.jar", "sample=\"D:\\\\in\\\\in\\ufeffvoice.jar\"", "in_voice.jar"),
+            ("D:\\in\\a\u{2028}b.jar", "sample=\"D:\\\\in\\\\a\\u2028b.jar\"", "a_b.jar"),
+            ("D:\\in\\a\u{85}b.jar", "sample=\"D:\\\\in\\\\a\\x85b.jar\"", "a_b.jar"),
+            ("D:\\in\\a\u{7f}b.jar", "sample=\"D:\\\\in\\\\a\\x7fb.jar\"", "a_b.jar"),
+            ("D:\\o'brien\u{feff}\\plain.jar", "sample=\"D:\\\\o'brien\\ufeff\\\\plain.jar\"", "plain.jar"),
+            ("D:\\in\\x.jar", "sample='D:\\in\\x.jar'", "x.jar"),
+        ];
+        for (host, setting, name) in cases {
+            let sample = PathBuf::from(host);
+            let staged = [sample.as_path()];
+            let arg = argument_to_guest(setting, &[], &staged);
+            assert_eq!(arg, format!("sample='{STAGE_GUEST}\\{name}'"), "{setting}");
+            assert!(!unsafe_for_cmd(&arg), "{arg}");
+            // The path by itself, as the app also passes it.
+            assert_eq!(argument_to_guest(host, &[], &staged), format!("{STAGE_GUEST}\\{name}"));
+            // What a current app passes is already a sandbox path, and is left as it is.
+            assert_eq!(argument_to_guest(&arg, &[], &staged), arg);
+        }
+
+        // A sample folder is mapped rather than staged; its name is the author's too.
+        let maps = vec![Mapping { host: PathBuf::from("D:\\it's\u{2028}here"), guest: "C:\\JavaByteSample".into(), writable: false }];
+        assert_eq!(argument_to_guest("sample=\"D:\\\\it's\\u2028here\"", &maps, &[]), "sample='C:\\JavaByteSample'");
+        assert_eq!(argument_to_guest("sample='D:\\it''s\u{2028}here'", &maps, &[]), "sample='C:\\JavaByteSample'");
+
+        // Other arguments, and values that are not quoted YAML, go through the search as before.
+        assert_eq!(argument_to_guest("D:\\it's\u{2028}here\\a.class", &maps, &[]), "C:\\JavaByteSample\\a.class");
+        assert_eq!(argument_to_guest("sample=D:\\it's\u{2028}here", &maps, &[]), "sample=C:\\JavaByteSample");
+        assert_eq!(argument_to_guest("output.console=quiet", &maps, &[]), "output.console=quiet");
+        for odd in ["sample='a'b'", "sample=\"a\\qb\"", "sample=\"a\\u12\"", "sample=\"a\"b\"", "sample='", "sample=\"", "sample="] {
+            assert_eq!(argument_to_guest(odd, &maps, &[]), odd);
+        }
+    }
+
+    #[test]
+    fn quoted_yaml_values_read_back() {
+        assert_eq!(yaml_quoted("'it''s'").as_deref(), Some("it's"));
+        assert_eq!(yaml_quoted("''").as_deref(), Some(""));
+        assert_eq!(yaml_quoted("\"a\\\\b\\\"c\\n\\t\\r\\x41\\u00e9\\U0001F600\"").as_deref(), Some("a\\b\"c\n\t\rA\u{e9}\u{1F600}"));
+        assert_eq!(yaml_quoted("plain"), None);
+        assert_eq!(yaml_quoted("'"), None);
+        assert_eq!(yaml_quoted("\"\\ud800\""), None, "not a character");
+        assert_eq!(yaml_quoted("\"\\\""), None, "the closing quote is escaped");
+    }
+
     #[test]
     fn a_trailing_backslash_keeps_its_closing_quote() {
         let script = run_cmd(&["java.exe".into(), "C:\\Run\\".into(), "next".into()], None);
@@ -343,5 +512,19 @@ mod tests {
         assert!(!stop.overdue(true, start + Duration::from_secs(600)), "Stop seen");
         assert!(!stop.overdue(true, start + Duration::from_secs(600) + STOP_GRACE));
         assert!(stop.overdue(true, start + Duration::from_secs(601) + STOP_GRACE));
+    }
+
+    /// A program in the container gets Windows' own variables (but not the ones a JVM reads options from), the
+    /// container's folder for temporary files, and nothing else: a token is not passed on.
+    #[test]
+    fn the_container_gets_a_short_list_of_environment_variables() {
+        let inherited = [("windir", r"C:\Windows"), ("GITHUB_TOKEN", "s3cret"), ("systemroot", r"C:\Windows"), ("Path", r"C:\Windows\System32"), ("TEMP", r"C:\Users\a\Temp"), ("AWS_SECRET_ACCESS_KEY", "s3cret"), ("_JAVA_OPTIONS", "-Xmx1g")];
+        let inherited = || inherited.iter().map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let names = |variables: &[(OsString, OsString)]| variables.iter().map(|(name, value)| format!("{}={}", name.to_string_lossy(), value.to_string_lossy())).collect::<Vec<_>>();
+        let contained = child_environment(inherited(), Some(Path::new(r"C:\Container\Temp")));
+        assert_eq!(names(&contained), [r"Path=C:\Windows\System32", r"systemroot=C:\Windows", r"TEMP=C:\Container\Temp", r"TMP=C:\Container\Temp", r"windir=C:\Windows"]);
+        // Without a container folder, the person's own temporary folder is named as before.
+        let plain = child_environment(inherited(), None);
+        assert_eq!(names(&plain), [r"Path=C:\Windows\System32", r"systemroot=C:\Windows", r"TEMP=C:\Users\a\Temp", r"windir=C:\Windows"]);
     }
 }

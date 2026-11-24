@@ -1,0 +1,4 @@
+# uv fetches the standalone Python bundled in the "with native bridge" installers (stage.sh).
+# What is installed is uv-requirements.txt, which adds the checksum of every file. After
+# changing the version, run scripts/update-native-bridge-requirements.sh.
+uv==0.8.0

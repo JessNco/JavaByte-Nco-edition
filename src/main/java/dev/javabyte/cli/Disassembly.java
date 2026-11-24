@@ -63,7 +63,8 @@ final class Disassembly {
             throw new ConfigException("the class file is damaged and cannot be read (" + e.getClass().getSimpleName()
                     + (e.getMessage() == null ? "" : ": " + e.getMessage()) + ")");
         }
-        return out.toString();
+        // Names in a class file may hold any character; show them, do not let a terminal obey them.
+        return dev.javabyte.report.Text.visibleLines(out.toString());
     }
 
     private static byte[] fromArchive(Path file, String className) throws IOException {

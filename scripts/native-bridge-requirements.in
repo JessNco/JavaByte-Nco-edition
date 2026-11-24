@@ -1,0 +1,10 @@
+# Python packages for the optional native bridge. See docs/NATIVE.md.
+#
+# This is the short list a person edits. What is installed is native-bridge-requirements.txt,
+# which pins every package these pull in and lists the checksum of every file. After changing
+# this file, run scripts/update-native-bridge-requirements.sh.
+speakeasy-emulator==1.5.11
+# The Unicorn binding Speakeasy depends on imports pkg_resources, removed in setuptools 81.
+# setuptools is also what builds the one package published only as source (lznt1); see
+# install-native-bridge-packages.sh.
+setuptools<81

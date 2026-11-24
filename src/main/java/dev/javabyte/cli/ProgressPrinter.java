@@ -23,6 +23,6 @@ final class ProgressPrinter implements RunListener {
                 .map(e -> e.getKey() + " " + e.getValue())
                 .collect(Collectors.joining(", "));
         err.printf("[%5.1f s] %,d instructions, %,d events%s  (%s)%n", progress.elapsedMillis() / 1000.0,
-                progress.instructions(), progress.events(), top.isEmpty() ? "" : ": " + top, progress.entry());
+                progress.instructions(), progress.events(), top.isEmpty() ? "" : ": " + top, dev.javabyte.report.Text.visible(progress.entry()));
     }
 }

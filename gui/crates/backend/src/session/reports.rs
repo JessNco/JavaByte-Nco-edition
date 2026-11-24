@@ -1,7 +1,7 @@
 //! Reports: the one open now, opening others (from the recent list or from disk), comparing
 //! two, running again with a report's settings, and the files a run saved.
 
-use super::{OpenReport, Session, timestamp, with_sample, without_host_programs};
+use super::{OpenReport, Session, timestamp, with_sample, without_host_access};
 use crate::config::{self, ConfigDoc, ConfigPath};
 use crate::events::EventStore;
 use crate::report::ReportEventsSource;
@@ -61,7 +61,7 @@ impl Session {
     /// The open report's sample, chosen again with the run's settings, for **Run again with
     /// changes**. The sample must still be where it was, on this computer. The report may
     /// come from someone else, so settings that name a program to start are left out
-    /// ([`without_host_programs`]).
+    /// ([`without_host_access`]).
     pub fn run_again(&mut self) -> Result<Overview, String> {
         let open = self.report.as_ref().ok_or_else(|| t!("error-no-report"))?;
         let moved = || t!("error-sample-moved", path = open.view.sample_path.clone());
@@ -70,7 +70,7 @@ impl Session {
         let text = open.view.config_text.clone().unwrap_or_else(|| config::render_document(&open.view.config));
         let sample = Session::choose(&sample_path).map_err(|_| moved())?;
         let overview = self.inspect(sample.clone())?;
-        let mut doc = ConfigDoc::new(without_host_programs(&with_sample(&text, Some(&sample))));
+        let mut doc = ConfigDoc::new(without_host_access(&with_sample(&text, Some(&sample))));
         // The run's own folder is set per run by the app; a copied one would mislead.
         let _ = doc.remove(&ConfigPath::parse("output.directory"));
         let _ = doc.remove(&ConfigPath::parse("output.console"));
@@ -149,12 +149,37 @@ impl Session {
     }
 }
 
+/// Largest settings file read from a run folder; the same bound as for an imported one.
+const CONFIG_LIMIT: u64 = 1 << 20;
+
+/// Largest report read from a run folder. Reports with every event of a long run are large;
+/// this only stops a file that is not a report at all from filling the memory.
+const REPORT_LIMIT: u64 = 2 << 30;
+
+/// Reads a text file from a folder that may have come from someone else: only a regular file
+/// that is not a link, and no more than `limit` bytes. A link could lead to a private file of
+/// the person's own, whose content would then be shown and reused; a device such as
+/// `/dev/zero` would never end.
+fn read_plain_text(path: &Path, limit: u64) -> std::io::Result<String> {
+    use std::io::Read as _;
+    let found = std::fs::symlink_metadata(path)?;
+    if !found.file_type().is_file() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, t!("error-not-plain-file", path = path.display().to_string())));
+    }
+    let mut text = String::new();
+    std::fs::File::open(path)?.take(limit.saturating_add(1)).read_to_string(&mut text)?;
+    if text.len() as u64 > limit {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, t!("error-file-too-large", path = path.display().to_string())));
+    }
+    Ok(text)
+}
+
 /// Reads a run folder's report, its events and its settings file.
 pub(super) fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport, String> {
     let (report, text) = read_report(output)?;
     let events = ReportEventsSource::read(text.as_bytes())?;
     let mut view = views::report_view(&report, sample_name, &output.display().to_string());
-    view.config_text = std::fs::read_to_string(output.join("config.yaml")).ok();
+    view.config_text = read_plain_text(&output.join("config.yaml"), CONFIG_LIMIT).ok();
     Ok(OpenReport {
         view,
         events: EventStore::new(Box::new(events)),
@@ -167,7 +192,7 @@ pub(super) fn open_report(output: &Path, sample_name: &str) -> Result<OpenReport
 
 /// A run folder's report, and its text.
 pub(super) fn read_report(folder: &Path) -> Result<(Report, String), String> {
-    let text = std::fs::read_to_string(folder.join("report.json")).map_err(|e| t!("error-report-unreadable", detail = e.to_string()))?;
+    let text = read_plain_text(&folder.join("report.json"), REPORT_LIMIT).map_err(|e| t!("error-report-unreadable", detail = e.to_string()))?;
     let report: Report = serde_json::from_str(&text).map_err(|e| t!("error-not-a-report", detail = e.to_string()))?;
     Ok((report, text))
 }
@@ -205,6 +230,34 @@ mod tests {
         assert!(session.check_save_destination(&std::env::temp_dir().join("copy.zip")).is_ok());
         let refused = session.run_again().unwrap_err();
         assert_eq!(refused, t!("error-sample-remote", path = remote));
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    /// A folder someone sent can hold links under the names the app reads and writes. They are
+    /// not followed: not to show a private file as the run's settings, and not to append the
+    /// actions log to a file of the person's own.
+    #[cfg(unix)]
+    #[test]
+    fn links_in_a_report_folder_are_not_followed() {
+        let folder = report_folder_with_sample("links", "/samples/x.jar");
+        let private = folder.join("private.txt");
+        std::fs::write(&private, "secret: do-not-show\n").unwrap();
+        std::os::unix::fs::symlink(&private, folder.join("config.yaml")).unwrap();
+        std::os::unix::fs::symlink(&private, folder.join(crate::artifacts::ACTIONS_LOG)).unwrap();
+        let opened = open_report(&folder, "x.jar").unwrap();
+        assert_eq!(opened.view.config_text, None, "a linked settings file was read");
+
+        let artifact = javabyte_gui_protocol::views::Artifact { path: "dropped/a\nb".into(), name: "a".into(), kind: "dropped".into(), size: 1, sha256: "00".into(), origin: None };
+        let source = folder.join("source.bin");
+        std::fs::write(&source, b"x").unwrap();
+        let refused = crate::artifacts::save_as_is(&folder.join("copy.bin"), &folder, &artifact, &source);
+        assert!(refused.is_err(), "the log was written through a link");
+        assert_eq!(std::fs::read_to_string(&private).unwrap(), "secret: do-not-show\n");
+
+        // With a plain log, the entry is one line whatever the file was called.
+        std::fs::remove_file(folder.join(crate::artifacts::ACTIONS_LOG)).unwrap();
+        crate::artifacts::save_as_is(&folder.join("copy.bin"), &folder, &artifact, &source).unwrap();
+        assert_eq!(std::fs::read_to_string(folder.join(crate::artifacts::ACTIONS_LOG)).unwrap().lines().count(), 1);
         let _ = std::fs::remove_dir_all(folder);
     }
 

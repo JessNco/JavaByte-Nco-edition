@@ -54,6 +54,12 @@ final class SystemStubs {
         stubs.on(system, "setProperty", ctx -> env.properties.setProperty(ctx.stringArg(0), ctx.stringArg(1)));
         stubs.on(system, "clearProperty", ctx -> env.properties.remove(ctx.stringArg(0)));
         stubs.on(system, "getProperties", ctx -> env.properties);
+        // Integer.getInteger, Long.getLong and Boolean.getBoolean read system properties too.
+        // Run for real they would read the analysis JVM's, not the guest's.
+        stubs.on("java/lang/Boolean", "getBoolean", ctx ->
+                ctx.arg(0) != null && Boolean.parseBoolean(env.properties.getProperty(ctx.stringArg(0))) ? 1 : 0);
+        stubs.on("java/lang/Integer", "getInteger", ctx -> numberProperty(env, ctx, false));
+        stubs.on("java/lang/Long", "getLong", ctx -> numberProperty(env, ctx, true));
         stubs.on(system, "getenv", ctx -> {
             if (ctx.argCount() == 0) {
                 return Collections.unmodifiableMap(new LinkedHashMap<>(env.variables));
@@ -98,6 +104,31 @@ final class SystemStubs {
             }
             return null;
         });
+    }
+
+    /**
+     * {@code Integer.getInteger} and {@code Long.getLong} in all their overloads: the guest's
+     * property decoded as a number, else the default given (a boxed number or a primitive),
+     * else null.
+     */
+    private static Object numberProperty(GuestEnvironment env, dev.javabyte.host.CallContext ctx, boolean asLong) {
+        String key = ctx.stringArg(0);
+        String value = key == null || key.isEmpty() ? null : env.properties.getProperty(key);
+        if (value != null) {
+            try {
+                return asLong ? (Object) Long.decode(value) : (Object) Integer.decode(value);
+            } catch (NumberFormatException notANumber) {
+                // falls through to the default, as the JDK does
+            }
+        }
+        if (ctx.argCount() < 2) {
+            return null;
+        }
+        // A primitive default arrives in interpreter form and the method returns a boxed value.
+        Object fallback = ctx.arg(1);
+        boolean primitive = ctx.desc.contains(asLong ? ";J)" : ";I)");
+        return primitive && fallback instanceof Number number
+                ? (asLong ? (Object) Long.valueOf(number.longValue()) : (Object) Integer.valueOf(number.intValue())) : fallback;
     }
 
     private static Object exit(VirtualMachine vm, int status) {

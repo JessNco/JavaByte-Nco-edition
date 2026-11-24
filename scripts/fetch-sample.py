@@ -9,9 +9,11 @@ itself reads samples as data. Keep the target directory out of version control (
 
 Requires: pip install pyzipper   (MalwareBazaar archives are AES-encrypted, password "infected")
 """
+import hashlib
 import io
 import os
 import pathlib
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -22,7 +24,7 @@ API = "https://mb-api.abuse.ch/api/v1/"
 
 
 def main() -> int:
-    if len(sys.argv) < 2 or len(sys.argv[1]) != 64:
+    if len(sys.argv) < 2 or re.fullmatch(r"[0-9a-fA-F]{64}", sys.argv[1]) is None:
         print(__doc__, file=sys.stderr)
         return 2
     sha256 = sys.argv[1].lower()
@@ -41,13 +43,28 @@ def main() -> int:
         print("MalwareBazaar did not return an archive: " + body[:200].decode(errors="replace"), file=sys.stderr)
         return 1
 
+    written = 0
     with pyzipper.AESZipFile(io.BytesIO(body)) as archive:
         archive.setpassword(b"infected")
         for name in archive.namelist():
             # Use only the base name: archive entries must not choose where they are written.
-            out = target / pathlib.PurePosixPath(name).name
-            out.write_bytes(archive.read(name))
+            # Both separators count, so that "..\\..\\x" is no way out on Windows either.
+            base = re.split(r"[/\\]", name)[-1]
+            if base in ("", ".", "..") or ":" in base:
+                print("skipped an archive entry with an unusable name: " + repr(name), file=sys.stderr)
+                continue
+            data = archive.read(name)
+            # The download is live malware asked for by hash; anything else is not written.
+            if hashlib.sha256(data).hexdigest() != sha256:
+                print("skipped " + repr(base) + ": its SHA-256 is not the one asked for", file=sys.stderr)
+                continue
+            out = target / base
+            out.write_bytes(data)
             print(out)
+            written += 1
+    if written == 0:
+        print("the archive held no file with SHA-256 " + sha256, file=sys.stderr)
+        return 1
     return 0
 
 

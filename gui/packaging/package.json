@@ -1,0 +1,8 @@
+{
+  "name": "javabyte-gui-packaging",
+  "private": true,
+  "description": "The Tauri CLI that bundles the installers. Installed by build.sh with `npm ci`, so only what package-lock.json lists, with its checksums, is ever fetched.",
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.5"
+  }
+}

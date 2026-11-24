@@ -160,40 +160,63 @@ mvn versions:display-dependency-updates
 ```
 
 There are four Java ones: ASM, Jackson (YAML), picocli and JUnit. The optional native bridge
-has its own, pinned in `scripts/native-bridge-requirements.txt`; after changing it, run
-`NativeBridgeTest`.
+has its own Python packages. `scripts/native-bridge-requirements.in` names the ones it asks
+for; `scripts/native-bridge-requirements.txt` is made from it and pins every package they pull
+in, with the checksum of every file, and is the only thing installed (with pip's
+`--require-hashes`, by `scripts/install-native-bridge-packages.sh`). Never edit the `.txt` by
+hand. To change a version or take newer releases, edit the `.in` file if needed and run:
+
+```bash
+scripts/update-native-bridge-requirements.sh
+```
+
+It needs [uv](https://docs.astral.sh/uv/). Then run `NativeBridgeTest`. The same packages ship
+inside the "with native bridge" installers, so read the diff as you would read code.
 
 For the Java ones: Raise the version property in
 `pom.xml`, run the tests, and note the change in `CHANGELOG.md`.
 
 ### The desktop app's tools
 
+- **GitHub Actions** are used by full commit SHA, with the version in a comment, never by tag
+  or branch; `scripts/check-action-pins.sh` fails CI otherwise. To move to a newer release,
+  see "Refreshing pinned tools" in
+  [docs/gui/RELEASING.md](docs/gui/RELEASING.md#refreshing-pinned-tools), which covers every
+  pin named below.
 - **Rust**: CI uses the latest stable; `rust-version` in `gui/Cargo.toml` is the oldest
   supported. After a new Rust release, fix any new `cargo clippy --all-targets` warnings.
 - **Crates** (Tauri, Leptos and the rest): `cargo update` in `gui/`, then build the screens and
   run `cargo test`. A new Tauri minor version needs the egress test (Linux, root):
   see [gui/README.md](gui/README.md#testing). Keep `tauri` and `tauri-build` on matching
   minor versions.
-- **WiX 5** builds the sandbox add-on's MSI; its version is pinned in
-  `.github/workflows/installers.yml` ("Install WiX"). The add-on's isolation code uses
+- **WiX 5** builds the sandbox add-on's MSI; its version and the checksum of its package are
+  pinned in `.github/workflows/installers.yml` ("Install WiX"); change both together. The
+  add-on's isolation code uses
   `windows-sys`; it compiles only on Windows, so check it locally with
   `cargo clippy -p javabyte-sandbox --target x86_64-pc-windows-msvc` and let CI run it.
 - **Trunk** is pinned in `.github/workflows/gui.yml`, `.github/workflows/installers.yml` and
   `gui/README.md`; change all three. The Tauri CLI used for bundling is pinned in
-  `gui/packaging/build.sh`; keep it on the same minor version as the `tauri` crate.
+  `gui/packaging/package.json`, and `package-lock.json` beside it holds the checksums that
+  `npm ci` enforces. After changing the version, run
+  `npm install --package-lock-only --ignore-scripts` in `gui/packaging/` and commit both files.
+  Keep it on the same minor version as the `tauri` crate.
 - **The bundled Java** is Temurin 21 (`installers.yml`), trimmed by jlink to the modules listed
   in `gui/packaging/stage.sh`. A newer LTS needs the whole Java suite run on it first (CI does)
   and, if a module was renamed or removed, a change to that list (`jdk.crypto.ec` was merged
   into `java.base` in Java 22).
-- **The bridge's Python** is CPython 3.12 fetched by uv; both versions are pinned in
-  `gui/packaging/stage.sh`. After changing either, run the Installers workflow with "Also build
-  the with native bridge edition" ticked: its self-check imports Speakeasy.
-- **Playwright and axe-core** are pinned in `gui/tests/a11y/package.json`. A new axe-core may
+- **The bridge's Python** is CPython 3.12 fetched by uv. The Python version is in
+  `gui/packaging/stage.sh`; uv's is in `gui/packaging/uv-requirements.in`, with its checksums
+  in `uv-requirements.txt` (rewritten by `scripts/update-native-bridge-requirements.sh`). After
+  changing either, run the Installers workflow with "Also build the with native bridge edition"
+  ticked: its self-check imports Speakeasy.
+- **Playwright and axe-core** are pinned in `gui/tests/a11y/package.json` and its
+  `package-lock.json`, which CI installs with `npm ci`. A new axe-core may
   find new problems; fix them rather than turning rules off.
 
 ### Releasing
 
 The version is written in three places that must agree: `pom.xml` (the tool reads it at run
 time), `gui/app/tauri.conf.json` and `gui/Cargo.toml`. `gui/packaging/version.sh` checks them.
-Pushing a tag such as `v0.2.0` builds every installer and a draft release; the steps, and how
-to set up signing, are in [docs/gui/RELEASING.md](docs/gui/RELEASING.md).
+Pushing a tag such as `v0.2.0` builds every installer and a draft release. The release fails
+unless it can sign the checksums with the project's GPG key; the steps, and how to set up
+signing, are in [docs/gui/RELEASING.md](docs/gui/RELEASING.md).

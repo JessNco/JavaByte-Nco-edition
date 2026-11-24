@@ -103,6 +103,15 @@ public final class HostPolicy {
                 key -> matches(allow, owner, name, desc) && !matches(deny, owner, name, desc));
     }
 
+    /**
+     * True if a deny rule covers this member. Unlike {@link #allows}, this says nothing about
+     * allow rules: the router uses it to apply a deny rule on the class an object really has
+     * when the call site named some other, allowed, class.
+     */
+    public boolean denies(String owner, String name, String desc) {
+        return matches(deny, owner, name, desc);
+    }
+
     /** True if at least one member of the class is usable, i.e. the class is not wholly off-limits. */
     public boolean knowsClass(String owner) {
         return allow.stream().anyMatch(rule -> rule.matchesClass(owner))

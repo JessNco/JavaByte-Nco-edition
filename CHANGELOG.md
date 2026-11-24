@@ -6,6 +6,74 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Security
+- **A sample could run real JDK methods by naming the wrong class at a call.** There is no
+  bytecode verifier, and a call was approved for the class the call site named and then
+  looked up by name on the object actually there. A call naming `String` (every member
+  allowed) on a `Class`, `Method` or `Runtime` object ran the real `getMethod`, `invoke` or
+  `exec`, with nothing in the report. A JDK call is now made only if the method resolves on
+  the named class and the receiver is an instance of it, and stubs and deny rules are also
+  looked up from the receiver's real class.
+- **A sample's subclass could call any constructor of an allowed JDK class.** `super(...)`
+  ran the JDK constructor directly, without the per-overload policy or the file-argument
+  check, so a class extending `PrintStream` with `super(fileName)` wrote a real file. The
+  superclass constructor is now judged as a direct `new` is; one that is not allowed is not
+  run and is reported (`policy.blocked`, then `gap.phantom-superclass`).
+- A stream filter set with `ObjectInputStream.setObjectInputFilter` can no longer switch the
+  deserialization guard off for that stream (reported as `policy.blocked` with
+  `kind: deserialization-filter`).
+- Static, protected and private JDK methods can no longer be reached through a simulated
+  object that extends the JDK class (`File.createTempFile` through a simulated `File`), and
+  the fields of the emulator's own objects cannot be read or written by the sample.
+- Key stores and security providers backed by the analysis machine (`Windows-MY`,
+  `KeychainStore`, `PKCS11`, `SunMSCAPI` and others) are refused and reported
+  (`kind: machine-key-store`). `Integer.getInteger`, `Long.getLong` and `Boolean.getBoolean`
+  read the guest's properties, not the real JVM's. `CodeSource.implies` and
+  `ZoneRulesProvider.registerProvider` are denied.
+- `init` quotes the sample path and entry class. Unquoted, a line break in a class name or a
+  folder name added config keys of the sample's choosing, `policy.allow` among them.
+- Text printed for people (the run summary, `inspect`, `disasm`, `trace.log`, progress) shows
+  control, line-breaking and bidirectional characters from the sample as `\uXXXX` escapes, so
+  a sample cannot forge report lines or send escape sequences to the terminal. JSON output is
+  unchanged.
+- Saved files: a name that is a Windows device (`CON`, `COM1`) gets a leading underscore, and
+  a file the Windows shell reads by itself when a folder is opened (`desktop.ini`, `.lnk`,
+  `.url`, `.scf` and similar) is saved with `.saved` appended. A name that clashes with an
+  earlier one no longer stops the remaining files from being saved.
+- Archives opened with `ZipFile`/`JarFile`: the temporary copy is deleted as soon as it is
+  open (when the tool exits, on Windows), and `getName()` no longer shows its real path.
+- `scripts/fetch-sample.py` writes a file only if its SHA-256 is the one asked for.
+- Desktop app: settings from an imported file, a preset or a report folder lose
+  `policy.allow`, `classpath` and the keys that name a file on this computer to read
+  (`hostFile`, `bodyFile`, a socket rule's `file`), as they already lost the bridge's Python.
+  Set them by hand if you want them. Links in an opened report folder are not followed.
+- Releases are always signed. The release workflow fails if the signing key is missing, expired
+  or not the one whose public half is `docs/javabyte-signing-key.asc`; the public key is no
+  longer uploaded with the release it signs, and its fingerprint is in `docs/INSTALL.md`.
+- Everything fetched while the installers are built is fixed to a version and a checksum:
+  GitHub Actions by commit, the Tauri CLI by `package-lock.json`, the native bridge's Python
+  packages (which ship in the "with native bridge" installers) and uv by hashed requirements
+  files, and WiX by its package's checksum. `scripts/setup-native-bridge.sh` installs the same
+  pinned packages.
+- An isolated run on Linux (the desktop app's default, and `scripts/run-isolated.sh`) now has a
+  read-only file system. It can write only to its output folder and to a private temporary
+  folder that replaces the shared `/tmp` for the run. Before, isolation removed the network and
+  hid a fixed list of service sockets, and left every file as writable as it is for the user,
+  so an escape from the emulator could still have written `~/.bashrc`.
+- `/run`, `/tmp` and `/dev/shm` are empty in an isolated run, instead of a fixed list of known
+  service folders being hidden: sockets of agents and services nobody listed are gone too. The
+  sample, the config, the tool, the Java runtime, the bridge's Python and the output folder
+  stay visible at their own paths, also under `/tmp`.
+- The isolated Java process has no capabilities in its namespace, so it cannot undo the mounts.
+  `scripts/run-isolated.sh` used to leave it with all of them.
+- If the isolation cannot be set up completely, the run does not start.
+- The desktop app starts the tool, and the Windows sandbox add-on starts the program in the
+  AppContainer, with a short list of environment variables. `scripts/run-isolated.sh` does the
+  same. Tokens and keys in the analyst's environment are no longer passed on, and neither are
+  `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` or `CLASSPATH`, which would change
+  the analysis JVM itself.
+- `scripts/run-isolated.sh` now needs `setpriv` (util-linux) as well as `unshare`, and treats
+  `-o`/`--out` as the folder the run may write to (`./javabyte-out` for `run` without it). An
+  output folder set only in the config is not writable in an isolated run: pass it with `-o`.
 - JDK code can no longer reach the network on the sample's behalf. URLs in collections
   (`HashMap`, `HashSet`, `List.contains`) and `URL.sameFile` no longer cause real DNS lookups.
   `InetAddress.getCanonicalHostName` is simulated (event `net.dns-reverse`).

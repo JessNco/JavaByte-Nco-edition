@@ -148,7 +148,13 @@ public final class HostBridge {
             // A public method inherited from a non-public class (a common JDK pattern) cannot be
             // invoked through java.lang.reflect, but a public lookup on the receiver's public
             // type can reach it.
-            if (!method.trySetAccessible()) {
+            //
+            // Access is never forced on a JDK member, and never on a member that is not public.
+            // Normally the module system refuses that anyway, but a JVM started with
+            // --add-opens (in JAVA_TOOL_OPTIONS, say) would grant it, and every private and
+            // protected method of an allow-listed class would become callable by name.
+            boolean emulatorsOwn = !isJdkClass(method.getDeclaringClass()) && Modifier.isPublic(method.getModifiers());
+            if (!emulatorsOwn || !method.trySetAccessible()) {
                 return invokeThroughLookup(method, receiver, hostArgs, denied);
             }
             return method.invoke(receiver, hostArgs);
@@ -186,7 +192,14 @@ public final class HostBridge {
             Class<?> cls = findClass(owner);
             return Optional.ofNullable(cls == null ? null : findMethod(cls, name, desc));
         }).orElse(null);
-        if (receiver != null && (method == null || !method.getDeclaringClass().isInstance(receiver))) {
+        if (receiver != null && (method == null
+                || (!Modifier.isStatic(method.getModifiers()) && !method.getDeclaringClass().isInstance(receiver)))) {
+            if (!isSimulated(receiver)) {
+                // The object is not what the call site says it is. Looking the name up on
+                // whatever is there instead would let a call approved for one class run a
+                // same-named method of another, so there is no method to call.
+                return null;
+            }
             // The receiver is a stand-in that imitates the named class without extending it;
             // find the same-named method on what is actually there.
             String key = receiver.getClass().getName() + '>' + name + desc;
@@ -194,6 +207,46 @@ public final class HostBridge {
                     k -> Optional.ofNullable(findMethod(receiver.getClass(), name, desc))).orElse(null);
         }
         return method;
+    }
+
+    /**
+     * True if the named JDK class has the method and, for an instance method, the receiver is
+     * an instance of the class that declares it. Only then does the policy's answer for the
+     * named class describe the code that would actually run.
+     */
+    public boolean resolvesOn(String owner, String name, String desc, Object receiver) {
+        Method method = methods.computeIfAbsent(owner + '.' + name + desc, key -> {
+            Class<?> cls = findClass(owner);
+            return Optional.ofNullable(cls == null ? null : findMethod(cls, name, desc));
+        }).orElse(null);
+        if (method == null) {
+            return false;
+        }
+        return Modifier.isStatic(method.getModifiers())
+                || (receiver != null && method.getDeclaringClass().isInstance(receiver));
+    }
+
+    /**
+     * For a call on a simulated object: the internal name of the JDK class whose code would
+     * run and which the simulation had no say over, or null if the call stays within the
+     * simulation (or there is no such method, which {@link #invoke} reports).
+     *
+     * <p>A simulation overrides every public instance method it can, and the public final ones
+     * it cannot (such as {@code FileChannel.tryLock()}) only call back into those overrides.
+     * What is left is JDK code proper: a static method found through the receiver's class
+     * ({@code File.createTempFile} on a simulated file), and protected or private members of
+     * the JDK superclass ({@code ClassLoader.defineClass}).
+     */
+    public String jdkDeclarer(String owner, String name, String desc, Object receiver, boolean special) {
+        Method method = resolve(owner, name, desc, receiver, special);
+        if (method == null || !isJdkClass(method.getDeclaringClass())) {
+            return null;
+        }
+        int modifiers = method.getModifiers();
+        if (Modifier.isPublic(modifiers) && !Modifier.isStatic(modifiers)) {
+            return null;
+        }
+        return Type.getInternalName(method.getDeclaringClass());
     }
 
     /**
@@ -355,15 +408,29 @@ public final class HostBridge {
         }
     }
 
+    /**
+     * Finds a public field that a JDK class declares, or that a {@link StandIn} declares to
+     * imitate one ({@code Dimension.width}). Fields of the emulator's other classes are never
+     * found: the guest holds emulator objects (class mirrors, phantoms, simulated files)
+     * wherever it expects JDK ones, and their fields are the emulator's state.
+     */
     private static Field findField(Class<?> cls, String name) {
         if (cls == null) {
             return null;
         }
         try {
-            return cls.getField(name);
+            Field field = cls.getField(name);
+            Class<?> declaring = field.getDeclaringClass();
+            return isJdkClass(declaring) || StandIn.class.isAssignableFrom(declaring) ? field : null;
         } catch (NoSuchFieldException e) {
             return null;
         }
+    }
+
+    /** True for classes of the boot and platform loaders, which is what "the JDK" means here. */
+    private static boolean isJdkClass(Class<?> cls) {
+        ClassLoader owner = cls.getClassLoader();
+        return owner == null || owner == ClassLoader.getPlatformClassLoader();
     }
 
     private static Method findMethodByName(Class<?> cls, String name) {

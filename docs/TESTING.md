@@ -62,6 +62,7 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `report/ArtifactsTest` | 1 | Saved artifact paths use `/` on every system, so reports read the same elsewhere |
 | `FuzzTest` | 5 | About 1,350 mutated inputs by default: corrupted class files, invalid instruction streams, damaged archives, and corrupted class files given to the disassembler. None may end as `internal-error`, throw, or overrun its limits |
 | `EscapeTest` | 1 | About eighty escape attempts leave no file, process, thread or connection on the real machine |
+| `TypeConfusionTest` | 6 | Generated classes whose calls and field instructions name one class with another object underneath (the Java compiler never writes these), a static JDK method reached through a simulated object, and a stream filter meant to switch the deserialization guard off. Each must leave the real JVM and disk untouched |
 | `HostCallbackTest` | 8 | Runs the `HostCallbacks` fixture against a local listener. It checks URLs in collections, providers and loaders handed to JDK code, reverse lookups and the loader hierarchy for Java 8 and 17 profiles. Its provider-route test scans `java.base` for allow-listed methods returning a `Provider` and fails on any that has no stub |
 | `LoaderShellTest` | 8 | A sample's own subclass of `URLClassLoader` is built on the simulated loader, so neither the guest nor JDK code can make it fetch from its URL; direct subclasses of `ClassLoader` and `SecureClassLoader` (the `OwnLoader` fixture) still define and load classes from bytes, while JDK code calling them, on a host or an emulator thread, sees no class or resource of the emulator's own class path; the application loader is a `URLClassLoader` with the sample's class path on the Java 8 profile and not one on Java 17 (the `SystemLoaderPath` fixture); the text of built-in loaders, concatenated dates and threads, and reflective stacks |
 | `MachineProfileTest` | 13 | The `Recon` fixture asks what anti-analysis code asks (management beans, `ProcessHandle`, the screen, network interfaces, recon commands, the disk); each answer looks like a real Windows desktop, and answers to the same question through different APIs agree |
@@ -291,6 +292,8 @@ stated per event (under 10 µs for both together), which is what scales with use
 | The event stream, progress or stopping a run | A case in `StreamingTest` |
 | A new way out of the sandbox | An attempt in the `Escape` fixture |
 | JDK code acting on an object the sample built | A case in the `HostCallbacks` fixture and `HostCallbackTest` |
+| A call or field access that names the wrong class for its receiver | A generated class in `TypeConfusionTest` |
+| A JDK constructor reached through a sample's subclass | A nested subclass and an `attempt` in the `Escape` fixture |
 | A fact about the simulated machine | A question in the `Recon` fixture and a check in `MachineProfileTest` |
 | Time, the time zone or the locale | A case in the `Timing` fixture and a `timing-*` scenario |
 | A new simulated class | A completeness assertion in `SafetyTest` |

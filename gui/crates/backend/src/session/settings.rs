@@ -98,11 +98,12 @@ impl Session {
     }
 
     /// A preset's settings, for the chosen sample. A preset is a file anyone could have put
-    /// in the presets folder, so settings that name a program to start are left out.
+    /// in the presets folder, so settings that reach this computer are left out
+    /// ([`without_host_access`]).
     pub fn load_preset(&self, name: &str) -> Result<String, String> {
         let name = preset_name(name).ok_or_else(|| t!("error-preset-name"))?;
         let text = std::fs::read_to_string(self.presets_folder().join(format!("{name}.yaml"))).map_err(|e| t!("error-preset-read", detail = e.to_string()))?;
-        Ok(without_host_programs(&with_sample(&text, self.settings.as_ref().map(|(s, _)| s))))
+        Ok(without_host_access(&with_sample(&text, self.settings.as_ref().map(|(s, _)| s))))
     }
 
     /// Deletes a saved preset.
@@ -112,8 +113,8 @@ impl Session {
     }
 
     /// Reads a config file someone chose: YAML as it is, JSON turned into YAML. The file may
-    /// come from anyone, so settings that name a program to start are left out
-    /// ([`without_host_programs`]).
+    /// come from anyone, so settings that reach this computer are left out
+    /// ([`without_host_access`]).
     pub fn import(path: &Path) -> Result<Imported, String> {
         let size = std::fs::metadata(path).map_err(|e| t!("error-import", detail = e.to_string()))?.len();
         if size > IMPORT_LIMIT {
@@ -125,7 +126,7 @@ impl Session {
             _ => raw,
         };
         // A file that cannot be read as YAML is still offered: the YAML tab shows where.
-        let text = without_host_programs(&text);
+        let text = without_host_access(&text);
         let doc = ConfigDoc::new(text.clone());
         let sample = doc.get(&ConfigPath::parse("sample")).and_then(|v| v.as_str().map(str::to_string));
         Ok(Imported { text, sample })
@@ -170,13 +171,27 @@ pub fn with_sample(text: &str, sample: Option<&SampleChoice>) -> String {
     if result.is_ok() { doc.text().to_string() } else { text.to_string() }
 }
 
-/// Settings text without the settings that name a program on this computer to start
-/// ([`HOST_PROGRAMS`]), for settings that come from a file the app did not write: a report
-/// folder, an imported file or a preset. Such a file could otherwise make a run start any
-/// program, or on Windows reach another computer through a `\\host\share` path. The plugin
-/// itself stays on, and uses the Python the app bundles. Text that cannot be read as YAML is
-/// returned as it is: the tool refuses it too.
-pub fn without_host_programs(text: &str) -> String {
+/// Settings that give a run access to this computer beyond the sample itself, as whole keys.
+/// `policy.allow` lets the sample call parts of Java for real that the tool otherwise
+/// simulates or blocks (one broad rule there undoes the tool's protection), and `classpath`
+/// names further files on this computer to load as code.
+const HOST_ACCESS_KEYS: &[&str] = &["policy.allow", "classpath"];
+
+/// Settings inside list items that name a file on this computer to read into the sample's
+/// world: the list, and the key in each of its items. A crafted value would hand the sample
+/// any file this user can read (its content then lands in the report), or on Windows reach
+/// another computer through a `\\host\share` path.
+const HOST_FILE_KEYS: &[(&str, &str)] = &[("environment.files", "hostFile"), ("network.http", "bodyFile"), ("network.sockets", "file")];
+
+/// Settings text without the settings that reach this computer: those that name a program to
+/// start ([`HOST_PROGRAMS`]), that widen what the sample may really do ([`HOST_ACCESS_KEYS`])
+/// or that name a file here to read ([`HOST_FILE_KEYS`]). For settings that come from a file
+/// the app did not write: a report folder, an imported file or a preset. Such a file could
+/// otherwise make a run start any program, switch the tool's protection off, or feed the
+/// sample this computer's files. The person can still set any of these by hand afterwards.
+/// A plugin whose program is removed stays on, and uses the Python the app bundles. Text that
+/// cannot be read as YAML is returned as it is: the tool refuses it too.
+pub fn without_host_access(text: &str) -> String {
     let mut doc = ConfigDoc::new(text);
     for (plugin, setting) in HOST_PROGRAMS {
         let plugin = ConfigPath::parse(plugin);
@@ -188,6 +203,27 @@ pub fn without_host_programs(text: &str) -> String {
         // Removing the last setting removes the plugin's entry, which would turn it off.
         if doc.get(&plugin).is_none() {
             let _ = doc.set(&plugin, &serde_json::Value::Object(serde_json::Map::new()));
+        }
+    }
+    for key in HOST_ACCESS_KEYS {
+        let path = ConfigPath::parse(key);
+        if doc.get(&path).is_some() {
+            let _ = doc.remove(&path);
+        }
+    }
+    for (list, key) in HOST_FILE_KEYS {
+        let list = ConfigPath::parse(list);
+        let Some(serde_json::Value::Array(items)) = doc.get(&list) else { continue };
+        // From the end, so that removing an item does not move the ones still to visit.
+        for index in (0..items.len()).rev() {
+            if items[index].get(*key).is_none() {
+                continue;
+            }
+            // An item is of no use without its content: a file to plant with no bytes, an
+            // answer with no body. It goes whole, so the run does not quietly use an empty one.
+            if doc.remove_item(&list, index).is_err() {
+                let _ = doc.remove(&list.clone().index(index).key(*key));
+            }
         }
     }
     doc.text().to_string()
@@ -226,7 +262,7 @@ mod tests {
         assert_eq!(host_program("plugins: {native-bridge: {python: 'C:\\Py\\python.exe'}}\n"), Some("C:\\Py\\python.exe".into()));
         assert_eq!(host_program("plugins:\n  native-bridge:\n    python: 3\n"), Some("3".into()));
         // Taken out, nothing is left to ask about.
-        assert_eq!(host_program(&without_host_programs("plugins:\n  native-bridge:\n    python: /x\n")), None);
+        assert_eq!(host_program(&without_host_access("plugins:\n  native-bridge:\n    python: /x\n")), None);
     }
 
     #[test]
@@ -246,20 +282,48 @@ mod tests {
     #[test]
     fn settings_from_files_name_no_program_to_start() {
         let crafted = "limits:\n  maxSleeps: 3\nplugins:\n  native-bridge:\n    python: '\\\\host\\share\\x.exe'   # sent to you\n";
-        let cleaned = without_host_programs(crafted);
+        let cleaned = without_host_access(crafted);
         assert!(!cleaned.contains("python") && !cleaned.contains("host"), "{cleaned}");
         let doc = ConfigDoc::new(cleaned.clone());
         assert_eq!(doc.get(&ConfigPath::parse("plugins.native-bridge")), Some(serde_json::json!({})), "{cleaned}");
         assert_eq!(doc.get(&ConfigPath::parse("limits.maxSleeps")), Some(serde_json::json!(3)));
 
         let with_others = "plugins:\n  native-bridge:\n    python: /usr/bin/evil\n    other: 1\n";
-        let cleaned = without_host_programs(with_others);
+        let cleaned = without_host_access(with_others);
         assert_eq!(ConfigDoc::new(cleaned.clone()).get(&ConfigPath::parse("plugins.native-bridge")), Some(serde_json::json!({"other": 1})), "{cleaned}");
 
         // Nothing to remove: the text is untouched, comments and all.
         let plain = "# mine\nlimits:\n  maxSleeps: 3   # three\n";
-        assert_eq!(without_host_programs(plain), plain);
-        assert_eq!(without_host_programs("not: [valid"), "not: [valid");
+        assert_eq!(without_host_access(plain), plain);
+        assert_eq!(without_host_access("not: [valid"), "not: [valid");
+    }
+
+    /// Settings from a file the app did not write may not widen what the sample can really
+    /// do, load more code, or read this computer's files into the sample's world.
+    #[test]
+    fn settings_from_files_get_no_access_to_this_computer() {
+        let crafted = concat!(
+            "limits:\n  maxSleeps: 3\n",
+            "policy:\n  allow: ['**']\n  deny: ['java/util/Random']\n  onBlocked: throw\n",
+            "classpath: ['\\\\host\\share\\lib.jar']\n",
+            "environment:\n  files:\n    - path: 'C:\\a.txt'\n      text: kept\n    - path: 'C:\\key'\n      hostFile: /home/me/.ssh/id_rsa\n",
+            "network:\n  http:\n    - url: gate\n      bodyFile: /etc/passwd\n    - url: other\n      body: ok\n",
+            "  sockets:\n    - endpoint: 'c2:443'\n      file: /etc/shadow\n",
+        );
+        let cleaned = without_host_access(crafted);
+        for gone in ["'**'", "lib.jar", "id_rsa", "passwd", "shadow", "hostFile", "bodyFile"] {
+            assert!(!cleaned.contains(gone), "{gone} is still there:\n{cleaned}");
+        }
+        let doc = ConfigDoc::new(cleaned.clone());
+        assert_eq!(doc.get(&ConfigPath::parse("policy.allow")), None, "{cleaned}");
+        assert_eq!(doc.get(&ConfigPath::parse("classpath")), None, "{cleaned}");
+        // What narrows a run, and everything unrelated, is kept.
+        assert_eq!(doc.get(&ConfigPath::parse("policy.deny")), Some(serde_json::json!(["java/util/Random"])), "{cleaned}");
+        assert_eq!(doc.get(&ConfigPath::parse("policy.onBlocked")), Some(serde_json::json!("throw")), "{cleaned}");
+        assert_eq!(doc.get(&ConfigPath::parse("limits.maxSleeps")), Some(serde_json::json!(3)));
+        assert_eq!(doc.get(&ConfigPath::parse("environment.files")), Some(serde_json::json!([{"path": "C:\\a.txt", "text": "kept"}])), "{cleaned}");
+        assert_eq!(doc.get(&ConfigPath::parse("network.http")), Some(serde_json::json!([{"url": "other", "body": "ok"}])), "{cleaned}");
+        assert!(doc.syntax_problems().is_empty(), "{cleaned}");
     }
 
     /// An imported settings file loses the program setting too.

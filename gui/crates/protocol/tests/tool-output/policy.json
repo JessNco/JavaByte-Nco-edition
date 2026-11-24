@@ -460,6 +460,11 @@
     "section" : "numbers, text, time",
     "note" : ""
   }, {
+    "rule" : "java/time/zone/ZoneRulesProvider#registerProvider,refresh",
+    "allow" : false,
+    "section" : "numbers, text, time",
+    "note" : "Registers a time-zone provider for the whole JVM; it would outlive the run."
+  }, {
     "rule" : "java/util/**",
     "allow" : true,
     "section" : "collections and utilities",
@@ -1094,6 +1099,11 @@
     "allow" : true,
     "section" : "cryptography",
     "note" : "TLS configuration objects are inert until a socket is opened, and sockets are simulated."
+  }, {
+    "rule" : "java/security/CodeSource#implies",
+    "allow" : false,
+    "section" : "cryptography",
+    "note" : "Compares the two locations' host names by resolving them: a real DNS lookup of names the sample chose."
   }, {
     "rule" : "java/net/URL",
     "allow" : true,

@@ -13,7 +13,7 @@ Done when: a clean install and first run work on fresh Windows 11, Ubuntu 22.04 
 | --- | --- |
 | Native bridge | Two installers per system: **standard**, and **with native bridge**. Same app; it uses the bridge when it finds one next to it |
 | Getting installers to people | Pushing a tag `vX.Y.Z` builds every installer and a checksum file and creates a **draft** GitHub release. A person reviews and publishes it |
-| Linux signing | The release job signs the checksum file with GPG when a key is stored as a repository secret. Until then releases are unsigned and still list SHA-256 checksums |
+| Linux signing | The release job signs the checksum file with the project's GPG key and fails without it, so no release is unsigned. The public key and its fingerprint are in the repository, not in the release ([RELEASING.md](RELEASING.md#signing-releases)) |
 | Isolation unavailable on Linux | Ask before each run, explaining why and how to get isolation. "Don't ask again" makes the answer stick, and it can be changed in Preferences |
 | `.jar` files | JavaByte appears under "Open with" for `.jar` files. It never becomes the default program |
 | Preferences added | Output folder; Java runtime (bundled, or a chosen Java 17 or later); network isolation (Linux); native bridge status |
@@ -27,7 +27,7 @@ Done when: a clean install and first run work on fresh Windows 11, Ubuntu 22.04 
 | The app | `cargo tauri build` | 15 MB |
 | Java runtime | `jlink` from Temurin 21: the `java.se` modules plus `jdk.unsupported`, `jdk.charsets`, `jdk.zipfs`, `jdk.localedata` and `jdk.crypto.ec`. All standard modules, not only the ones `jdeps` finds, because a sample may call any standard API and a missing class would change what the analysis sees | 50 MB |
 | JavaByte | `mvn package` | 4 MB |
-| Native bridge (bridge installers only) | A standalone Python build (python-build-standalone, pinned) with `scripts/native-bridge-requirements.txt` installed | 150–250 MB |
+| Native bridge (bridge installers only) | A standalone Python build (python-build-standalone, pinned) with the packages of `scripts/native-bridge-requirements.txt` installed, each file checked against the checksum listed there | 150–250 MB |
 | Notices | `THIRD-PARTY-NOTICES.txt`: the licences of the runtime, Python, Speakeasy and Unicorn, and where to get their source | — |
 
 Files go into the app's resource folder: `runtime/`, `javabyte.jar` and, in bridge installers,
@@ -64,16 +64,27 @@ permits them: the `.deb` installs such a profile for the app, and the namespace 
 the app's own process, so the profile applies. The child maps its own user and group to
 themselves, so Java sees the same user, home folder and file permissions as without isolation.
 
-The run also gets a mount namespace in which /run/user/<uid>, /run/dbus, /run/systemd,
-/run/nscd, /run/avahi-daemon, /run/cups and /tmp/.X11-unix are covered by empty read-only
-folders, because a network namespace alone does not hide sockets in the file system. The Docker
-and snapd sockets are covered by `/dev/null`, and the environment variables that point to these
-services (such as `DBUS_SESSION_BUS_ADDRESS` and `DISPLAY`) are removed. The rest of the file
-system is unchanged, so the sample, the runtime and the output folder are where they always
-are.
+The run also gets a mount namespace, because a network namespace alone does not hide sockets
+in the file system, and because a flaw in the emulator should not be able to write the
+person's files. (As first built, this covered a fixed list of service folders and left the
+file system writable. It is now as follows; the steps are in
+[DESIGN.md](../DESIGN.md#the-second-layer-an-isolated-process).)
 
-One limitation follows: a sample or output folder inside /run/user/<uid> (for example a GVFS
-mount of a network share) cannot be used with isolation on.
+- The whole file system is read-only, except the run's output folder and a private temporary
+  folder at /tmp that exists only for the run. Java's temporary files go there.
+- /run, /tmp and /dev/shm are covered by empty folders, so every socket there is gone, whether
+  or not its service is known. The sample, the settings file, the tool, the runtime, the
+  bridge's Python and the output folder are put back at their own paths when they lie inside
+  one, so a sample under /tmp works.
+- The environment variables that point to desktop services (such as
+  `DBUS_SESSION_BUS_ADDRESS` and `DISPLAY`) are removed, and the tool gets only a short list
+  of the rest.
+- Java has no capabilities in the namespace, so the run cannot undo any of this.
+- If any of it fails, the run does not start.
+
+Limitations: /tmp, /run or /dev/shm as a whole cannot be the output folder or the sample; a
+file that only the settings name (a library on `classpath`, say) is hidden if it lies in one
+of them; sockets elsewhere, for example under the home folder, can still be reached.
 
 At start the app checks once whether a namespace can be created. When it cannot (the
 AppImage on 24.04, or a system that turned namespaces off), starting a run asks first:

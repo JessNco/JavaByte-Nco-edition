@@ -177,8 +177,9 @@ impl Session {
             sample: PathBuf::from(&sample.path),
             output: output.clone(),
             config: Some(config_file),
+            overrides: vec![],
             // The chosen sample, whatever the settings say: they may come from another sample.
-            overrides: vec![sample_override(&sample)],
+            pin_sample: true,
         };
         let launcher = if without_sandbox { self.launcher()?.without_windows_sandbox() } else { self.launcher()?.clone() };
         let run = launcher.start(&request)?;
@@ -368,7 +369,9 @@ fn safe_name(name: &str) -> String {
     if cleaned.trim_matches(['.', '_']).is_empty() { "sample".into() } else { cleaned }
 }
 
-/// `sample=<path>`, so a run or a check always uses the chosen sample.
+/// `sample=<path>`, so a check always uses the chosen sample. Checks start the tool directly,
+/// so the path is the one on this computer; a run's is written by the launcher
+/// (`RunRequest::pin_sample`), because inside Windows Sandbox the path is another.
 fn sample_override(sample: &SampleChoice) -> String {
     format!("sample={}", config::render_scalar_str(&sample.path))
 }

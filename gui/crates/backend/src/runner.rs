@@ -56,6 +56,21 @@ const SANDBOX_TOOL: &str = r"C:\JavaByteTool";
 const SANDBOX_BRIDGE: &str = r"C:\JavaByteBridge";
 const SANDBOX_RUN: &str = r"C:\JavaByteRun";
 const SANDBOX_SAMPLE: &str = r"C:\JavaByteSample";
+/// Where the add-on shows a sample file it copied in (`STAGE_GUEST` in the add-on's `plan.rs`).
+const SANDBOX_STAGE: &str = r"C:\JavaByteStage";
+
+/// The name the sandbox add-on gives a sample file it copies into Windows Sandbox: the file's
+/// own, with every character outside a small safe set changed to `_`. The same rule as
+/// `staged_names` in the add-on's `plan.rs` for a single file (a test holds the two together),
+/// repeated here so the app can name the sample as the sandbox sees it without sending the
+/// add-on any text the sample's author chose.
+fn staged_name(sample: &Path) -> String {
+    let text = sample.to_string_lossy();
+    let own = text.rsplit(['\\', '/']).next().unwrap_or_default();
+    let safe: String = own.chars().map(|c| if c.is_ascii_alphanumeric() || " .-_()[]+,".contains(c) { c } else { '_' }).collect();
+    let safe = safe.trim_end_matches(['.', ' ']).trim_start_matches(' ');
+    if safe.trim_matches('.').is_empty() { "sample".to_string() } else { safe.to_string() }
+}
 
 /// How to start the tool: which Java, which JavaByte jar, and how.
 #[derive(Clone, Debug)]
@@ -83,6 +98,10 @@ pub struct RunRequest {
     pub config: Option<PathBuf>,
     /// `key.path=value` overrides, applied after the file.
     pub overrides: Vec<String>,
+    /// Also pass `sample=<path>` as an override, so that this sample is analysed whatever the
+    /// config file names. The launcher writes it from the path the tool will see, which inside
+    /// Windows Sandbox is not the path on this computer.
+    pub pin_sample: bool,
 }
 
 impl Launcher {
@@ -133,6 +152,45 @@ impl Launcher {
         command.arg("-jar").arg(&self.jar).args(args);
         self.prepare(&mut command);
         command
+    }
+
+    /// The sample's path as the tool will see it. Inside Windows Sandbox that is where the
+    /// add-on maps the sample's folder, or where it puts its copy of the sample file; anywhere
+    /// else it is the path on this computer.
+    ///
+    /// Worked out here rather than left to the add-on's rewriting of host paths in the
+    /// arguments: a sample's name is chosen by its author, and a name that the rewriting
+    /// missed (one that YAML must quote with escapes, or that holds a `'`) made every Windows
+    /// Sandbox run fail, which pushed the analyst to the weaker AppContainer.
+    fn sample_in_run(&self, request: &RunRequest) -> PathBuf {
+        if !self.uses_windows_sandbox() {
+            request.sample.clone()
+        } else if request.sample.is_dir() {
+            PathBuf::from(SANDBOX_SAMPLE)
+        } else {
+            PathBuf::from(format!("{SANDBOX_STAGE}\\{}", staged_name(&request.sample)))
+        }
+    }
+
+    /// The tool's arguments for an analysis: `run <sample> -o <folder> ...`.
+    fn run_arguments(&self, request: &RunRequest) -> Vec<std::ffi::OsString> {
+        let sample = self.sample_in_run(request);
+        let mut args: Vec<std::ffi::OsString> = vec!["run".into(), sample.clone().into(), "-o".into(), request.output.clone().into()];
+        // The stream already carries the results; the text summary would only fill stderr.
+        args.extend(["--events", "jsonl", "--progress", "--control", "stdin", "-s", "output.console=quiet"].map(Into::into));
+        if let Some(config) = &request.config {
+            args.push("-c".into());
+            args.push(config.clone().into());
+        }
+        for override_ in &request.overrides {
+            args.push("-s".into());
+            args.push(override_.into());
+        }
+        if request.pin_sample {
+            args.push("-s".into());
+            args.push(format!("sample={}", crate::config::render_scalar_str(&sample.to_string_lossy())).into());
+        }
+        args
     }
 
     /// `java -jar <jar> <args>` for an analysis, isolated as the launcher says. Through the
@@ -257,28 +315,8 @@ impl Launcher {
 
     /// Starts an analysis. It runs in the background; watch it through the returned [`Run`].
     pub fn start(&self, request: &RunRequest) -> Result<Run, String> {
-        let mut args: Vec<&std::ffi::OsStr> = vec![
-            "run".as_ref(),
-            request.sample.as_os_str(),
-            "-o".as_ref(),
-            request.output.as_os_str(),
-            "--events".as_ref(),
-            "jsonl".as_ref(),
-            "--progress".as_ref(),
-            "--control".as_ref(),
-            "stdin".as_ref(),
-            // The stream already carries the results; the text summary would only fill stderr.
-            "-s".as_ref(),
-            "output.console=quiet".as_ref(),
-        ];
-        if let Some(config) = &request.config {
-            args.push("-c".as_ref());
-            args.push(config.as_os_str());
-        }
-        for override_ in &request.overrides {
-            args.push("-s".as_ref());
-            args.push(override_.as_ref());
-        }
+        let args = self.run_arguments(request);
+        let args: Vec<&std::ffi::OsStr> = args.iter().map(|a| a.as_os_str()).collect();
         let command = self.run_command(request, &args);
         Run::spawn(command).map_err(|e| javabyte_gui_protocol::t!("error-java-start", path = self.java.display().to_string(), detail = e.to_string()))
     }
@@ -746,7 +784,7 @@ mod isolation_tests {
     }
 
     fn request() -> RunRequest {
-        RunRequest { sample: PathBuf::from("/samples/x.jar"), output: PathBuf::from("/runs/one"), config: None, overrides: vec![] }
+        RunRequest { sample: PathBuf::from("/samples/x.jar"), output: PathBuf::from("/runs/one"), config: None, overrides: vec![], pin_sample: true }
     }
 
     #[test]
@@ -772,6 +810,81 @@ mod isolation_tests {
         assert!(sandbox.uses_windows_sandbox());
         let lighter = sandbox.without_windows_sandbox();
         assert_eq!(lighter.isolation, RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into()));
+    }
+
+    /// Text after `sample=` in the tool's arguments.
+    fn pinned(launcher: &Launcher, sample: &str) -> (String, String) {
+        let request = RunRequest { sample: PathBuf::from(sample), ..request() };
+        let args: Vec<String> = launcher.run_arguments(&request).iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        let pins: Vec<&String> = args.iter().filter(|a| a.starts_with("sample=")).collect();
+        assert_eq!(pins.len(), 1, "{args:?}");
+        (args[1].clone(), pins[0]["sample=".len()..].to_string())
+    }
+
+    /// The names from the audit: a `'`, a byte order mark, a line separator, a C1 control and
+    /// DEL, all legal in NTFS names. None of the author's text reaches the sandbox add-on's
+    /// program arguments, however YAML would have quoted it.
+    #[test]
+    fn a_windows_sandbox_run_names_the_sample_as_the_sandbox_sees_it() {
+        let sandbox = launcher(RunIsolation::WindowsSandbox("/opt/jb/sandbox/javabyte-sandbox.exe".into()));
+        for (name, staged) in [
+            ("x.jar", "x.jar"),
+            ("it's.jar", "it_s.jar"),
+            ("in\u{feff}voice.jar", "in_voice.jar"),
+            ("a\u{2028}b.jar", "a_b.jar"),
+            ("a\u{85}b.jar", "a_b.jar"),
+            ("a\u{7f}b.jar", "a_b.jar"),
+            ("100% \"real\".jar", "100_ _real_.jar"),
+        ] {
+            for folder in ["C:\\in\\o'brien\u{feff}\\", "/samples/"] {
+                let host = format!("{folder}{name}");
+                let (positional, pin) = pinned(&sandbox, &host);
+                assert_eq!(positional, format!("C:\\JavaByteStage\\{staged}"), "{host:?}");
+                assert_eq!(pin, format!("'C:\\JavaByteStage\\{staged}'"), "{host:?}");
+                // The add-on is still told the real file to copy.
+                let request = RunRequest { sample: PathBuf::from(&host), ..request() };
+                let tool = sandbox.run_arguments(&request);
+                let args = args(&sandbox.run_command(&request, &tool.iter().map(|a| a.as_os_str()).collect::<Vec<_>>()));
+                assert!(args.windows(2).any(|w| w[0] == "--stage" && w[1] == host), "{args:?}");
+                let program = &args[args.iter().position(|a| a == "--").unwrap() + 1..];
+                assert!(!program.iter().any(|a| a.contains(&host) || a.contains(['\'', '"', '%', '\u{feff}', '\u{2028}', '\u{85}', '\u{7f}'])
+                    && !a.starts_with("sample='C:\\JavaByteStage\\")), "{program:?}");
+            }
+        }
+        // A sample folder is mapped, and named by where it is mapped.
+        let folder = std::env::temp_dir();
+        let (positional, pin) = pinned(&sandbox, &folder.to_string_lossy());
+        assert_eq!((positional.as_str(), pin.as_str()), ("C:\\JavaByteSample", "'C:\\JavaByteSample'"));
+    }
+
+    /// Without Windows Sandbox the tool sees the path on this computer, quoted as YAML.
+    #[test]
+    fn other_runs_name_the_sample_where_it_is() {
+        for isolation in [RunIsolation::None, RunIsolation::AppContainer("/opt/jb/sandbox/javabyte-sandbox.exe".into())] {
+            let launcher = launcher(isolation);
+            assert_eq!(pinned(&launcher, "/samples/x.jar"), ("/samples/x.jar".into(), "/samples/x.jar".into()));
+            assert_eq!(pinned(&launcher, "/samples/it's.jar"), ("/samples/it's.jar".into(), "'/samples/it''s.jar'".into()));
+            assert_eq!(pinned(&launcher, "/s/a\u{feff}b.jar").1, "\"/s/a\\ufeffb.jar\"");
+        }
+        let unpinned = RunRequest { pin_sample: false, ..request() };
+        assert!(!launcher(RunIsolation::None).run_arguments(&unpinned).iter().any(|a| a.to_string_lossy().starts_with("sample=")));
+    }
+
+    /// The app's rule for a staged file's name is the add-on's: the add-on copies the file
+    /// under its own rule, and the app names it under this one.
+    #[test]
+    fn the_staged_name_is_the_add_ons() {
+        let name = |path: &str| staged_name(Path::new(path));
+        // The same cases as `staged_files_get_names_cmd_can_carry` in the add-on's plan.rs.
+        assert_eq!(name("D:\\in\\Invoice (2).jar"), "Invoice (2).jar");
+        assert_eq!(name("C:\\in\\x%41.jar"), "x_41.jar");
+        assert_eq!(name("C:\\in\\r\u{e9}sum\u{e9}&!.jar"), "r_sum___.jar");
+        assert_eq!(name("C:\\in\\..."), "sample");
+        assert_eq!(name("C:\\in\\ x.jar. "), "x.jar");
+        let plan = include_str!("../../../sandbox/src/plan.rs");
+        assert!(plan.contains(&format!("STAGE_GUEST: &str = {:?};", SANDBOX_STAGE)), "the staging folder's name differs");
+        let rule = r#"if c.is_ascii_alphanumeric() || " .-_()[]+,".contains(c) { c } else { '_' }"#;
+        assert!(plan.contains(rule) && include_str!("runner.rs").matches(rule).count() >= 2, "the safe set differs");
     }
 
     #[test]

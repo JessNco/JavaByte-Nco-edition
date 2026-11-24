@@ -34,6 +34,10 @@ pub fn resolve(run_folder: &Path, artifacts: &[String], relative: &str) -> Resul
     if rel.is_absolute() || !rel.components().all(|c| matches!(c, Component::Normal(_))) {
         return Err(refused());
     }
+    // Before the path is looked up at all: on Windows, looking up `dropped/COM1` opens the device.
+    if cfg!(windows) && portable.split('/').any(not_a_plain_name_on_windows) {
+        return Err(refused());
+    }
     let root = run_folder.canonicalize().map_err(|e| t!("error-report-unreadable", detail = e.to_string()))?;
     let full = run_folder.join(rel).canonicalize().map_err(|_| refused())?;
     // A link inside the folder that leads out of it is refused too.
@@ -41,6 +45,18 @@ pub fn resolve(run_folder: &Path, artifacts: &[String], relative: &str) -> Resul
         return Err(refused());
     }
     Ok(full)
+}
+
+/// Whether Windows would take one part of a path for something other than the file or folder of
+/// that name: a device (`CON`, `NUL`, `COM1`, `LPT1` and the like, whatever follows the first
+/// dot: `nul.txt` is the device too), a stream of another file (`name:stream`), or a different
+/// name (Windows drops trailing dots and spaces). The tool writes none of these itself when it
+/// can help it, but a report is only as trustworthy as the run that wrote it.
+fn not_a_plain_name_on_windows(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or_default().trim_end_matches(' ').to_ascii_uppercase();
+    let numbered = |prefix: &str| stem.strip_prefix(prefix).is_some_and(|n| matches!(n, "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "\u{b9}" | "\u{b2}" | "\u{b3}"));
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT");
+    device || part.contains(':') || part.ends_with(['.', ' '])
 }
 
 /// Every saved file of a run, with size, SHA-256 and origin. Files that are missing or lead out
@@ -153,4 +169,30 @@ fn unique_name(name: &str, used: &mut Vec<String>) -> String {
     }
     used.push(candidate.clone());
     candidate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_windows_reads_as_something_else_are_recognised() {
+        for name in ["CON", "con", "NUL", "nul.txt", "Aux.tar.gz", "PRN ", "COM1", "com9.jar", "LPT0", "lpt\u{b9}", "CONIN$", "conout$", "x.jar:hidden", "C:", "x.", "x "] {
+            assert!(not_a_plain_name_on_windows(name), "{name:?}");
+        }
+        for name in ["stage.bin", "C_", "console.log", "null", "COM10", "com", "LPT", "a.nul", "x.con.jar", "payload$1.class", "My Documents"] {
+            assert!(!not_a_plain_name_on_windows(name), "{name:?}");
+        }
+    }
+
+    /// Where such names are ordinary files, a run's files are still shown.
+    #[cfg(not(windows))]
+    #[test]
+    fn elsewhere_those_names_are_files_like_any_other() {
+        let dir = std::env::temp_dir().join(format!("javabyte-artifact-names-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("dropped")).unwrap();
+        std::fs::write(dir.join("dropped/nul.txt"), b"x").unwrap();
+        assert!(resolve(&dir, &["dropped/nul.txt".to_string()], "dropped/nul.txt").is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

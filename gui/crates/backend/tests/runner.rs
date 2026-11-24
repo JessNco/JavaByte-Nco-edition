@@ -38,6 +38,7 @@ fn request(classes: &Path, class: &str, args: &[&str], name: &str) -> RunRequest
         output: output(name),
         config: None,
         overrides: vec![format!("entryPoints=[{{class: {class}, args: [{args}]}}]"), "limits.timeoutSeconds=60".into()],
+        pin_sample: false,
     }
 }
 
@@ -137,6 +138,83 @@ fn class_files_are_listed_as_instructions() {
 /// With isolation on, a run starts in a namespace with no network, and still streams its
 /// events and writes its report and files where the person can read them. Skipped where the
 /// system does not allow namespaces (the app then asks before running).
+/// Sample names from a security audit, all legal on NTFS and most of them invisible: a `'`, a
+/// byte order mark, a line separator, a C1 control.
+#[cfg(unix)]
+const AWKWARD_NAMES: [&str; 4] = ["it's", "in\u{feff}voice", "a\u{2028}b", "a\u{85}b"];
+
+/// A Windows Sandbox run hands the sandbox add-on the sample to copy in, and names it in the
+/// tool's arguments only as the sandbox will see it. The add-on here is a script that records
+/// its arguments, so this is the command the app really starts.
+#[cfg(unix)]
+#[test]
+fn a_windows_sandbox_run_keeps_an_awkward_sample_name_out_of_the_tools_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = output("sandbox-args");
+    std::fs::create_dir_all(&dir).unwrap();
+    let helper = dir.join("javabyte-sandbox");
+    std::fs::write(&helper, "#!/bin/sh\nfor a; do printf '%s\\0' \"$a\"; done > \"$0.args\"\n").unwrap();
+    std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut launcher = Launcher::new("/opt/jb/runtime/bin/java", "/opt/jb/tool/javabyte.jar");
+    launcher.isolation = javabyte_gui_backend::runner::RunIsolation::WindowsSandbox(helper.clone());
+
+    for name in AWKWARD_NAMES {
+        let sample = dir.join("o'brien\u{feff}").join(format!("{name}.jar"));
+        let request = RunRequest { sample: sample.clone(), output: dir.join("run"), config: None, overrides: vec![], pin_sample: true };
+        // Another test starting a process at the moment the script was written can hold it open
+        // for writing for an instant, and a file open for writing cannot be started.
+        let run = (0..50).find_map(|attempt| {
+            std::thread::sleep(Duration::from_millis(20 * attempt));
+            launcher.start(&request).ok()
+        });
+        let ended = run.expect("the stand-in add-on starts").wait(Duration::from_secs(20), Duration::from_secs(5));
+        assert_eq!(ended.exit_code, Some(0), "{}", ended.stderr);
+        let recorded = std::fs::read(dir.join("javabyte-sandbox.args")).unwrap();
+        let args: Vec<String> = recorded.split(|b| *b == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8(a.to_vec()).unwrap()).collect();
+        let split = args.iter().position(|a| a == "--").expect("the program follows --");
+        let (helper_args, program) = (&args[..split], &args[split + 1..]);
+        assert!(helper_args.windows(2).any(|w| w[0] == "--stage" && Path::new(&w[1]) == sample), "{helper_args:?}");
+
+        let staged = format!("C:\\JavaByteStage\\{}.jar", name.replace(|c: char| !c.is_ascii_alphanumeric(), "_"));
+        assert_eq!(program[3..5], ["run".to_string(), staged.clone()], "{program:?}");
+        assert_eq!(program.last().unwrap(), &format!("sample='{staged}'"), "{program:?}");
+        // Nothing of the name the author chose is left for the add-on to rewrite or refuse.
+        let folder = dir.join("o'brien\u{feff}").to_string_lossy().into_owned();
+        assert!(!program.iter().any(|a| a.contains(&folder) || a.contains(['"', '%', '\u{feff}', '\u{2028}', '\u{85}'])), "{program:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The same names without Windows Sandbox, where the tool gets the real path as a YAML value:
+/// the tool must read back exactly the path it was given.
+#[cfg(unix)]
+#[test]
+fn a_sample_with_an_awkward_name_runs() {
+    let Some((launcher, classes)) = setup() else { return };
+    // Java can only open a name outside ASCII when the locale's encoding has the characters.
+    let utf8 = ["LC_ALL", "LC_CTYPE", "LANG"].iter().find_map(|v| std::env::var(v).ok().filter(|l| !l.is_empty())).is_some_and(|l| l.to_ascii_lowercase().replace('-', "").contains("utf8"));
+    for (n, name) in AWKWARD_NAMES.iter().enumerate() {
+        if !utf8 && !name.is_ascii() {
+            eprintln!("skipped {name:?}: the locale is not UTF-8");
+            continue;
+        }
+        let dir = output(&format!("awkward-{n}"));
+        let sample = dir.join(name);
+        std::fs::create_dir_all(sample.join("dev/javabyte/guest")).unwrap();
+        for entry in std::fs::read_dir(classes.join("dev/javabyte/guest")).unwrap().flatten() {
+            if entry.file_name().to_string_lossy().starts_with("Basics") {
+                std::fs::copy(entry.path(), sample.join("dev/javabyte/guest").join(entry.file_name())).unwrap();
+            }
+        }
+        let mut request = request(&sample, "dev.javabyte.guest.Basics", &[], &format!("awkward-{n}-run"));
+        request.pin_sample = true;
+        let ended = launcher.start(&request).unwrap().wait(Duration::from_secs(60), Duration::from_secs(10));
+        assert_eq!(ended.exit_code, Some(exit_code::OK), "{name:?}: {}", ended.stderr);
+        assert_eq!(ended.tally.entries.first().map(|e| e.outcome.as_str()), Some("completed"), "{name:?}: {:?}", ended.tally.entries);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn an_isolated_run_works_and_writes_its_report() {

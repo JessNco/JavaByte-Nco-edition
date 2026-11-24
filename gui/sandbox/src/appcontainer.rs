@@ -45,7 +45,7 @@ use windows_sys::Win32::System::JobObjects::{
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation, SetInformationJobObject,
 };
 use windows_sys::Win32::System::Threading::{
-    CREATE_NO_WINDOW, CREATE_SUSPENDED, CreateProcessW, EXTENDED_STARTUPINFO_PRESENT, GetExitCodeProcess, INFINITE,
+    CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessW, EXTENDED_STARTUPINFO_PRESENT, GetExitCodeProcess, INFINITE,
     InitializeProcThreadAttributeList, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, PROCESS_INFORMATION,
     ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
 };
@@ -339,8 +339,17 @@ fn clear_leftovers() {
 /// it could not be started. The program is started only inside a job that ends it, and limits
 /// its processes; if the job cannot be set up or the program put in it, the program is ended
 /// before it runs a single instruction.
-fn start_and_wait(sid: &ContainerSid, program: &[OsString]) -> Result<u32, String> {
+///
+/// The program does not inherit this helper's environment: it gets the short list of
+/// [`crate::plan::child_environment`], with `temp` as its folder for temporary files.
+fn start_and_wait(sid: &ContainerSid, program: &[OsString], temp: Option<&Path>) -> Result<u32, String> {
     let mut command_line = wide(crate::plan::command_line(program));
+    // An environment block: NAME=value, each ended by a NUL, and one more NUL after the last.
+    let mut environment: Vec<u16> = Vec::new();
+    for (name, value) in crate::plan::child_environment(std::env::vars_os(), temp) {
+        environment.extend(name.encode_wide().chain(std::iter::once(u16::from(b'='))).chain(value.encode_wide()).chain(std::iter::once(0)));
+    }
+    environment.extend([0, 0]);
     // SAFETY: plain Windows calls on handles this function owns or the process's own standard
     // handles; every handle opened here is closed before returning (the job last, which ends any
     // process still in it).
@@ -395,8 +404,8 @@ fn start_and_wait(sid: &ContainerSid, program: &[OsString]) -> Result<u32, Strin
             null(),
             null(),
             1,
-            EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW,
-            null(),
+            EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+            environment.as_ptr().cast(),
             null(),
             (&raw const startup).cast(),
             &mut process,
@@ -439,7 +448,7 @@ pub fn check() -> Result<(), String> {
     let analysis = Analysis::begin()?;
     let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Windows"));
     let probe = [system.join("System32").join("cmd.exe").into_os_string(), "/c".into(), "exit 0".into()];
-    match start_and_wait(&analysis.sid, &probe)? {
+    match start_and_wait(&analysis.sid, &probe, None)? {
         0 => Ok(()),
         code => Err(format!("a test program in the AppContainer ended with code {code}")),
     }
@@ -467,14 +476,8 @@ pub fn run(read: &[PathBuf], write: &[PathBuf], program: &[OsString]) -> i32 {
     }
     // Java's temporary files go to the container's own folder, the one place it may write
     // besides the run's folder. It is deleted with the container.
-    if let Some(folder) = analysis.sid.folder() {
-        // SAFETY: single-threaded at this point; the variables are read by the child only.
-        unsafe {
-            std::env::set_var("TEMP", &folder);
-            std::env::set_var("TMP", &folder);
-        }
-    }
-    let code = match start_and_wait(&analysis.sid, program) {
+    let temp = analysis.sid.folder();
+    let code = match start_and_wait(&analysis.sid, program, temp.as_deref()) {
         Ok(code) => code as i32,
         Err(problem) => {
             eprintln!("javabyte-sandbox: {problem}");

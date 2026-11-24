@@ -41,14 +41,11 @@ Notable changes, newest first. The report's JSON layout has its own version,
   earlier one no longer stops the remaining files from being saved.
 - Archives opened with `ZipFile`/`JarFile`: the temporary copy is deleted as soon as it is
   open (when the tool exits, on Windows), and `getName()` no longer shows its real path.
-- `scripts/run-isolated.sh` now hides host service sockets (D-Bus, systemd-resolved, Docker,
-  X11, tmux, ssh-agent) in a mount namespace, as the desktop app does.
-  `scripts/fetch-sample.py` writes a file only if its SHA-256 is the one asked for.
+- `scripts/fetch-sample.py` writes a file only if its SHA-256 is the one asked for.
 - Desktop app: settings from an imported file, a preset or a report folder lose
   `policy.allow`, `classpath` and the keys that name a file on this computer to read
   (`hostFile`, `bodyFile`, a socket rule's `file`), as they already lost the bridge's Python.
-  Set them by hand if you want them. Links in an opened report folder are not followed, and
-  `JAVA_TOOL_OPTIONS` and similar variables are not passed to the tool.
+  Set them by hand if you want them. Links in an opened report folder are not followed.
 - Releases are always signed. The release workflow fails if the signing key is missing, expired
   or not the one whose public half is `docs/javabyte-signing-key.asc`; the public key is no
   longer uploaded with the release it signs, and its fingerprint is in `docs/INSTALL.md`.
@@ -57,6 +54,26 @@ Notable changes, newest first. The report's JSON layout has its own version,
   packages (which ship in the "with native bridge" installers) and uv by hashed requirements
   files, and WiX by its package's checksum. `scripts/setup-native-bridge.sh` installs the same
   pinned packages.
+- An isolated run on Linux (the desktop app's default, and `scripts/run-isolated.sh`) now has a
+  read-only file system. It can write only to its output folder and to a private temporary
+  folder that replaces the shared `/tmp` for the run. Before, isolation removed the network and
+  hid a fixed list of service sockets, and left every file as writable as it is for the user,
+  so an escape from the emulator could still have written `~/.bashrc`.
+- `/run`, `/tmp` and `/dev/shm` are empty in an isolated run, instead of a fixed list of known
+  service folders being hidden: sockets of agents and services nobody listed are gone too. The
+  sample, the config, the tool, the Java runtime, the bridge's Python and the output folder
+  stay visible at their own paths, also under `/tmp`.
+- The isolated Java process has no capabilities in its namespace, so it cannot undo the mounts.
+  `scripts/run-isolated.sh` used to leave it with all of them.
+- If the isolation cannot be set up completely, the run does not start.
+- The desktop app starts the tool, and the Windows sandbox add-on starts the program in the
+  AppContainer, with a short list of environment variables. `scripts/run-isolated.sh` does the
+  same. Tokens and keys in the analyst's environment are no longer passed on, and neither are
+  `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` or `CLASSPATH`, which would change
+  the analysis JVM itself.
+- `scripts/run-isolated.sh` now needs `setpriv` (util-linux) as well as `unshare`, and treats
+  `-o`/`--out` as the folder the run may write to (`./javabyte-out` for `run` without it). An
+  output folder set only in the config is not writable in an isolated run: pass it with `-o`.
 - JDK code can no longer reach the network on the sample's behalf. URLs in collections
   (`HashMap`, `HashSet`, `List.contains`) and `URL.sameFile` no longer cause real DNS lookups.
   `InetAddress.getCanonicalHostName` is simulated (event `net.dns-reverse`).

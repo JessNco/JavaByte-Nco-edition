@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Saves binary evidence (classes defined at run time, dropped files, network payloads) under
@@ -63,9 +64,28 @@ public final class Artifacts {
                 safe.append('/');
             }
             // Very long obfuscated names can exceed file-system limits.
-            safe.append(cleaned.length() > 120 ? cleaned.substring(0, 120) : cleaned);
+            safe.append(plainOnWindows(cleaned.length() > 120 ? cleaned.substring(0, 120) : cleaned));
         }
         return safe.length() == 0 ? "unnamed" : safe.toString();
+    }
+
+    /** Windows device names: a file of this name, with or without an extension, is the device. */
+    private static final Pattern DEVICE =
+            Pattern.compile("(?i)(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9]|CONIN\\$|CONOUT\\$) *(\\..*)?");
+
+    /**
+     * One path segment as a name that is an ordinary file on Windows too. Samples choose these
+     * names, and obfuscators like {@code aux}, {@code con} and {@code nul} for classes exactly
+     * because Windows tools trip over them: writing {@code aux.class} there writes to a device,
+     * or fails, instead of saving the class. A device name gets a leading {@code _}, and a
+     * trailing dot or space (which Windows drops, or Java refuses) becomes {@code _}. The same
+     * on every system, so a run's folder can be copied to Windows and its report still fits.
+     */
+    private static String plainOnWindows(String segment) {
+        if (segment.endsWith(".") || segment.endsWith(" ")) {
+            segment = segment.substring(0, segment.length() - 1) + "_";
+        }
+        return DEVICE.matcher(segment).matches() ? "_" + segment : segment;
     }
 
     public List<String> saved() {

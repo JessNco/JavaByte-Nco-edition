@@ -148,7 +148,13 @@ public final class HostBridge {
             // A public method inherited from a non-public class (a common JDK pattern) cannot be
             // invoked through java.lang.reflect, but a public lookup on the receiver's public
             // type can reach it.
-            if (!method.trySetAccessible()) {
+            //
+            // Access is never forced on a JDK member, and never on a member that is not public.
+            // Normally the module system refuses that anyway, but a JVM started with
+            // --add-opens (in JAVA_TOOL_OPTIONS, say) would grant it, and every private and
+            // protected method of an allow-listed class would become callable by name.
+            boolean emulatorsOwn = !isJdkClass(method.getDeclaringClass()) && Modifier.isPublic(method.getModifiers());
+            if (!emulatorsOwn || !method.trySetAccessible()) {
                 return invokeThroughLookup(method, receiver, hostArgs, denied);
             }
             return method.invoke(receiver, hostArgs);

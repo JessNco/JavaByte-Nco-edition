@@ -121,6 +121,8 @@ java/nio/file/LinkOption
 java/nio/file/OpenOption
 java/nio/file/CopyOption
 java/nio/file/attribute/FileAttribute
+# Registers a time-zone provider for the whole JVM; it would outlive the run.
+!java/time/zone/ZoneRulesProvider#registerProvider,refresh
 
 # ---------------------------------------------------------------- collections and utilities
 java/util/**
@@ -272,6 +274,9 @@ javax/net/ssl/SNIHostName
 javax/net/ssl/SNIMatcher
 javax/net/ssl/SSLContext#getInstance,init,getProtocol
 javax/net/ssl/*Exception
+# Compares the two locations' host names by resolving them: a real DNS lookup of names the
+# sample chose.
+!java/security/CodeSource#implies
 
 # ---------------------------------------------------------------- network value types
 # Addresses and URLs as data only. Opening a connection, resolving a name or creating a socket

@@ -30,7 +30,10 @@ POM
 # Stand-ins: "unshare" drops its options and runs the rest; "java" prints its arguments.
 printf '#!/bin/bash\nwhile [[ "$1" == --* ]]; do shift; done\nexec "$@"\n' > "$tree/bin/unshare"
 printf '#!/bin/bash\necho "java $*"\n' > "$tree/bin/java"
-chmod +x "$tree/bin/unshare" "$tree/bin/java"
+# The launcher covers host service sockets with mounts inside its namespace. Here there is no
+# namespace, so "mount" must be a stand-in too: it only records what it was asked to do.
+printf '#!/bin/bash\necho "$*" >> "%s/mounts"\n' "$tree" > "$tree/bin/mount"
+chmod +x "$tree/bin/unshare" "$tree/bin/java" "$tree/bin/mount"
 launch() { PATH="$tree/bin:$PATH" bash "$tree/repo/scripts/run-isolated.sh" run x.jar 2>&1; }
 fail() { echo "FAIL $*" >&2; exit 1; }
 
@@ -44,5 +47,10 @@ if out="$(launch)"; then fail "ran without javabyte-0.9.0.jar: $out"; fi
 touch "$tree/repo/target/javabyte-0.9.0.jar"
 out="$(launch)" || fail "refused although javabyte-0.9.0.jar exists: $out"
 [[ "$out" == "java -jar $tree/repo/target/javabyte-0.9.0.jar run x.jar" ]] || fail "ran the wrong jar: $out"
+
+# Every cover is an empty read-only folder or /dev/null, never anything else.
+if [[ -f "$tree/mounts" ]] && grep -qv -e '^-t tmpfs -o ro,nosuid,nodev,noexec tmpfs /' -e '^--bind /dev/null /' "$tree/mounts"; then
+    fail "an unexpected mount was requested: $(cat "$tree/mounts")"
+fi
 
 echo "PASS run-isolated.sh runs the jar of the version in pom.xml"

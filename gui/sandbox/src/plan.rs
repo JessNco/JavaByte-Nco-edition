@@ -99,7 +99,7 @@ pub fn to_guest(text: &str, maps: &[Mapping], staged: &[&Path]) -> String {
         let mut last = 0;
         for (at, _) in lower.match_indices(&wanted) {
             // Only whole path segments: what follows must end the path, start a new segment, or
-            // close the quotes around it (the app passes `sample='<path>'`, quoted as YAML).
+            // close the quotes around it (`sample='<path>'`; see [`argument_to_guest`]).
             let next = out[at + wanted.len()..].chars().next();
             if matches!(next, None | Some('\\') | Some('/') | Some('"') | Some('\'') | Some(' ') | Some(';')) {
                 result.push_str(&out[last..at]);
@@ -111,6 +111,67 @@ pub fn to_guest(text: &str, maps: &[Mapping], staged: &[&Path]) -> String {
         out = result;
     }
     out
+}
+
+/// One argument of the program as it must read inside the sandbox.
+///
+/// The app names the sample twice: as a path, and as the setting `sample=<path>`, where the
+/// path is written as a YAML value. A current app writes both as sandbox paths already, and they
+/// pass through unchanged. An older one writes the path on this computer, quoted as YAML needs:
+/// `''` for a `'` in the path, or double quotes with escapes for characters YAML treats
+/// specially (a byte order mark, a line separator, a C1 control: all legal in a file name, and
+/// chosen by the sample's author). Searching that text for the path misses it, and the run was
+/// then refused or pointed at a file that does not exist inside. So the value is read as YAML,
+/// the path it holds is rewritten, and it is written again in single quotes.
+pub fn argument_to_guest(arg: &str, maps: &[Mapping], staged: &[&Path]) -> String {
+    if let Some(path) = arg.strip_prefix("sample=").and_then(yaml_quoted) {
+        let guest = to_guest(&path, maps, staged);
+        // Only a value that held a host path and now holds none of what YAML cannot carry in
+        // single quotes; anything else is left to the search below.
+        if guest != path && !guest.chars().any(|c| c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{feff}')) {
+            return format!("sample='{}'", guest.replace('\'', "''"));
+        }
+    }
+    to_guest(arg, maps, staged)
+}
+
+/// The text of a quoted YAML value on one line: `'...'` with `''` for a quote, or `"..."` with
+/// backslash escapes. `None` for anything else, including a value that is not quoted.
+fn yaml_quoted(value: &str) -> Option<String> {
+    if let Some(inner) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+        // Every quote inside must be doubled.
+        return (!inner.replace("''", "").contains('\'')).then(|| inner.replace("''", "'"));
+    }
+    let inner = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            return None;
+        }
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let escape = chars.next()?;
+        let digits = match escape {
+            'x' => 2,
+            'u' => 4,
+            'U' => 8,
+            _ => 0,
+        };
+        let code: String = chars.by_ref().take(digits).collect();
+        out.push(match escape {
+            '\\' | '"' | '/' => escape,
+            '0' => '\0',
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            'x' | 'u' | 'U' if code.len() == digits && code.chars().all(|d| d.is_ascii_hexdigit()) => char::from_u32(u32::from_str_radix(&code, 16).ok()?)?,
+            _ => return None,
+        });
+    }
+    Some(out)
 }
 
 /// The file names staged files have in the sandbox, in the same order.
@@ -152,7 +213,8 @@ pub fn staged_names(files: &[&Path]) -> Vec<String> {
 /// `%` is refused rather than written as `%%`: the program runs on the right of a pipe, and cmd
 /// runs each side of a pipe in a new cmd that expands `%NAME%` a second time, where nothing can
 /// escape it. No text the sample's author chooses reaches this check: staged files get safe
-/// names ([`staged_names`]), and mapped folders are replaced by their sandbox paths.
+/// names ([`staged_names`]), mapped folders are replaced by their sandbox paths, and the app
+/// names the sample by its sandbox path ([`argument_to_guest`] covers an app that does not).
 pub fn unsafe_for_cmd(arg: &str) -> bool {
     arg.contains(['%', '"', '\n', '\r'])
 }
@@ -306,6 +368,57 @@ mod tests {
         assert!(!unsafe_for_cmd(&arg), "{arg}");
         let script = run_cmd(&["java.exe".into(), to_guest("C:\\in\\x%41.jar", &[], &staged), arg], None);
         assert_eq!(script.matches('%').count(), 2, "only %ERRORLEVEL% is left: {script}");
+    }
+
+    /// The names from a security audit: a `'`, a byte order mark, a line separator, a C1
+    /// control and DEL, as an app from before the fix writes them in `sample=`. Each used to be
+    /// missed by the search for the host path; the escaped ones were then refused for their `"`.
+    #[test]
+    fn the_sample_setting_is_rewritten_however_yaml_quoted_it() {
+        let cases = [
+            ("D:\\in\\it's.jar", "sample='D:\\in\\it''s.jar'", "it_s.jar"),
+            ("D:\\in\\in\u{feff}voice.jar", "sample=\"D:\\\\in\\\\in\\ufeffvoice.jar\"", "in_voice.jar"),
+            ("D:\\in\\a\u{2028}b.jar", "sample=\"D:\\\\in\\\\a\\u2028b.jar\"", "a_b.jar"),
+            ("D:\\in\\a\u{85}b.jar", "sample=\"D:\\\\in\\\\a\\x85b.jar\"", "a_b.jar"),
+            ("D:\\in\\a\u{7f}b.jar", "sample=\"D:\\\\in\\\\a\\x7fb.jar\"", "a_b.jar"),
+            ("D:\\o'brien\u{feff}\\plain.jar", "sample=\"D:\\\\o'brien\\ufeff\\\\plain.jar\"", "plain.jar"),
+            ("D:\\in\\x.jar", "sample='D:\\in\\x.jar'", "x.jar"),
+        ];
+        for (host, setting, name) in cases {
+            let sample = PathBuf::from(host);
+            let staged = [sample.as_path()];
+            let arg = argument_to_guest(setting, &[], &staged);
+            assert_eq!(arg, format!("sample='{STAGE_GUEST}\\{name}'"), "{setting}");
+            assert!(!unsafe_for_cmd(&arg), "{arg}");
+            // The path by itself, as the app also passes it.
+            assert_eq!(argument_to_guest(host, &[], &staged), format!("{STAGE_GUEST}\\{name}"));
+            // What a current app passes is already a sandbox path, and is left as it is.
+            assert_eq!(argument_to_guest(&arg, &[], &staged), arg);
+        }
+
+        // A sample folder is mapped rather than staged; its name is the author's too.
+        let maps = vec![Mapping { host: PathBuf::from("D:\\it's\u{2028}here"), guest: "C:\\JavaByteSample".into(), writable: false }];
+        assert_eq!(argument_to_guest("sample=\"D:\\\\it's\\u2028here\"", &maps, &[]), "sample='C:\\JavaByteSample'");
+        assert_eq!(argument_to_guest("sample='D:\\it''s\u{2028}here'", &maps, &[]), "sample='C:\\JavaByteSample'");
+
+        // Other arguments, and values that are not quoted YAML, go through the search as before.
+        assert_eq!(argument_to_guest("D:\\it's\u{2028}here\\a.class", &maps, &[]), "C:\\JavaByteSample\\a.class");
+        assert_eq!(argument_to_guest("sample=D:\\it's\u{2028}here", &maps, &[]), "sample=C:\\JavaByteSample");
+        assert_eq!(argument_to_guest("output.console=quiet", &maps, &[]), "output.console=quiet");
+        for odd in ["sample='a'b'", "sample=\"a\\qb\"", "sample=\"a\\u12\"", "sample=\"a\"b\"", "sample='", "sample=\"", "sample="] {
+            assert_eq!(argument_to_guest(odd, &maps, &[]), odd);
+        }
+    }
+
+    #[test]
+    fn quoted_yaml_values_read_back() {
+        assert_eq!(yaml_quoted("'it''s'").as_deref(), Some("it's"));
+        assert_eq!(yaml_quoted("''").as_deref(), Some(""));
+        assert_eq!(yaml_quoted("\"a\\\\b\\\"c\\n\\t\\r\\x41\\u00e9\\U0001F600\"").as_deref(), Some("a\\b\"c\n\t\rA\u{e9}\u{1F600}"));
+        assert_eq!(yaml_quoted("plain"), None);
+        assert_eq!(yaml_quoted("'"), None);
+        assert_eq!(yaml_quoted("\"\\ud800\""), None, "not a character");
+        assert_eq!(yaml_quoted("\"\\\""), None, "the closing quote is escaped");
     }
 
     #[test]

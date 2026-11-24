@@ -84,7 +84,7 @@ fn prepare_and_run(maps: &[Mapping], stage: &[PathBuf], program: &[OsString]) ->
     // The command as it is seen inside, refusing what run.cmd could not pass through intact.
     let mut inside = Vec::new();
     for arg in program {
-        let guest = plan::to_guest(&arg.to_string_lossy(), maps, &staged);
+        let guest = plan::argument_to_guest(&arg.to_string_lossy(), maps, &staged);
         if plan::unsafe_for_cmd(&guest) {
             return Err(format!("an argument contains % or \", which cannot be passed into Windows Sandbox safely: {guest}"));
         }

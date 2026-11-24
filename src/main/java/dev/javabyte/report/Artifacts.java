@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Saves binary evidence (classes defined at run time, dropped files, network payloads) under
@@ -77,9 +78,12 @@ public final class Artifacts {
         return safe.length() == 0 ? "unnamed" : safe.toString();
     }
 
-    /** Windows device names: a file called {@code CON} or {@code COM1.txt} is the device, not a file. */
-    private static final java.util.regex.Pattern DEVICE_NAME = java.util.regex.Pattern.compile(
-            "(?i)(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9]|LPT[0-9])(\\..*)?");
+    /**
+     * Windows device names: a file of this name, with or without an extension, is the device.
+     * Spaces before the extension do not change that ({@code "lpt9 .txt"} is still the port).
+     */
+    private static final Pattern DEVICE =
+            Pattern.compile("(?i)(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9]|CONIN\\$|CONOUT\\$) *(\\..*)?");
 
     /**
      * Names and extensions the Windows shell reads by itself when a folder is merely opened
@@ -91,17 +95,23 @@ public final class Artifacts {
             "library-ms", "searchconnector-ms", "search-ms", "website", "theme", "themepack", "contact");
 
     /**
-     * Makes one path segment a plain file name on every system. A device name gets a leading
-     * underscore; a trailing dot or space, which Windows silently drops, becomes an
-     * underscore; and a name the Windows shell would act on gets {@code .saved} appended, so
+     * One path segment as a name that is an ordinary, inert file on every system. Samples
+     * choose these names, and obfuscators like {@code aux}, {@code con} and {@code nul} for
+     * classes exactly because Windows tools trip over them: writing {@code aux.class} there
+     * writes to a device, or fails, instead of saving the class. A trailing dot or space
+     * (which Windows drops, or Java refuses) becomes {@code _}; a device name gets a leading
+     * {@code _}; and a name the Windows shell would act on gets {@code .saved} appended, so
      * that browsing the output folder never makes the shell read a file the sample wrote.
+     * The same on every system, so a run's folder can be copied to Windows and its report
+     * still fits. The desktop app repeats this rule ({@code saved_name} in
+     * {@code gui/crates/protocol/src/views.rs}); change the two together.
      */
     private static String inert(String segment) {
         String name = segment;
         if (name.endsWith(".") || name.endsWith(" ")) {
             name = name.substring(0, name.length() - 1) + '_';
         }
-        if (DEVICE_NAME.matcher(name).matches()) {
+        if (DEVICE.matcher(name).matches()) {
             name = '_' + name;
         }
         String lower = name.toLowerCase(java.util.Locale.ROOT);

@@ -24,8 +24,10 @@ if [[ "$mode" != check && ! ( "$mode" == sign && -f "$file" ) ]]; then
     exit 2
 fi
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-public="${JAVABYTE_SIGNING_PUBLIC_KEY:-$repo/docs/javabyte-signing-key.asc}"
-install_doc="${JAVABYTE_SIGNING_DOC:-$repo/docs/INSTALL.md}"
+# Fixed paths, not settable from the environment: the documented key is the one in this
+# repository at this commit, and nothing else may be put in its place.
+public="$repo/docs/javabyte-signing-key.asc"
+install_doc="$repo/docs/INSTALL.md"
 
 fail() {
     echo "error: $1" >&2

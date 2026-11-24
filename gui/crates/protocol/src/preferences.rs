@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PreferenceChange {
-    /// Start runs with no network (Linux namespaces; on Windows an AppContainer or Windows
-    /// Sandbox via the sandbox add-on).
+    /// Start runs isolated: with no network, and on Linux a read-only file system as well
+    /// (Linux namespaces; on Windows an AppContainer or Windows Sandbox via the sandbox add-on).
     Isolate(bool),
     /// Ask before a run that cannot be isolated.
     AskWithoutIsolation(bool),

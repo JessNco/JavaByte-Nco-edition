@@ -29,7 +29,7 @@ struct AppState {
     session: Mutex<Session>,
     /// Where the app's parts and preferences are.
     setup: Setup,
-    /// Whether runs can be isolated from the network, checked once at start.
+    /// Whether runs can be isolated (no network; on Linux a read-only file system too), checked once at start.
     isolation: Isolation,
     /// The last file dropped on the window, waiting for the start screen to take it.
     dropped: Mutex<Option<PathBuf>>,
@@ -272,7 +272,8 @@ async fn save_zip(paths: Vec<String>, app: tauri::AppHandle, state: tauri::State
 /// Saves one file as it is, after the warning the screen shows. `true` if saved.
 #[tauri::command]
 async fn save_as_is(path: String, app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    let name = path.rsplit('/').next().unwrap_or("file").to_string();
+    // The last part of the name, whichever separator the report was written with.
+    let name = path.rsplit(['/', '\\']).next().unwrap_or("file").to_string();
     let picked = app.dialog().file().set_title(t!("picker-save-as-is")).set_file_name(name).blocking_save_file();
     match picked.and_then(|p| p.into_path().ok()) {
         Some(destination) => session(&state).save_as_is(&path, &destination).map(|()| true),

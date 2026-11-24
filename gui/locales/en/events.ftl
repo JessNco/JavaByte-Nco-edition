@@ -11,6 +11,7 @@ category-process = Programs started
 category-net = Network
 category-file = Files
 category-class = Classes
+category-native = Native code
 category-crypto = Encryption
 category-string = Decoded text
 category-reflect = Reflection

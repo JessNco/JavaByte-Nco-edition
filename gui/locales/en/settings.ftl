@@ -56,7 +56,6 @@ check-problems = { $count ->
     }
 check-failed = The settings could not be checked: { $detail }
 check-before-analyse = Fix these before analysing.
-check-go-yaml = in the YAML
 syntax-heading = The YAML cannot be read
 syntax-problem = Line { $line }, column { $column }: { $message }
 syntax-go = Go to line { $line }

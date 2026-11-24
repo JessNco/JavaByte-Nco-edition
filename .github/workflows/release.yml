@@ -19,6 +19,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: The tag matches every version in the repository
         run: gui/packaging/version.sh "$GITHUB_REF_NAME"
+      # Also here, not only in CI: a tag can be put on a commit that CI never saw.
+      - name: Every action is pinned to a commit
+        run: scripts/check-action-pins.sh
 
   # Before an hour of building: the signing key is stored, its passphrase works, and it is the
   # key whose public half is in the repository and whose fingerprint docs/INSTALL.md shows.

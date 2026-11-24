@@ -37,7 +37,7 @@ It also writes a coverage report to `target/site/jacoco/index.html`.
 | A longer fuzz hunt | `mvn verify -Dtest=FuzzTest -Djavabyte.fuzz.iterations=3000 -Djavabyte.fuzz.seed=77` |
 | The native bridge tests | `JAVABYTE_BRIDGE_PYTHON=/path/to/venv/bin/python mvn verify` (see [NATIVE.md](NATIVE.md)) |
 | The real-malware tests | `JAVABYTE_SAMPLES=samples mvn verify -Dtest=RealCorpusTest` (see [below](#real-malware)) |
-| That `scripts/run-isolated.sh` runs the jar of the version in `pom.xml` | `scripts/test-run-isolated.sh` (no Java, no namespace; CI runs it) |
+| That `scripts/run-isolated.sh` runs the jar of the version in `pom.xml` | `scripts/test-run-isolated.sh`, with stand-ins for Java; it then starts a real isolated run and checks from inside that only the output folder and the private `/tmp` can be written, that named files are visible and their neighbours are not, and that there is no network, capability or terminal (CI runs it and requires the isolation part) |
 
 Tests that lack what they need are reported as *skipped*, never as passed.
 

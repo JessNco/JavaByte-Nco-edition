@@ -22,9 +22,13 @@
 //!   folder are put back at their own paths when they lie inside one, so a sample under `/tmp`
 //!   still works. The environment variables that point to desktop services are removed.
 //!
+//!   The run also gets a session of its own, so it has no controlling terminal to type into.
+//!
 //! What this does not do: files outside the covered folders stay readable, and a read-only
 //! mount does not stop a connection to a Unix socket, so a socket a program keeps somewhere
-//! else (under the home folder, say) can still be reached.
+//! else (under the home folder, say) can still be reached. There is no process namespace:
+//! the run can see the person's other processes and send them signals, though it cannot read
+//! their memory, environment or files.
 //!
 //! If any of this cannot be set up, the run does not start. It never starts less isolated.
 //!
@@ -56,6 +60,9 @@ const COVERED_FOLDERS: &[&str] = &["/run", "/var/run", PRIVATE_TEMP, "/dev/shm"]
 
 /// Environment variables that tell programs where the person's desktop services are. An
 /// isolated run cannot reach those services anyway; without the variables it does not try.
+/// The launcher already starts the tool with a short list of variables that has none of
+/// these; they are removed here as well for any other command that is isolated (the check
+/// that isolation works, the tests).
 const DESKTOP_VARIABLES: &[&str] = &["DBUS_SESSION_BUS_ADDRESS", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "SSH_AUTH_SOCK", "GPG_AGENT_INFO"];
 
 /// Room for `/proc/self/mountinfo` when mounts have to be made read-only one by one. A line is
@@ -190,11 +197,18 @@ fn isolate_with(command: &mut Command, access: &Access, remount: Remount) -> io:
         command.env_remove(variable);
     }
     command.env("TMPDIR", PRIVATE_TEMP);
-    // SAFETY: the closure runs in the child after fork. It makes only system calls (unshare,
+    // SAFETY: the closure runs in the child after fork. It makes only system calls (setsid, unshare,
     // open, read, write, close, mkdir, chdir, mount, mount_setattr, statvfs, prctl) on data
     // prepared above, and allocates nothing: every buffer it uses was made before fork.
     unsafe {
         command.pre_exec(move || {
+            // A session of its own, so the run has no controlling terminal. With one (the app
+            // started from a shell), a process can push text into the terminal's input, and
+            // the shell would run it outside every namespace. The app talks to a run through
+            // pipes, so nothing is lost.
+            if libc::setsid() < 0 {
+                return Err(io::Error::last_os_error());
+            }
             if libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNET | libc::CLONE_NEWNS) != 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -553,11 +567,14 @@ mod tests {
         }
     }
 
-    /// Whether isolation works here; says why not otherwise, and the test then passes.
+    /// Whether isolation works here; says why not otherwise, and the test then passes, unless
+    /// `JAVABYTE_ISOLATION_TESTS_REQUIRED` is set, as it is in CI: a system that stopped
+    /// allowing namespaces must not turn every isolation test into a silent pass.
     fn available() -> bool {
         match check() {
             Ok(()) => true,
             Err(e) => {
+                assert!(std::env::var_os("JAVABYTE_ISOLATION_TESTS_REQUIRED").is_none(), "isolation is required here but not available: {e}");
                 eprintln!("isolation is not available here: {e}");
                 false
             }

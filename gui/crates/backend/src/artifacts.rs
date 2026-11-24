@@ -140,7 +140,6 @@ pub fn write_zip(destination: &Path, run_folder: &Path, files: &[(Artifact, Path
 /// Copies one file as it is, after the person confirmed the warning, and records it in the
 /// run's folder.
 pub fn save_as_is(destination: &Path, run_folder: &Path, artifact: &Artifact, source: &Path) -> Result<(), String> {
-    std::fs::copy(source, destination).map_err(|e| t!("error-save", detail = e.to_string()))?;
     // The file's name is the sample's choice; in the log it stays on its own line.
     let one_line = |text: &str| -> String { text.chars().map(|c| if c.is_control() { '?' } else { c }).collect() };
     let line = format!(
@@ -156,13 +155,15 @@ pub fn save_as_is(destination: &Path, run_folder: &Path, artifact: &Artifact, so
     if !is_plain_file_or_absent(&log_path) {
         return Err(t!("error-save", detail = t!("error-not-plain-file", path = log_path.display().to_string())));
     }
+    // Copied only now: a copy that could not be recorded must not be made.
+    std::fs::copy(source, destination).map_err(|e| t!("error-save", detail = e.to_string()))?;
     let mut log = std::fs::OpenOptions::new().create(true).append(true).open(log_path).map_err(|e| t!("error-save", detail = e.to_string()))?;
     log.write_all(line.as_bytes()).map_err(|e| t!("error-save", detail = e.to_string()))
 }
 
 /// True if nothing is at `path`, or a regular file that is not a link. Links, folders and
 /// devices are not: a folder someone sent can hold any of them under an expected name.
-pub fn is_plain_file_or_absent(path: &Path) -> bool {
+fn is_plain_file_or_absent(path: &Path) -> bool {
     match std::fs::symlink_metadata(path) {
         Ok(found) => found.file_type().is_file(),
         Err(e) => e.kind() == std::io::ErrorKind::NotFound,

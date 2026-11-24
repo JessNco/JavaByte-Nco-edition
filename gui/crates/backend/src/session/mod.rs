@@ -109,9 +109,15 @@ impl Session {
     /// Checks a path someone picked or dropped. A path on another computer is refused before
     /// anything looks at it (see [`is_local_path`]), with a message that says so.
     pub fn choose(path: &Path) -> Result<SampleChoice, String> {
+        // Judged as it was given: a path on another computer must not first be turned into
+        // something that looks like a local one.
         if !is_local_path(path) {
             return Err(t!("error-sample-remote", path = path.display().to_string()));
         }
+        // Then always a full path. A relative name given on the command line would reach the
+        // tool as it is, and a name starting with `-` or `@` reads as something other than a file.
+        let absolute = std::path::absolute(path).map_err(|e| t!("error-not-found", path = format!("{} ({e})", path.display())))?;
+        let path = absolute.as_path();
         if !path.exists() {
             return Err(t!("error-not-found", path = path.display().to_string()));
         }
@@ -161,10 +167,14 @@ impl Session {
         }
         let (sample, doc) = self.settings.clone().ok_or_else(|| t!("error-no-sample"))?;
         // Unreadable settings could hide a program to start from the check below.
-        if doc.to_json().is_none() {
-            return Err(t!("error-settings-unreadable"));
-        }
-        let program = host_program(doc.text());
+        let Some(settings) = doc.to_json() else { return Err(t!("error-settings-unreadable")) };
+        // The run is started from this value, written out afresh, never from the text as typed
+        // or imported. The tool reads YAML by other rules than the app does (a repeated key, a
+        // tag on a key, a line break only YAML 1.1 knows), so text can say one thing to the
+        // forms and the checks here and another to the tool. Written from the value, the tool
+        // can only be told what the app saw.
+        let run_from = config::render_document(&settings);
+        let program = host_program(&run_from);
         if program.is_some() && program != agreed_program {
             return Err(t!("error-program-unconfirmed", path = program.unwrap_or_default()));
         }
@@ -172,14 +182,14 @@ impl Session {
         std::fs::create_dir_all(&output).map_err(|e| t!("error-results-folder", detail = e.to_string()))?;
         // Saved beside the report, so the run can be repeated with `javabyte run -c`.
         let config_file = output.join("config.yaml");
-        std::fs::write(&config_file, doc.text()).map_err(|e| t!("error-results-folder", detail = e.to_string()))?;
+        std::fs::write(&config_file, &run_from).map_err(|e| t!("error-results-folder", detail = e.to_string()))?;
         let request = RunRequest {
             sample: PathBuf::from(&sample.path),
             output: output.clone(),
             config: Some(config_file),
+            // The chosen sample is analysed whatever the settings name (they may come from
+            // another sample): the tool lets the sample on its command line win.
             overrides: vec![],
-            // The chosen sample, whatever the settings say: they may come from another sample.
-            pin_sample: true,
         };
         let launcher = if without_sandbox { self.launcher()?.without_windows_sandbox() } else { self.launcher()?.clone() };
         let run = launcher.start(&request)?;
@@ -369,12 +379,6 @@ fn safe_name(name: &str) -> String {
     if cleaned.trim_matches(['.', '_']).is_empty() { "sample".into() } else { cleaned }
 }
 
-/// `sample=<path>`, so a check always uses the chosen sample. Checks start the tool directly,
-/// so the path is the one on this computer; a run's is written by the launcher
-/// (`RunRequest::pin_sample`), because inside Windows Sandbox the path is another.
-fn sample_override(sample: &SampleChoice) -> String {
-    format!("sample={}", config::render_scalar_str(&sample.path))
-}
 
 /// UTC time as `YYYY-MM-DD HH-MM-SS` (for folder names) or `YYYY-MM-DD HH:MM` (for people).
 fn timestamp(time: SystemTime, for_folder: bool) -> String {

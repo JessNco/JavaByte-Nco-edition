@@ -57,11 +57,18 @@ jobs:
         run: cargo install --locked trunk@0.22.1
       # The desktop app embeds the built screens, so its tests run after they are built
       # (step "Configuration and guard tests" below).
+      # The isolation tests need unprivileged namespaces, which Ubuntu's runners refuse to
+      # programs without an AppArmor profile (the installed app has one; a test binary does
+      # not). The restriction is lifted for this job and the tests are then required, so they
+      # cannot skip themselves into a pass.
       - name: Unit, format and runner tests
         env:
           JAVABYTE_TEST_CLASSES: ${{ github.workspace }}/target/test-classes
           JAVABYTE_RUNNER_TESTS_REQUIRED: '1'
-        run: cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
+          JAVABYTE_ISOLATION_TESTS_REQUIRED: '1'
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          cargo test -p javabyte-gui-protocol -p javabyte-gui-backend
       - name: Build the screens
         working-directory: gui/ui
         run: trunk build --release

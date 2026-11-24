@@ -61,8 +61,10 @@ javabyte-sandbox windows-sandbox [--map HOST=GUEST[:rw]]... [--stage FILE]... --
   break once mapped folders are replaced by their sandbox paths cannot be passed safely to the
   script inside the sandbox, so such a run is refused rather than started.
 
-Paths in the arguments, and `JAVABYTE_BRIDGE_PYTHON`, are rewritten from the host's to the
-sandbox's, so the app builds one command line for every way of running.
+Folder paths in the arguments, and `JAVABYTE_BRIDGE_PYTHON`, are rewritten from the host's to
+the sandbox's. The sample is the exception: the app names it as the sandbox will see it
+(`C:\JavaByteStage\<safe name>` for a file, `C:\JavaByteSample` for a folder), so that
+nothing of a name its author chose has to be found and rewritten.
 
 ## In the app
 

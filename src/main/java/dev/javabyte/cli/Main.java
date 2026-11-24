@@ -96,6 +96,10 @@ public final class Main {
      */
     public static int execute(String... args) {
         CommandLine commandLine = new CommandLine(new Main());
+        // No "@file" arguments. A sample is named on the command line, by people and by tools
+        // that pass on whatever name it has; a sample called "@x" must be read as a sample, not
+        // as a file of further options (-s policy.allow=..., say) for this run.
+        commandLine.setExpandAtFiles(false);
         commandLine.setExecutionExceptionHandler((exception, cmd, parseResult) -> {
             if (exception instanceof ConfigException) {
                 cmd.getErr().println("error: " + exception.getMessage());

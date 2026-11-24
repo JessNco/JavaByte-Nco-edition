@@ -16,20 +16,24 @@
 #     config), the jar, and the Java runtime;
 #   - the environment is cut down to a short list (PATH, HOME, language), so tokens in your
 #     shell are not there to be read and JAVA_TOOL_OPTIONS and the like do not reach the JVM;
-#   - Java has no capabilities, so nothing in the run can undo any of this.
+#   - Java has no capabilities, so nothing in the run can undo any of this;
+#   - the run has no controlling terminal, so it cannot type into yours.
 #
 # If any of that cannot be set up, nothing is run. The desktop app does the same for each
 # analysis (gui/crates/backend/src/isolation.rs); keep the two alike.
 #
 # Not covered: files outside /run, /tmp and /dev/shm stay readable, and a Unix socket that a
-# program keeps somewhere else (under your home folder, say) can still be connected to. A file
+# program keeps somewhere else (under your home folder, say) can still be connected to. There
+# is no process namespace either: the run can see your processes and send them signals (it
+# cannot read their memory or environment). A file
 # the config names (a library on "classpath", say) that lies under /tmp is hidden unless it is
 # also on the command line; keep such files elsewhere. An output folder set only in the config
 # (output.directory) is not known here: pass it with -o.
 #
 # Usage:  scripts/run-isolated.sh run sample.jar [javabyte options...]
 #
-# Requires Linux with unprivileged user namespaces, and util-linux (unshare, mount, setpriv).
+# Requires Linux with unprivileged user namespaces, and util-linux (unshare, mount, setpriv,
+# setsid).
 # Where those are not allowed, use a container with no network, a read-only root and only the
 # output directory writable, for example:
 #   docker run --rm --network none --read-only --tmpfs /tmp -v "$PWD:/work" -w /work \
@@ -170,7 +174,7 @@ if ! "${namespaces[@]}" true 2>/dev/null; then
     echo "error: this system does not allow unprivileged namespaces; use a container instead" >&2
     exit 2
 fi
-for tool in setpriv mount realpath; do
+for tool in setpriv setsid mount realpath; do
     command -v "$tool" >/dev/null || { echo "error: $tool is needed (util-linux, coreutils)" >&2; exit 2; }
 done
 java="$(command -v java)" || { echo "error: java is not on PATH" >&2; exit 2; }
@@ -204,5 +208,26 @@ for path in "${keep[@]}"; do
     [[ "$path" == "$output" ]] || visible+=("$path")
 done
 
-exec "${namespaces[@]}" bash "${BASH_SOURCE[0]}" --inside-namespaces "$output" "${#visible[@]}" "${visible[@]}" -- \
-    "$java" "-Djava.io.tmpdir=$private_temp" -jar "$jar" "$@"
+# The run gets a session of its own (setsid), so it has no controlling terminal. With one, a
+# process can push text into the terminal's input (the TIOCSTI ioctl, allowed on older kernels
+# and wherever dev.tty.legacy_tiocsti is on), and the shell it was started from would run that
+# text after the run ended, outside every namespace. Standard input, output and error are still
+# this terminal's, so "--control stdin" and Ctrl+C work: Ctrl+C reaches this script, which is
+# still in the terminal's foreground, and is passed on.
+#
+# Started in the background so that setsid need not fork: a background job of a script is not
+# a process group leader. Every later step replaces the process (unshare, bash, env, setpriv,
+# java), so the job's id is Java's and a signal sent to it arrives. "<&0" keeps standard input,
+# which a background job would otherwise have replaced by /dev/null.
+setsid "${namespaces[@]}" bash "${BASH_SOURCE[0]}" --inside-namespaces "$output" "${#visible[@]}" "${visible[@]}" -- \
+    "$java" "-Djava.io.tmpdir=$private_temp" -jar "$jar" "$@" <&0 &
+run=$!
+trap 'kill -INT "$run" 2>/dev/null' INT
+trap 'kill -TERM "$run" 2>/dev/null' TERM HUP
+# "wait" returns early when a trapped signal arrives; wait again until the run itself has ended.
+status=0
+while true; do
+    wait "$run" && status=0 || status=$?
+    kill -0 "$run" 2>/dev/null || break
+done
+exit "$status"

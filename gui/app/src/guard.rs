@@ -50,6 +50,8 @@ const DISABLE_WEBRTC: &str = r#"
 })();
 "#;
 
+/// The plugin that keeps the window off the network: it refuses every navigation away from the
+/// app's own origin, and removes WebRTC before any page script runs.
 // The control build for tests/egress deliberately leaves the guard out.
 #[cfg_attr(feature = "egress-control", allow(dead_code))]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {

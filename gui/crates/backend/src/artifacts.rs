@@ -125,15 +125,50 @@ pub fn write_zip(destination: &Path, run_folder: &Path, files: &[(Artifact, Path
 /// run's folder.
 pub fn save_as_is(destination: &Path, run_folder: &Path, artifact: &Artifact, source: &Path) -> Result<(), String> {
     std::fs::copy(source, destination).map_err(|e| t!("error-save", detail = e.to_string()))?;
+    // The file's name is the sample's choice; in the log it stays on its own line.
+    let one_line = |text: &str| -> String { text.chars().map(|c| if c.is_control() { '?' } else { c }).collect() };
     let line = format!(
         "{} saved as is: {} (SHA-256 {}) to {}\n", // not-ui-text: a log line for analysts, kept in English
         crate::session::now_for_log(),
-        artifact.path,
-        artifact.sha256,
-        destination.display()
+        one_line(&artifact.path),
+        one_line(&artifact.sha256),
+        one_line(&destination.display().to_string())
     );
-    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(run_folder.join(ACTIONS_LOG)).map_err(|e| t!("error-save", detail = e.to_string()))?;
+    let log_path = run_folder.join(ACTIONS_LOG);
+    // A report folder may come from someone else, with a link under this name that leads to
+    // a file of the person's own (a shell start-up file, say). Only a plain file is appended to.
+    if !is_plain_file_or_absent(&log_path) {
+        return Err(t!("error-save", detail = t!("error-not-plain-file", path = log_path.display().to_string())));
+    }
+    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(log_path).map_err(|e| t!("error-save", detail = e.to_string()))?;
     log.write_all(line.as_bytes()).map_err(|e| t!("error-save", detail = e.to_string()))
+}
+
+/// True if nothing is at `path`, or a regular file that is not a link. Links, folders and
+/// devices are not: a folder someone sent can hold any of them under an expected name.
+pub fn is_plain_file_or_absent(path: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(found) => found.file_type().is_file(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+/// Reads a text file from a folder that may have come from someone else: only a regular file
+/// that is not a link, and no more than `limit` bytes. A link could lead to a private file of
+/// the person's own, whose content would then be shown and reused; a device such as
+/// `/dev/zero` would never end.
+pub fn read_plain_text(path: &Path, limit: u64) -> std::io::Result<String> {
+    use std::io::Read;
+    let found = std::fs::symlink_metadata(path)?;
+    if !found.file_type().is_file() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, t!("error-not-plain-file", path = path.display().to_string())));
+    }
+    let mut text = String::new();
+    std::fs::File::open(path)?.take(limit.saturating_add(1)).read_to_string(&mut text)?;
+    if text.len() as u64 > limit {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, t!("error-file-too-large", path = path.display().to_string())));
+    }
+    Ok(text)
 }
 
 /// A name that is safe inside a zip: no folders, no control characters, not empty.

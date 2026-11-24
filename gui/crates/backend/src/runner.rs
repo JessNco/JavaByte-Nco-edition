@@ -189,6 +189,12 @@ impl Launcher {
 
     /// The environment and window settings every command shares.
     fn prepare(&self, command: &mut Command) {
+        // Variables that hand options to every JVM. Left in, whatever they hold would change
+        // the analysis itself: an agent, another class path, or `--add-opens`, which removes a
+        // protection the tool relies on.
+        for variable in JVM_OPTION_VARIABLES {
+            command.env_remove(variable);
+        }
         if let Some(python) = &self.bridge_python {
             command.env("JAVABYTE_BRIDGE_PYTHON", python);
         }
@@ -338,6 +344,9 @@ pub(crate) fn no_console(command: &mut Command) {
 /// The most of the tool's error output kept for a run: enough for any real error, and a limit
 /// on what a run that floods stderr can make the app hold.
 const STDERR_LIMIT: u64 = 1 << 20;
+
+/// Environment variables a JVM reads options from; removed for the tool ([`Launcher::prepare`]).
+const JVM_OPTION_VARIABLES: &[&str] = &["JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH"];
 
 /// How long, once the process has gone, the app waits for the reader threads to deliver the
 /// last of its output. They normally finish at once; the limit is for a process that left a

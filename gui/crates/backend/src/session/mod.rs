@@ -25,7 +25,7 @@ use std::time::{Duration, Instant, SystemTime};
 mod reports;
 mod settings;
 
-pub use settings::{Checker, host_program, with_sample, without_host_programs};
+pub use settings::{Checker, host_program, with_sample, without_host_access};
 use reports::open_report;
 
 /// Categories whose events are shown live while a run goes on.

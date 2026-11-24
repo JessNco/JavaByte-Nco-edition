@@ -49,6 +49,14 @@ Notable changes, newest first. The report's JSON layout has its own version,
   (`hostFile`, `bodyFile`, a socket rule's `file`), as they already lost the bridge's Python.
   Set them by hand if you want them. Links in an opened report folder are not followed, and
   `JAVA_TOOL_OPTIONS` and similar variables are not passed to the tool.
+- Releases are always signed. The release workflow fails if the signing key is missing, expired
+  or not the one whose public half is `docs/javabyte-signing-key.asc`; the public key is no
+  longer uploaded with the release it signs, and its fingerprint is in `docs/INSTALL.md`.
+- Everything fetched while the installers are built is fixed to a version and a checksum:
+  GitHub Actions by commit, the Tauri CLI by `package-lock.json`, the native bridge's Python
+  packages (which ship in the "with native bridge" installers) and uv by hashed requirements
+  files, and WiX by its package's checksum. `scripts/setup-native-bridge.sh` installs the same
+  pinned packages.
 - JDK code can no longer reach the network on the sample's behalf. URLs in collections
   (`HashMap`, `HashSet`, `List.contains`) and `URL.sameFile` no longer cause real DNS lookups.
   `InetAddress.getCanonicalHostName` is simulated (event `net.dns-reverse`).

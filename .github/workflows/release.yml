@@ -1,6 +1,7 @@
 # A version tag (v0.2.0) builds both editions for Windows and Linux, tests them as on every
-# push, writes SHA256SUMS, signs it when a GPG key is stored as a secret, and creates a DRAFT
-# release with everything. A person reviews the draft and publishes it. See
+# push, writes SHA256SUMS, signs it with the project's GPG key, and creates a DRAFT release with
+# everything. A person reviews the draft and publishes it. Without a usable signing key the
+# workflow fails and no release is made: there are no unsigned releases. See
 # docs/gui/RELEASING.md.
 name: Release
 
@@ -15,12 +16,24 @@ jobs:
   versions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: The tag matches every version in the repository
         run: gui/packaging/version.sh "$GITHUB_REF_NAME"
 
+  # Before an hour of building: the signing key is stored, its passphrase works, and it is the
+  # key whose public half is in the repository and whose fingerprint docs/INSTALL.md shows.
+  signing-key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: The signing key is stored and is the documented one
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: gui/packaging/sign-checksums.sh check
+
   installers:
-    needs: versions
+    needs: [versions, signing-key]
     uses: ./.github/workflows/installers.yml
     with:
       bridge: true
@@ -31,8 +44,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: installers-*
           path: release
@@ -40,26 +53,18 @@ jobs:
       - name: Checksums
         working-directory: release
         run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
-      # Signed only when the repository has the secrets GPG_PRIVATE_KEY (an armoured private
-      # key) and GPG_PASSPHRASE. Without them the release is unsigned and says so.
+      # The key and its passphrase reach the script through the environment and go to gpg
+      # through pipes, never on a command line. The script fails, and with it the release, if
+      # the key is missing or is not the one in docs/javabyte-signing-key.asc; it verifies the
+      # signature with that committed file alone. The public key is not added to the release:
+      # a key that arrives with the files it signs proves nothing.
       - name: Sign the checksums
-        id: sign
-        working-directory: release
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          if [ -z "$GPG_PRIVATE_KEY" ]; then
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "No signing key stored: the release is unsigned."
-            exit 0
-          fi
-          export GNUPGHOME="$(mktemp -d)"
-          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign SHA256SUMS
-          gpg --armor --export > javabyte-signing-key.asc
-          gpg --verify SHA256SUMS.asc SHA256SUMS
-          echo "signed=true" >> "$GITHUB_OUTPUT"
+        run: gui/packaging/sign-checksums.sh sign release/SHA256SUMS
+      - name: Nothing is released unsigned
+        run: test -s release/SHA256SUMS.asc
       - name: Release notes
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -79,11 +84,9 @@ jobs:
             echo "The Windows installer is not signed yet, so Windows SmartScreen will warn when you run it."
             echo "docs/INSTALL.md shows what you will see and how to check the file first."
             echo
-            if [ "${{ steps.sign.outputs.signed }}" = true ]; then
-              echo "SHA256SUMS is signed (SHA256SUMS.asc); the public key is javabyte-signing-key.asc."
-            else
-              echo "SHA256SUMS lists the checksum of every file. It is not signed in this release."
-            fi
+            echo "SHA256SUMS lists the checksum of every file and is signed (SHA256SUMS.asc). The public key is"
+            echo "not part of this release on purpose: take it from docs/javabyte-signing-key.asc in the"
+            echo "repository and compare its fingerprint with the one in docs/INSTALL.md."
             echo
             # The changelog's section for this version, or "Unreleased" if it has none yet.
             heading="$(grep -m1 -E "^## \[?$version\]?( |$)" CHANGELOG.md || echo "## Unreleased")"

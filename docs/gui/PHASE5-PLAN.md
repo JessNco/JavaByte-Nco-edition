@@ -13,7 +13,7 @@ Done when: a clean install and first run work on fresh Windows 11, Ubuntu 22.04 
 | --- | --- |
 | Native bridge | Two installers per system: **standard**, and **with native bridge**. Same app; it uses the bridge when it finds one next to it |
 | Getting installers to people | Pushing a tag `vX.Y.Z` builds every installer and a checksum file and creates a **draft** GitHub release. A person reviews and publishes it |
-| Linux signing | The release job signs the checksum file with GPG when a key is stored as a repository secret. Until then releases are unsigned and still list SHA-256 checksums |
+| Linux signing | The release job signs the checksum file with the project's GPG key and fails without it, so no release is unsigned. The public key and its fingerprint are in the repository, not in the release ([RELEASING.md](RELEASING.md#signing-releases)) |
 | Isolation unavailable on Linux | Ask before each run, explaining why and how to get isolation. "Don't ask again" makes the answer stick, and it can be changed in Preferences |
 | `.jar` files | JavaByte appears under "Open with" for `.jar` files. It never becomes the default program |
 | Preferences added | Output folder; Java runtime (bundled, or a chosen Java 17 or later); network isolation (Linux); native bridge status |
@@ -27,7 +27,7 @@ Done when: a clean install and first run work on fresh Windows 11, Ubuntu 22.04 
 | The app | `cargo tauri build` | 15 MB |
 | Java runtime | `jlink` from Temurin 21: the `java.se` modules plus `jdk.unsupported`, `jdk.charsets`, `jdk.zipfs`, `jdk.localedata` and `jdk.crypto.ec`. All standard modules, not only the ones `jdeps` finds, because a sample may call any standard API and a missing class would change what the analysis sees | 50 MB |
 | JavaByte | `mvn package` | 4 MB |
-| Native bridge (bridge installers only) | A standalone Python build (python-build-standalone, pinned) with `scripts/native-bridge-requirements.txt` installed | 150–250 MB |
+| Native bridge (bridge installers only) | A standalone Python build (python-build-standalone, pinned) with the packages of `scripts/native-bridge-requirements.txt` installed, each file checked against the checksum listed there | 150–250 MB |
 | Notices | `THIRD-PARTY-NOTICES.txt`: the licences of the runtime, Python, Speakeasy and Unicorn, and where to get their source | — |
 
 Files go into the app's resource folder: `runtime/`, `javabyte.jar` and, in bridge installers,

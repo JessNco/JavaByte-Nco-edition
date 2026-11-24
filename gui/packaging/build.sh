@@ -8,6 +8,10 @@
 # Usage: packaging/build.sh [--bridge]      (from gui/; needs what packaging/stage.sh needs,
 #                                            plus Trunk, Node.js for the Tauri CLI, and on
 #                                            Windows the WiX toolset Tauri downloads itself)
+#
+# The Tauri CLI is installed with `npm ci` from packaging/package-lock.json: exactly the files
+# listed there, each checked against its checksum. Its version is changed in package.json
+# (docs/gui/RELEASING.md, "Refreshing pinned tools").
 set -euo pipefail
 
 gui="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,7 +22,13 @@ if [[ "${1:-}" == "--bridge" ]]; then
     bridge_flag=(--bridge)
     suffix="-with-native-bridge"
 fi
-tauri=(${TAURI_CLI:-npx --yes @tauri-apps/cli@2.12.5})
+if [[ -n "${TAURI_CLI:-}" ]]; then
+    tauri=($TAURI_CLI)
+else
+    # --ignore-scripts: nothing a package brings is run while installing it.
+    (cd packaging && npm ci --ignore-scripts --no-audit --no-fund)
+    tauri=("$gui/packaging/node_modules/.bin/tauri")
+fi
 version="$(packaging/version.sh)"
 
 packaging/stage.sh "${bridge_flag[@]}"

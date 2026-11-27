@@ -28,7 +28,7 @@ of reported behaviour do need stated expectations; those are written as data, no
 mvn verify
 ```
 
-That runs everything that needs no malware and no Python: about 220 tests in a couple of minutes.
+That runs everything that needs no malware and no Python: about 240 tests in a couple of minutes.
 It also writes a coverage report to `target/site/jacoco/index.html`.
 
 | To run | Command |
@@ -61,7 +61,8 @@ and CI fails if the committed copy drifts from what the tool produces.
 | `ContractSamplesTest` | 2 | Real tool output is written to `gui/crates/protocol/tests/tool-output/`, where the desktop app's Rust tests read it (see above) |
 | `report/ArtifactsTest` | 1 | Saved artifact paths use `/` on every system, so reports read the same elsewhere |
 | `FuzzTest` | 5 | About 1,350 mutated inputs by default: corrupted class files, invalid instruction streams, damaged archives, and corrupted class files given to the disassembler. None may end as `internal-error`, throw, or overrun its limits |
-| `EscapeTest` | 1 | About eighty escape attempts leave no file, process, thread or connection on the real machine |
+| `ModernJdkTest` | 7 | Java 21 thread builders run their threads on the scheduler; the default socket factory and the trust manager factory reach the simulated network; key derivations, hashes and MACs are recorded with their inputs; a loop of hashes cannot push keys out of the report; `trace.previewLength` |
+| `EscapeTest` | 1 | About a hundred escape attempts leave no file, process, thread or connection on the real machine |
 | `TypeConfusionTest` | 6 | Generated classes whose calls and field instructions name one class with another object underneath (the Java compiler never writes these), a static JDK method reached through a simulated object, and a stream filter meant to switch the deserialization guard off. Each must leave the real JVM and disk untouched |
 | `HostCallbackTest` | 8 | Runs the `HostCallbacks` fixture against a local listener. It checks URLs in collections, providers and loaders handed to JDK code, reverse lookups and the loader hierarchy for Java 8 and 17 profiles. Its provider-route test scans `java.base` for allow-listed methods returning a `Provider` and fails on any that has no stub |
 | `LoaderShellTest` | 8 | A sample's own subclass of `URLClassLoader` is built on the simulated loader, so neither the guest nor JDK code can make it fetch from its URL; direct subclasses of `ClassLoader` and `SecureClassLoader` (the `OwnLoader` fixture) still define and load classes from bytes, while JDK code calling them, on a host or an emulator thread, sees no class or resource of the emulator's own class path; the application loader is a `URLClassLoader` with the sample's class path on the Java 8 profile and not one on Java 17 (the `SystemLoaderPath` fixture); the text of built-in loaders, concatenated dates and threads, and reflective stacks |

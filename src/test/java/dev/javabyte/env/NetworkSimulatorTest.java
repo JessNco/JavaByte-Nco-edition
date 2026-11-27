@@ -56,4 +56,11 @@ class NetworkSimulatorTest {
         assertEquals("203.0.113.10", simulator(config).resolve("999.1.1.1").getHostAddress());
         assertEquals("10.0.0.5", simulator(config).resolve("10.0.0.5").getHostAddress());
     }
+
+    /** An address without a name is described by its text; asking the JDK would be a reverse lookup. */
+    @Test
+    void theNameOfAnAddressIsNeverLookedUp() throws Exception {
+        assertEquals("203.0.113.9", NetworkSimulator.nameOf(java.net.InetAddress.getByAddress(new byte[] {(byte) 203, 0, 113, 9})));
+        assertEquals("c2.example", NetworkSimulator.nameOf(java.net.InetAddress.getByAddress("c2.example", new byte[] {(byte) 203, 0, 113, 9})));
+    }
 }

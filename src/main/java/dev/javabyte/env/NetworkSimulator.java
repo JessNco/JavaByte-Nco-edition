@@ -91,6 +91,18 @@ public final class NetworkSimulator {
     }
 
     /** The pretend computer's own address, under the host name it is given. */
+    /**
+     * The name an address carries, or its text if it carries none. Never a lookup: the name is
+     * read from {@code toString()}, where {@code getHostName()} would ask the analysis machine's
+     * name server about an address that has no name yet. Emulator code that needs the name of an
+     * address a sample supplied uses this.
+     */
+    public static String nameOf(InetAddress address) {
+        String text = address.toString();
+        int slash = text.indexOf('/');
+        return slash > 0 ? text.substring(0, slash) : address.getHostAddress();
+    }
+
     public InetAddress localHost(String hostName) throws UnknownHostException {
         return InetAddress.getByAddress(hostName, parseIpv4(config.localAddress));
     }

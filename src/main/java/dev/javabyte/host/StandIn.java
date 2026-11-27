@@ -11,4 +11,15 @@ public interface StandIn {
 
     /** Internal name of the JDK class this object imitates, e.g. {@code java/io/RandomAccessFile}. */
     String standsFor();
+
+    /**
+     * Whether a cast to {@code type} succeeds, for types the analysis JDK may not have: the
+     * imitated class and any of its supertypes that the guest's Java has but this one lacks.
+     * Supertypes the analysis JDK has are found through {@link #standsFor()} anyway.
+     *
+     * @param type internal class name
+     */
+    default boolean isA(String type) {
+        return type.equals(standsFor());
+    }
 }

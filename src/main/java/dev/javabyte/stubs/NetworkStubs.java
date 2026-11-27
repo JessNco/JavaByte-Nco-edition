@@ -56,7 +56,7 @@ final class NetworkStubs {
             return InetAddress.getByAddress(name, raw);
         });
         stubs.on("java/net/InetAddress", "isReachable", ctx -> {
-            vm.events.add("net", "ping", "host", ((InetAddress) ctx.receiver).getHostName());
+            vm.events.add("net", "ping", "host", NetworkSimulator.nameOf((InetAddress) ctx.receiver));
             return "offline".equals(vm.config.network.mode) ? 0 : 1;
         });
 
@@ -74,6 +74,7 @@ final class NetworkStubs {
         stubs.on("javax/net/ssl/SSLContext", "getSocketFactory", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
         stubs.on("javax/net/ssl/SSLSocketFactory", "getDefault", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
         stubs.on("javax/net/ssl/HttpsURLConnection", "getDefaultSSLSocketFactory", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
+        stubs.on("javax/net/SocketFactory", "getDefault", ctx -> new dev.javabyte.env.SimSocketFactory(network));
         stubs.on("java/net/ServerSocket", "<init>", ctx -> {
             vm.events.add("net", "listen", "port", ctx.argCount() > 0 ? ctx.arg(0) : "unbound");
             return new PhantomObject("java/net/ServerSocket");
@@ -207,7 +208,7 @@ final class NetworkStubs {
     private static Object socket(NetworkSimulator network, CallContext ctx) throws IOException {
         SimSocket socket = new SimSocket(network);
         if (ctx.argCount() >= 2 && ctx.arg(1) instanceof Integer port) {
-            String host = ctx.arg(0) instanceof InetAddress address ? address.getHostName() : String.valueOf(ctx.arg(0));
+            String host = ctx.arg(0) instanceof InetAddress address ? NetworkSimulator.nameOf(address) : String.valueOf(ctx.arg(0));
             socket.connectTo(host, port);
         }
         return socket;

@@ -81,6 +81,7 @@ trace:
   methods: ['com/example/Crypto.*']
   instructions: []
   hostCalls: false
+  previewLength: 2000           # characters or bytes of a value shown in an event
 
 threads:
   mode: deferred                # deferred | inline

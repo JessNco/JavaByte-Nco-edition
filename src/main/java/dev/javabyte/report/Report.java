@@ -2,6 +2,7 @@ package dev.javabyte.report;
 
 import dev.javabyte.config.ConfigLoader;
 import dev.javabyte.config.EmulatorConfig;
+import dev.javabyte.vm.Values;
 import dev.javabyte.vm.VirtualMachine;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -224,19 +225,53 @@ public final class Report {
         section(text, "Native libraries loaded", "native", "load-library", "library");
         section(text, "Classes looked up by name", "reflect", "forName", "name");
         section(text, "Strings returned by static methods (likely decrypted)", "string", "returned", "value");
+        section(text, "Cipher keys", "crypto", "cipher-init", Report::keyLine);
+        section(text, "Keys derived from passwords", "crypto", "key-derivation", Report::keyLine);
+        section(text, "Cipher output (decrypted data appears here)", "crypto", "cipher-output",
+                event -> Values.truncate(String.valueOf(event.data().get("preview")), SUMMARY_VALUE_LENGTH));
         section(text, "Calls blocked by policy", "policy", "blocked", "member");
-        section(text, "Emulation gaps (results here may differ from a real run)", "gap", null, null);
+        section(text, "Emulation gaps (results here may differ from a real run)", "gap", null, event -> event.action() + " " + event.data());
         return text.toString();
     }
 
+    /** How much of a cipher's output the text summary shows; the report holds the rest. */
+    private static final int SUMMARY_VALUE_LENGTH = 300;
+
+    /**
+     * One line for a key: the algorithm, then every other field the event has, in its order
+     * ({@code mode}, {@code key}, {@code iv}; or {@code password}, {@code salt}, {@code iterations},
+     * {@code keyLength}, {@code key}). Fields without a value are left out.
+     */
+    private static String keyLine(Event event) {
+        StringBuilder line = new StringBuilder(String.valueOf(event.data().get("algorithm")));
+        event.data().forEach((name, value) -> {
+            if (!name.equals("algorithm") && value != null) {
+                line.append("  ").append(name).append('=').append(value);
+            }
+        });
+        return line.toString();
+    }
+
+    /** A section listing one field of each event of a kind. */
     private void section(StringBuilder text, String title, String category, String action, String field) {
+        section(text, title, category, action, event -> String.valueOf(event.data().get(field)));
+    }
+
+    /**
+     * A section with one line per event of a kind, repeats shown once.
+     *
+     * @param action the events' action, or null for every event of the category
+     * @param shown  what to show for an event
+     */
+    private void section(StringBuilder text, String title, String category, String action,
+            java.util.function.Function<Event, String> shown) {
         java.util.Set<String> lines = new java.util.LinkedHashSet<>();
         for (Event event : vm.events.events()) {
             if (!event.category().equals(category) || (action != null && !event.action().equals(action))) {
                 continue;
             }
             // Sample-chosen text: kept to one line each, with nothing a terminal would act on.
-            lines.add(Text.visible(field == null ? event.action() + " " + event.data() : String.valueOf(event.data().get(field))));
+            lines.add(Text.visible(shown.apply(event)));
         }
         if (lines.isEmpty()) {
             return;

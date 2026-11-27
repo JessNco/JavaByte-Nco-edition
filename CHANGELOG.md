@@ -6,6 +6,18 @@ Notable changes, newest first. The report's JSON layout has its own version,
 ## Unreleased
 
 ### Security
+- The trust manager factory added for OkHttp handed the sample a security provider of the
+  tool's own making, which the sample could write to. A provider is a table of class names the
+  JDK constructs on request, so an entry followed by `MessageDigest.getInstance(name, provider)`
+  made the JDK construct any class on the tool's class path (a `FileHandler` wrote a log file
+  to the home directory). The factory now answers with the sample's private copy of the JDK's
+  TLS provider, and `getInstance` refuses any provider object that is neither such a copy nor
+  one of the JVM's own (`policy.blocked`, `kind: provider-object`). Found in review, before
+  the change was merged.
+- The simulated socket factories and two stubs asked an address the sample supplied for its
+  host name inside the tool, which is a reverse lookup on the analysis machine's name server
+  when the address has no name. They now read the name without a lookup, as the sample's own
+  `getHostName` calls already did.
 - Second audit pass. In the desktop app, the removal of settings that reach this computer
   (`policy.allow`, `classpath`, host files, the bridge's Python) from imported files, presets
   and report folders could be bypassed: the app and the tool read YAML by different rules (a
@@ -157,6 +169,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - `Package` metadata comes from the sample's `MANIFEST.MF`.
 
 ### Fixes
+- `--json` output is UTF-8 on every system. It was printed in the platform's charset, so where
+  no locale is set (as under `scripts/run-isolated.sh`) every non-ASCII character of a report
+  on standard output became `?`. `report.json` in the output folder was not affected.
 - Native bridge: boxed arguments reach native code. JNA's dispatcher reads each `Boolean`,
   `Byte`, `Character`, `Short`, `Integer`, `Long`, `Float` and `Double` it passes on through
   the box's private `value` field, which the bridge could not read ("no host field
@@ -243,6 +258,27 @@ Notable changes, newest first. The report's JSON layout has its own version,
   are brought up to date.
 
 ### Added
+- Java 21 thread builders: `Thread.ofVirtual()`, `Thread.ofPlatform()` (`name`, `start`,
+  `unstarted`, `factory` and the settings) and `Thread.startVirtualThread`. Their threads run on
+  the scheduler like any other; `thread.start` says whether a thread is `virtual`. Samples built
+  for Java 21 start their workers this way, and before, those workers never ran.
+- `SocketFactory.getDefault()` gives simulated sockets, and `TrustManagerFactory` gives a trust
+  manager that accepts every certificate without reading the certificate store from disk.
+  OkHttp needs both before its first request; before, its requests never reached the
+  simulation.
+- Events `crypto.key-derivation` (password, salt, iterations and the derived key of PBKDF2 and
+  other password-based keys), `crypto.digest` and `crypto.mac` (input and result of a hash or
+  MAC, all updates together). `crypto.cipher-init` gives the salt and iteration count of a
+  password-based cipher, and `crypto.cipher-output` also shows blocks returned by
+  `Cipher.update`, marked `partial`. A password that is not plain text is also given as hex
+  of its characters (`passwordUtf16`), since such a password cannot be written out as text.
+- The text summary lists cipher keys, keys derived from passwords and cipher output; before,
+  they were only in `report.json`.
+- Hashes, MACs and partial cipher output together get a quarter of
+  `limits.maxEventsPerCategory`; `crypto.not-recorded` marks where they stop. A sample that
+  stretches its key by hashing thousands of times no longer fills the category before the key
+  is used.
+- `trace.previewLength` (default 2000) sets how much of a value an event shows.
 - Windows sandbox add-on, a separate download: each analysis runs with no network, in an
   AppContainer (every edition, the default) or in a fresh Windows Sandbox (Pro and up, chosen in
   Preferences). The Running screen shows Windows Sandbox starting; if it cannot start, the app
@@ -313,6 +349,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Package documentation, contributing guide, CI workflow.
 
 ### Changed
+- `crypto.cipher-output` previews show up to `trace.previewLength` bytes (2000 by default)
+  instead of 512, so a decrypted configuration usually appears whole. Byte arrays in
+  `trace.log` and call arguments show 64 bytes instead of 24: a 256-bit key is no longer cut.
 - Desktop app code: every public item documented, large modules split by job, and clippy run
   in CI with warnings as errors. No change in behaviour.
 - `trace.log` is flushed after every event, so a killed run keeps its trace.

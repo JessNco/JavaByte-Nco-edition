@@ -148,8 +148,9 @@ public final class Values {
                     + Integer.toHexString(System.identityHashCode(value));
         }
         if (value instanceof byte[] bytes) {
-            return "byte[" + bytes.length + "]{" + HexFormat.of().formatHex(bytes, 0, Math.min(bytes.length, 24))
-                    + (bytes.length > 24 ? "..." : "") + '}';
+            // 64 bytes: room for a 256-bit key with its IV, or a SHA-512 digest, uncut.
+            return "byte[" + bytes.length + "]{" + HexFormat.of().formatHex(bytes, 0, Math.min(bytes.length, 64))
+                    + (bytes.length > 64 ? "..." : "") + '}';
         }
         if (value instanceof char[] chars) {
             return "char[" + chars.length + "]\"" + truncate(new String(chars), 80) + '"';

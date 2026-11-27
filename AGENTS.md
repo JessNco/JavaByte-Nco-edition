@@ -52,6 +52,8 @@ Everything here also works for a person; it is just written as a procedure.
    | `gap.missing-class` for a library | Add the library jar to `classpath` |
    | `native.call` events and little else | The logic is in native code. For a 64-bit Windows DLL, rerun with the `native-bridge` plugin (docs/NATIVE.md); otherwise report the library details from `native.load-library` |
    | `thread.stopped` with "would block forever", or outcome `blocked` | That thread was waiting for something no other thread provides, often a network reply; supply it |
+   | A value in an event ends in `...(N chars)` or `...(N bytes)` | Raise `trace.previewLength` |
+   | Event `crypto.not-recorded` | The sample hashes or decrypts in a long loop and later hashes, MACs and partial cipher output were left out. Keys and final output are still there; raise `limits.maxEventsPerCategory` to see more |
    | `policy.blocked` for `java/net/http/HttpClient` | That API is not simulated. Look for the URL in `string.returned` events |
    | You need to compare two runs | Set `environment.clockStart`; random numbers are already seeded by `environment.randomSeed` |
 
@@ -119,9 +121,25 @@ Useful single events:
 
 - `lifecycle.silent-loop`: `instructions`, `location`, `stack`. The guest ran that long without
   recording anything; `stack` shows the loop. Often the sign that a wait will never end.
-- `crypto.cipher-init`: `algorithm`, `mode`, `key` (hex), `iv` (hex).
+- `crypto.cipher-init`: `algorithm`, `mode`, `key` (hex), `iv` (hex). For a password-based
+  cipher (`PBEWith...`) the key is the password, and `salt` (hex) and `iterations` are given too.
 - `crypto.cipher-output`: `preview` of the plaintext or ciphertext. Decrypted configs appear here.
+  With `partial: true` it is one block from `Cipher.update`, part of a longer stream. Data
+  decrypted through a `CipherInputStream` is not shown; decrypt it with the key from
+  `cipher-init`.
+- `crypto.key-derivation`: `algorithm`, `password`, `salt` (hex), `iterations`, `keyLength`, `key`
+  (hex). A password-based key, such as PBKDF2, with everything needed to derive it again. When
+  the password is not plain text (obfuscators build them from arbitrary values),
+  `passwordUtf16` gives its characters exactly, as hex.
+- `crypto.digest`: `algorithm`, `size`, `input`, `output` (hex). What was hashed, all updates
+  together. Keys are often the hash of a text the sample holds.
+- `crypto.mac`: `algorithm`, `key` (hex), `size`, `input`, `output` (hex).
+- `crypto.not-recorded`: `after`, `note`. Hashes, MACs and partial cipher output together get a
+  quarter of `limits.maxEventsPerCategory`, so that a loop of them cannot push keys out of the
+  report. This event marks where they stopped being recorded.
 - `string.returned`: `method`, `value`. Mostly decrypted string constants.
+- Values in the `crypto` events and in `string.returned` are cut at `trace.previewLength` (2000)
+  characters or bytes, marked `...(N chars)` or `...(N bytes)`. Raise it to see more.
 - `class.define`: `name`, `via`, `sha256`, `size`.
 - `net.send`: `endpoint`, `preview`, `file`.
 - `native.load-library`: `library`, `format`, `binding` (how it attaches to Java), `sha256`, `file`.
@@ -147,6 +165,8 @@ Useful single events:
 - `policy.blocked` with `kind: deserialization-filter`: the sample gave a stream its own
   filter; it was not installed. `kind: machine-key-store`: the sample asked for a key store
   or security provider that belongs to the analysis machine (`Windows-MY`, `SunMSCAPI`).
+  `kind: provider-object`: the sample passed `getInstance` a provider object that is not one
+  of the JDK's; it was not used.
 - `policy.blocked` with `kind: constructor` followed by `gap.phantom-superclass`: a class of
   the sample called a JDK superclass constructor that policy does not allow (for example
   `PrintStream(String fileName)`); the object was not built on that superclass.

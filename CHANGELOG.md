@@ -243,6 +243,18 @@ Notable changes, newest first. The report's JSON layout has its own version,
   are brought up to date.
 
 ### Added
+- Java 21 thread builders: `Thread.ofVirtual()`, `Thread.ofPlatform()` (`name`, `start`,
+  `unstarted`, `factory` and the settings) and `Thread.startVirtualThread`. Their threads run on
+  the scheduler like any other; `thread.start` says whether a thread is `virtual`. Samples built
+  for Java 21 start their workers this way, and before, those workers never ran.
+- `SocketFactory.getDefault()` gives simulated sockets, and `TrustManagerFactory` gives a trust
+  manager that accepts every certificate without reading the certificate store from disk.
+  OkHttp needs both before its first request; before, its requests never reached the
+  simulation.
+- Events `crypto.key-derivation` (password, salt, iterations and the derived key of PBKDF2 and
+  other password-based keys), `crypto.digest` and `crypto.mac` (input and result of a hash or
+  MAC, all updates together).
+- `trace.previewLength` (default 2000) sets how much of a value an event shows.
 - Windows sandbox add-on, a separate download: each analysis runs with no network, in an
   AppContainer (every edition, the default) or in a fresh Windows Sandbox (Pro and up, chosen in
   Preferences). The Running screen shows Windows Sandbox starting; if it cannot start, the app
@@ -313,6 +325,9 @@ Notable changes, newest first. The report's JSON layout has its own version,
 - Package documentation, contributing guide, CI workflow.
 
 ### Changed
+- `crypto.cipher-output` previews show up to `trace.previewLength` bytes (2000 by default)
+  instead of 512, so a decrypted configuration usually appears whole. Byte arrays in
+  `trace.log` and call arguments show 64 bytes instead of 24: a 256-bit key is no longer cut.
 - Desktop app code: every public item documented, large modules split by job, and clippy run
   in CI with warnings as errors. No change in behaviour.
 - `trace.log` is flushed after every event, so a killed run keeps its trace.

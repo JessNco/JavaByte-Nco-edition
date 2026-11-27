@@ -335,6 +335,10 @@ public final class EmulatorConfig {
 
         @ConfigDoc("Record every call into the real JDK. Verbose; useful when extending the allow-list.")
         public boolean hostCalls;
+
+        @ConfigDoc("How much of a value an event shows: characters of a recorded string, bytes of cipher output "
+                + "and of what was hashed, MACed or fed to a key derivation. Longer values are cut and marked.")
+        public int previewLength = 2000;
     }
 
     /** How guest threads are scheduled. They are interleaved; only one runs at any moment. */

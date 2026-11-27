@@ -198,6 +198,9 @@ public final class TypeSystem {
         if (value instanceof PendingInstance pending) {
             return type.equals(pending.hostClass);
         }
+        if (value instanceof StandIn standIn && standIn.isA(type)) {
+            return true; // also when the analysis JDK lacks the type (Thread.Builder before 21)
+        }
         String[] deciding = typeDecidingNames(value);
         if (deciding != null) {
             return isImitatedInstance(deciding, type);

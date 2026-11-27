@@ -196,6 +196,7 @@ public final class ConfigLoader {
         positive(found, "limits.maxCallDepth", limits.maxCallDepth);
         positive(found, "limits.maxEventsPerCategory", limits.maxEventsPerCategory);
         positive(found, "limits.maxWrittenBytes", limits.maxWrittenBytes);
+        positive(found, "trace.previewLength", config.trace.previewLength);
         if (limits.maxSleeps < 0) {
             found.add(new Problem("limits.maxSleeps", "limits.maxSleeps cannot be negative, found " + limits.maxSleeps));
         }

@@ -74,6 +74,20 @@ final class NetworkStubs {
         stubs.on("javax/net/ssl/SSLContext", "getSocketFactory", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
         stubs.on("javax/net/ssl/SSLSocketFactory", "getDefault", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
         stubs.on("javax/net/ssl/HttpsURLConnection", "getDefaultSSLSocketFactory", ctx -> new dev.javabyte.env.SimSslSocketFactory(network));
+        stubs.on("javax/net/SocketFactory", "getDefault", ctx -> new dev.javabyte.env.SimSocketFactory(network));
+        // The JDK's trust manager factory reads the certificate store from disk when initialised.
+        stubs.on("javax/net/ssl/TrustManagerFactory", "getDefaultAlgorithm", ctx -> "PKIX");
+        stubs.on("javax/net/ssl/TrustManagerFactory", "getInstance", ctx -> {
+            String algorithm = (String) ctx.arg(0);
+            if (algorithm == null) {
+                throw ctx.raise(new NullPointerException("null algorithm name"));
+            }
+            if (!algorithm.equalsIgnoreCase("PKIX") && !algorithm.equalsIgnoreCase("SunX509")
+                    && !algorithm.equalsIgnoreCase("X509") && !algorithm.equalsIgnoreCase("SunPKIX")) {
+                throw ctx.raise(new java.security.NoSuchAlgorithmException(algorithm + " TrustManagerFactory not available"));
+            }
+            return new dev.javabyte.env.SimTrustManagerFactory(algorithm);
+        });
         stubs.on("java/net/ServerSocket", "<init>", ctx -> {
             vm.events.add("net", "listen", "port", ctx.argCount() > 0 ? ctx.arg(0) : "unbound");
             return new PhantomObject("java/net/ServerSocket");

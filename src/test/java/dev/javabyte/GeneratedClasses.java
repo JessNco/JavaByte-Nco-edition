@@ -445,4 +445,117 @@ final class GeneratedClasses {
         print(m, "I");                                   // 42
         return end(writer, m);
     }
+
+    /**
+     * A Java 21 class starting its threads through {@code Thread.ofVirtual()},
+     * {@code Thread.ofPlatform()} and {@code Thread.startVirtualThread}, as samples built for
+     * Java 21 do. It is its own {@code Runnable}; each thread prints "ran:" and its name. Written
+     * with ASM because the project compiles for Java 17, which lacks these methods.
+     */
+    static byte[] threadBuilders(String name) {
+        String builder = "java/lang/Thread$Builder";
+        String ofVirtual = builder + "$OfVirtual";
+        String ofPlatform = builder + "$OfPlatform";
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected String getCommonSuperClass(String first, String second) {
+                return "java/lang/Object"; // only Throwable handlers merge here
+            }
+        };
+        writer.visit(V21, ACC_PUBLIC | ACC_SUPER, name, null, "java/lang/Object", new String[] {"java/lang/Runnable"});
+        writer.visitInnerClass(builder, "java/lang/Thread", "Builder", ACC_PUBLIC | ACC_STATIC | ACC_INTERFACE | ACC_ABSTRACT);
+
+        MethodVisitor init = writer.visitMethod(ACC_PUBLIC, "<init>", "()V", null, null);
+        init.visitCode();
+        init.visitVarInsn(ALOAD, 0);
+        init.visitMethodInsn(INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+        init.visitInsn(RETURN);
+        init.visitMaxs(0, 0);
+        init.visitEnd();
+
+        MethodVisitor run = writer.visitMethod(ACC_PUBLIC, "run", "()V", null, null);
+        run.visitCode();
+        run.visitTypeInsn(NEW, "java/lang/StringBuilder");
+        run.visitInsn(DUP);
+        run.visitLdcInsn("ran:");
+        run.visitMethodInsn(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "(Ljava/lang/String;)V", false);
+        run.visitMethodInsn(INVOKESTATIC, "java/lang/Thread", "currentThread", "()Ljava/lang/Thread;", false);
+        run.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "getName", "()Ljava/lang/String;", false);
+        run.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
+        run.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false);
+        print(run, "Ljava/lang/String;");
+        run.visitInsn(RETURN);
+        run.visitMaxs(0, 0);
+        run.visitEnd();
+
+        MethodVisitor m = beginMain(writer);
+        // Virtual threads named worker-0, worker-1 from one builder.
+        m.visitMethodInsn(INVOKESTATIC, "java/lang/Thread", "ofVirtual", "()L" + ofVirtual + ";", false);
+        m.visitLdcInsn("worker-");
+        m.visitInsn(LCONST_0);
+        m.visitMethodInsn(INVOKEINTERFACE, ofVirtual, "name", "(Ljava/lang/String;J)L" + ofVirtual + ";", true);
+        m.visitVarInsn(ASTORE, 1);
+        for (int i = 0; i < 2; i++) {
+            m.visitVarInsn(ALOAD, 1);
+            newSelf(m, name);
+            m.visitMethodInsn(INVOKEINTERFACE, ofVirtual, "start", "(Ljava/lang/Runnable;)Ljava/lang/Thread;", true);
+            m.visitVarInsn(ASTORE, 2);
+            m.visitVarInsn(ALOAD, 2);
+            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "join", "()V", false);
+            m.visitVarInsn(ALOAD, 2);
+            m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "isVirtual", "()Z", false);
+            print(m, "Z");                                  // true
+        }
+        m.visitVarInsn(ALOAD, 1);
+        m.visitTypeInsn(INSTANCEOF, builder);
+        print(m, "Z");                                      // true
+
+        // A platform thread made unstarted, started by Thread.start, then started again.
+        m.visitMethodInsn(INVOKESTATIC, "java/lang/Thread", "ofPlatform", "()L" + ofPlatform + ";", false);
+        m.visitLdcInsn("plain");
+        m.visitMethodInsn(INVOKEINTERFACE, ofPlatform, "name", "(Ljava/lang/String;)L" + ofPlatform + ";", true);
+        m.visitInsn(ICONST_1);
+        m.visitMethodInsn(INVOKEINTERFACE, ofPlatform, "daemon", "(Z)L" + ofPlatform + ";", true);
+        newSelf(m, name);
+        m.visitMethodInsn(INVOKEINTERFACE, ofPlatform, "unstarted", "(Ljava/lang/Runnable;)Ljava/lang/Thread;", true);
+        m.visitVarInsn(ASTORE, 3);
+        m.visitVarInsn(ALOAD, 3);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "start", "()V", false);
+        m.visitVarInsn(ALOAD, 3);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "join", "()V", false);
+        m.visitVarInsn(ALOAD, 3);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "isVirtual", "()Z", false);
+        print(m, "Z");                                      // false
+        Label tryStart = new Label();
+        Label tryEnd = new Label();
+        Label handler = new Label();
+        Label after = new Label();
+        m.visitTryCatchBlock(tryStart, tryEnd, handler, "java/lang/IllegalThreadStateException");
+        m.visitLabel(tryStart);
+        m.visitVarInsn(ALOAD, 3);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "start", "()V", false);
+        m.visitLabel(tryEnd);
+        m.visitLdcInsn("restart allowed");
+        print(m, "Ljava/lang/String;");
+        m.visitJumpInsn(GOTO, after);
+        m.visitLabel(handler);
+        m.visitInsn(POP);
+        m.visitLdcInsn("restart refused");
+        print(m, "Ljava/lang/String;");
+        m.visitLabel(after);
+
+        // An unnamed virtual thread: its name is empty.
+        newSelf(m, name);
+        m.visitMethodInsn(INVOKESTATIC, "java/lang/Thread", "startVirtualThread", "(Ljava/lang/Runnable;)Ljava/lang/Thread;", false);
+        m.visitMethodInsn(INVOKEVIRTUAL, "java/lang/Thread", "join", "()V", false);
+        m.visitLdcInsn("done");
+        print(m, "Ljava/lang/String;");
+        return end(writer, m);
+    }
+
+    private static void newSelf(MethodVisitor m, String name) {
+        m.visitTypeInsn(NEW, name);
+        m.visitInsn(DUP);
+        m.visitMethodInsn(INVOKESPECIAL, name, "<init>", "()V", false);
+    }
 }

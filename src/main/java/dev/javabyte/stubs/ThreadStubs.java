@@ -1,6 +1,7 @@
 package dev.javabyte.stubs;
 
 import dev.javabyte.env.SimExecutor;
+import dev.javabyte.env.SimThreadBuilder;
 import dev.javabyte.env.SimTimer;
 import dev.javabyte.host.CallContext;
 import dev.javabyte.host.Stub;
@@ -52,8 +53,16 @@ final class ThreadStubs {
 
         GuestThreads threads = new GuestThreads(vm);
         stubs.on(thread, "currentThread", ctx -> vm.scheduler.currentThread());
+        BuiltThreads built = new BuiltThreads();
         stubs.on(thread, "start", ctx -> {
             Object target = ctx.receiver;
+            if (target instanceof Thread real && built.isBuilt(real)) {
+                if (!built.tasks.containsKey(real)) {
+                    throw ctx.raise(new IllegalThreadStateException()); // started already
+                }
+                built.start(vm, threads, real);
+                return null;
+            }
             if (target instanceof Thread real) {
                 threads.idOf(real); // ids follow start order, as they roughly do on a real JVM
             }
@@ -63,6 +72,7 @@ final class ThreadStubs {
                     () -> vm.router.invokeVirtual(thread, "run", "()V", target, new Object[0]));
             return null;
         });
+        installBuilders(vm, threads, built);
         stubs.on(thread, "sleep", ctx -> {
             long millis = ctx.arg(0) instanceof Long l ? l : ((java.time.Duration) ctx.arg(0)).toMillis();
             vm.scheduler.sleep(millis);
@@ -295,6 +305,92 @@ final class ThreadStubs {
 
         private static StackTraceElement frame(String cls, String method, String file, int line) {
             return new StackTraceElement(cls, method, file, line);
+        }
+    }
+
+    /**
+     * Threads made by a Java 21 thread builder or {@code Thread.startVirtualThread}. Each is a
+     * plain, never-started host {@code Thread} that serves as the scheduler's key and as what
+     * {@code Thread.currentThread()} returns; the task it runs is kept here, since a real
+     * builder's thread would run it in place of {@code Thread.run}.
+     */
+    private static final class BuiltThreads {
+        /** Tasks of built threads not started yet. */
+        final Map<Thread, Object> tasks = Collections.synchronizedMap(new IdentityHashMap<>());
+        final Set<Thread> virtual = Collections.newSetFromMap(Collections.synchronizedMap(new IdentityHashMap<>()));
+        private final Set<Thread> all = Collections.newSetFromMap(Collections.synchronizedMap(new IdentityHashMap<>()));
+        private int unnamed;
+
+        boolean isBuilt(Thread thread) {
+            return all.contains(thread);
+        }
+
+        Thread unstarted(SimThreadBuilder builder, CallContext ctx) {
+            Object task = ctx.arg(0);
+            if (task == null) {
+                throw ctx.raise(new NullPointerException("task"));
+            }
+            String name = builder.nextName();
+            Thread key = new Thread(name != null ? name : "Thread-" + unnamed++);
+            tasks.put(key, task);
+            all.add(key);
+            if (builder.virtual) {
+                virtual.add(key);
+            }
+            return key;
+        }
+
+        /** Starts a built thread; returns it, as {@code Thread.Builder.start} does. */
+        Thread start(VirtualMachine vm, GuestThreads threads, Thread key) {
+            Object task = tasks.remove(key); // a thread starts once
+            boolean isVirtual = virtual.contains(key);
+            threads.idOf(key);
+            vm.events.add("thread", "start", "name", key.getName(), "class", vm.types.nameOf(task), "virtual", isVirtual);
+            vm.scheduler.submit((isVirtual ? "vthread:" : "thread:") + key.getName(), key,
+                    () -> vm.router.invokeVirtual("java/lang/Runnable", "run", "()V", task, new Object[0]));
+            return key;
+        }
+    }
+
+    /**
+     * Java 21's {@code Thread.ofVirtual()}, {@code Thread.ofPlatform()} and
+     * {@code Thread.startVirtualThread}. The builders are records of their settings
+     * ({@link SimThreadBuilder}); threads they start run on the scheduler like any other.
+     * Samples built for Java 21 use these for their worker threads, so without them the work
+     * never ran. {@code factory()} gives the same thread factory as {@code Executors}.
+     */
+    private static void installBuilders(VirtualMachine vm, GuestThreads threads, BuiltThreads built) {
+        StubRegistry stubs = vm.stubs;
+        String thread = "java/lang/Thread";
+        stubs.on(thread, "ofVirtual", ctx -> new SimThreadBuilder(true));
+        stubs.on(thread, "ofPlatform", ctx -> new SimThreadBuilder(false));
+        stubs.on(thread, "startVirtualThread", ctx -> built.start(vm, threads, built.unstarted(new SimThreadBuilder(true), ctx)));
+        stubs.on(thread, "isVirtual", ctx -> ctx.receiver instanceof Thread real && built.virtual.contains(real) ? 1 : 0);
+
+        String builder = "java/lang/Thread$Builder";
+        for (String owner : List.of(builder, builder + "$OfVirtual", builder + "$OfPlatform")) {
+            stubs.on(owner, "name", ctx -> {
+                SimThreadBuilder settings = (SimThreadBuilder) ctx.receiver;
+                try {
+                    if (ctx.argCount() == 2) {
+                        settings.name((String) ctx.arg(0), (Long) ctx.arg(1));
+                    } else {
+                        settings.name((String) ctx.arg(0));
+                    }
+                } catch (IllegalArgumentException wrong) {
+                    throw ctx.raise(wrong);
+                }
+                return settings;
+            });
+            for (String setting : List.of("inheritInheritableThreadLocals", "uncaughtExceptionHandler",
+                    "group", "daemon", "priority", "stackSize")) {
+                stubs.on(owner, setting, ctx -> ctx.receiver);
+            }
+            stubs.on(owner, "unstarted", ctx -> built.unstarted((SimThreadBuilder) ctx.receiver, ctx));
+            stubs.on(owner, "start", ctx -> {
+                return built.start(vm, threads, built.unstarted((SimThreadBuilder) ctx.receiver, ctx));
+            });
+            stubs.on(owner, "factory", ctx -> Executors.defaultThreadFactory());
         }
     }
 

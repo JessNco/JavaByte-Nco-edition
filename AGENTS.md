@@ -50,7 +50,7 @@ Everything here also works for a person; it is just written as a procedure.
    | `native.call` events and little else | The logic is in native code. For a 64-bit Windows DLL, rerun with the `native-bridge` plugin (docs/NATIVE.md); otherwise report the library details from `native.load-library` |
    | `thread.stopped` with "would block forever", or outcome `blocked` | That thread was waiting for something no other thread provides, often a network reply; supply it |
    | A value in an event ends in `...(N chars)` or `...(N bytes)` | Raise `trace.previewLength` |
-| `policy.blocked` for `java/net/http/HttpClient` | That API is not simulated. Look for the URL in `string.returned` events |
+   | `policy.blocked` for `java/net/http/HttpClient` | That API is not simulated. Look for the URL in `string.returned` events |
    | You need to compare two runs | Set `environment.clockStart`; random numbers are already seeded by `environment.randomSeed` |
 
 5. **Stop** when a further run adds nothing new, and summarise.

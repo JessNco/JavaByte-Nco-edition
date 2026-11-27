@@ -232,6 +232,7 @@ JDK methods.
 | `methods` | `[]` | Method globs whose calls are logged |
 | `instructions` | `[]` | Method globs to single-step into `trace.log` |
 | `hostCalls` | `false` | Log every call into the real JDK |
+| `previewLength` | `2000` | How much of a value an event shows: characters of a recorded string, bytes of cipher output and of what was hashed, MACed or fed to a key derivation |
 
 ## `threads`
 

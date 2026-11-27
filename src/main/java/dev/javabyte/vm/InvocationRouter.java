@@ -331,7 +331,7 @@ public final class InvocationRouter {
             return;
         }
         vm.events.addOnce(method.id + '\u0000' + text, "string", "returned",
-                "method", method.id, "value", Values.truncate(text, 2000));
+                "method", method.id, "value", Values.truncate(text, vm.config.trace.previewLength));
     }
 
     // ------------------------------------------------------------------ the host boundary

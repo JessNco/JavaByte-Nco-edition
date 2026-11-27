@@ -400,6 +400,11 @@
     "default" : false,
     "description" : "Record every call into the real JDK. Verbose; useful when extending the allow-list."
   }, {
+    "path" : "trace.previewLength",
+    "type" : "integer",
+    "default" : 2000,
+    "description" : "How much of a value an event shows: characters of a recorded string, bytes of cipher output and of what was hashed, MACed or fed to a key derivation. Longer values are cut and marked."
+  }, {
     "path" : "threads",
     "type" : "object",
     "description" : "How the sample's threads are scheduled. They take turns; only one runs at a time."

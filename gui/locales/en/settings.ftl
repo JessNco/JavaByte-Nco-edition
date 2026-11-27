@@ -220,6 +220,7 @@ opt-trace-strings = Text returned by methods
 opt-trace-methods = Methods to record
 opt-trace-instructions = Methods to record instruction by instruction
 opt-trace-hostCalls = Record every call into Java itself
+opt-trace-previewLength = Characters or bytes of a value shown in an event
 opt-threads = Threads
 opt-threads-mode = When new threads run
 opt-threads-periodicRuns = Runs of repeating timers

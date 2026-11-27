@@ -320,7 +320,8 @@
       "strings" : "static",
       "methods" : [ ],
       "instructions" : [ ],
-      "hostCalls" : false
+      "hostCalls" : false,
+      "previewLength" : 2000
     },
     "threads" : {
       "mode" : "deferred",

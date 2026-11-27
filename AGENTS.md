@@ -49,7 +49,8 @@ Everything here also works for a person; it is just written as a procedure.
    | `gap.missing-class` for a library | Add the library jar to `classpath` |
    | `native.call` events and little else | The logic is in native code. For a 64-bit Windows DLL, rerun with the `native-bridge` plugin (docs/NATIVE.md); otherwise report the library details from `native.load-library` |
    | `thread.stopped` with "would block forever", or outcome `blocked` | That thread was waiting for something no other thread provides, often a network reply; supply it |
-   | `policy.blocked` for `java/net/http/HttpClient` | That API is not simulated. Look for the URL in `string.returned` events |
+   | A value in an event ends in `...(N chars)` or `...(N bytes)` | Raise `trace.previewLength` |
+| `policy.blocked` for `java/net/http/HttpClient` | That API is not simulated. Look for the URL in `string.returned` events |
    | You need to compare two runs | Set `environment.clockStart`; random numbers are already seeded by `environment.randomSeed` |
 
 5. **Stop** when a further run adds nothing new, and summarise.
@@ -118,6 +119,13 @@ Useful single events:
   recording anything; `stack` shows the loop. Often the sign that a wait will never end.
 - `crypto.cipher-init`: `algorithm`, `mode`, `key` (hex), `iv` (hex).
 - `crypto.cipher-output`: `preview` of the plaintext or ciphertext. Decrypted configs appear here.
+- `crypto.key-derivation`: `algorithm`, `password`, `salt` (hex), `iterations`, `keyLength`, `key`
+  (hex). A password-based key, such as PBKDF2, with everything needed to derive it again.
+- `crypto.digest`: `algorithm`, `size`, `input`, `output` (hex). What was hashed, all updates
+  together. Keys are often the hash of a text the sample holds.
+- `crypto.mac`: `algorithm`, `key` (hex), `size`, `input`, `output` (hex).
+- Values in these events and in `string.returned` are cut at `trace.previewLength` (2000)
+  characters or bytes, marked `...(N chars)` or `...(N bytes)`. Raise it to see more.
 - `string.returned`: `method`, `value`. Mostly decrypted string constants.
 - `class.define`: `name`, `via`, `sha256`, `size`.
 - `net.send`: `endpoint`, `preview`, `file`.

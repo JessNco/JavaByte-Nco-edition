@@ -1,6 +1,8 @@
 package dev.javabyte.stubs;
 
+import dev.javabyte.env.NetworkSimulator;
 import dev.javabyte.env.SimProvider;
+import dev.javabyte.env.SimTrustManagerFactory;
 import dev.javabyte.env.SimURLStreamHandler;
 import dev.javabyte.host.CallContext;
 import dev.javabyte.host.StubRegistry;
@@ -10,6 +12,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.security.Provider;
+import java.security.Security;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -59,11 +62,11 @@ final class InertObjectStubs {
         // getHostName() looks an address up when it carries no name. Addresses the stubs hand
         // out all carry one, but the JDK makes nameless ones itself (the wildcard address of
         // new InetSocketAddress(port)), so the name is read without a lookup here too.
-        stubs.on("java/net/InetAddress", "getHostName", ctx -> hostName((InetAddress) ctx.receiver));
+        stubs.on("java/net/InetAddress", "getHostName", ctx -> NetworkSimulator.nameOf((InetAddress) ctx.receiver));
         stubs.on("java/net/InetSocketAddress", "getHostName", ctx -> {
             java.net.InetSocketAddress socketAddress = (java.net.InetSocketAddress) ctx.receiver;
             // An unresolved address holds only the name it was given; getHostString never resolves.
-            return socketAddress.getAddress() == null ? socketAddress.getHostString() : hostName(socketAddress.getAddress());
+            return socketAddress.getAddress() == null ? socketAddress.getHostString() : NetworkSimulator.nameOf(socketAddress.getAddress());
         });
 
         // A stream's own filter is consulted before the JVM-wide one, and its ALLOWED is final,
@@ -95,6 +98,7 @@ final class InertObjectStubs {
             }
         }
         stubs.on("javax/net/ssl/SSLContext", "getInstance", ctx -> engine(vm, ctx));
+        installTrustManagerFactory(vm, stubs, copies);
         stubs.on("javax/crypto/KEM", "getInstance", ctx -> engine(vm, ctx));
         // A builder opens its key store later, inside the JDK, where the stub above is not asked.
         stubs.on("java/security/KeyStore$Builder", "newInstance", ctx -> engine(vm, ctx));
@@ -140,8 +144,40 @@ final class InertObjectStubs {
             throw keyStore ? new java.security.KeyStoreException(algorithm + " not found")
                     : new java.security.NoSuchAlgorithmException(algorithm + " not available");
         }
+        if (provider instanceof Provider given && !(given instanceof SimProvider) && Security.getProvider(given.getName()) != given) {
+            // The JDK would instantiate whatever class this provider's table names. The guest's
+            // copies and the JVM's own providers name only the JDK's algorithms; any other
+            // provider object is one the guest may have written to, so it is never used.
+            vm.events.addOnce("foreign-provider:" + ctx.owner + providerName, "policy", "blocked", "kind", "provider-object",
+                    "member", ctx.owner + '.' + ctx.name + ": provider " + providerName + " is not one of the JDK's");
+            throw new java.security.NoSuchAlgorithmException(algorithm + " not available");
+        }
         // A builder overload that names a file to read later is refused by proceed() itself.
         return ctx.proceed();
+    }
+
+    /** Algorithm names the JDK's trust manager factories answer to. */
+    private static final List<String> TRUST_ALGORITHMS = List.of("PKIX", "SunPKIX", "SunX509", "X509");
+
+    /**
+     * {@code TrustManagerFactory}: the JDK's reads the analysis machine's certificate store
+     * from disk when initialised, so the guest gets {@link SimTrustManagerFactory}, which
+     * trusts everything, as nothing is verified on a simulated connection. Its provider is the
+     * guest's copy of the JDK's TLS provider, like every other provider the guest can hold.
+     */
+    private static void installTrustManagerFactory(VirtualMachine vm, StubRegistry stubs, Map<Provider, SimProvider> copies) {
+        String factory = "javax/net/ssl/TrustManagerFactory";
+        stubs.on(factory, "getDefaultAlgorithm", ctx -> "PKIX");
+        stubs.on(factory, "getInstance", ctx -> {
+            String algorithm = (String) ctx.arg(0);
+            if (algorithm == null) {
+                throw ctx.raise(new NullPointerException("null algorithm name"));
+            }
+            if (TRUST_ALGORITHMS.stream().noneMatch(algorithm::equalsIgnoreCase)) {
+                throw new java.security.NoSuchAlgorithmException(algorithm + " TrustManagerFactory not available");
+            }
+            return new SimTrustManagerFactory(algorithm, guestProvider(vm, copies, Security.getProvider("SunJSSE")));
+        });
     }
 
     // ------------------------------------------------------------------ URLs
@@ -196,17 +232,10 @@ final class InertObjectStubs {
      */
     private static String canonicalHostName(VirtualMachine vm, InetAddress address) {
         boolean offline = "offline".equals(vm.config.network.mode);
-        String result = offline ? address.getHostAddress() : hostName(address);
+        String result = offline ? address.getHostAddress() : NetworkSimulator.nameOf(address);
         vm.events.addOnce("dns-reverse:" + address.getHostAddress(), "net", "dns-reverse",
                 "address", address.getHostAddress(), "result", result);
         return result;
-    }
-
-    /** The name an address carries, or its text if it carries none. Never a lookup: read from {@code toString()}. */
-    private static String hostName(InetAddress address) {
-        String text = address.toString();
-        int slash = text.indexOf('/');
-        return slash > 0 ? text.substring(0, slash) : address.getHostAddress();
     }
 
     // ------------------------------------------------------------------ security providers

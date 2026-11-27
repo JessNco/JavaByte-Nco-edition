@@ -59,17 +59,21 @@ public final class EventLog {
      *
      * <p>String decryptors and polling loops repeat the same fact thousands of times. Keeping one
      * copy keeps the report readable and stops a hot loop from exhausting the category budget.
+     *
+     * @return true if the event was stored: it was not a repeat and its category had room
      */
-    public void addOnce(String dedupeKey, String category, String action, Object... keyValues) {
+    public boolean addOnce(String dedupeKey, String category, String action, Object... keyValues) {
         if (counts.getOrDefault(category, 0) >= maxPerCategory) {
             // The category is full, so the event would not be stored anyway. Skipping the
             // "seen" set here keeps memory bounded on runs that produce endless new values.
             counts.merge(category, 1, Integer::sum);
-            return;
+            return false;
         }
         if (seen.add(category + '\u0000' + dedupeKey)) {
             record(category, action, toMap(keyValues));
+            return true;
         }
+        return false;
     }
 
     private void record(String category, String action, Map<String, Object> data) {

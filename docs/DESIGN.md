@@ -293,7 +293,7 @@ In addition, the router refuses any allow-listed JDK method whose parameters inc
 method and the protected ones `ClassLoader` itself calls.
 
 These properties are tested from the outside. `EscapeTest` runs a fixture that tries about
-eighty escape routes and then inspects the real machine: a canary file must not exist, a secret
+a hundred escape routes and then inspects the real machine: a canary file must not exist, a secret
 file's contents must not appear anywhere in the report, a real listening socket must have
 received no connection, and JVM-wide settings must be unchanged. `HostCallbackTest` does the
 same for objects handed to JDK code: URLs in collections, providers, loaders and reverse

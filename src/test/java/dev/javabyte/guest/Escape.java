@@ -168,6 +168,13 @@ public final class Escape {
                 .getMethod("fork", java.util.concurrent.Callable.class)
                 .invoke(Class.forName("java.util.concurrent.StructuredTaskScope").getConstructor().newInstance(),
                         (java.util.concurrent.Callable<String>) () -> "x"));
+        // A provider is a table of class names that the JDK instantiates on request. Writing a
+        // name into one the guest was handed, and asking for it, would start a real timer thread.
+        attempt("class named through a provider", () -> {
+            java.security.Provider handed = javax.net.ssl.TrustManagerFactory.getInstance("PKIX").getProvider();
+            handed.put("MessageDigest.JavaByteEscape", "java.util.Timer");
+            java.security.MessageDigest.getInstance("JavaByteEscape", handed);
+        });
         attempt("key pair in a machine provider", () -> java.security.KeyPairGenerator.getInstance("RSA", "SunMSCAPI"));
         attempt("URL in HashSet", () -> new java.util.HashSet<Object>().add(new URL("http://javabyte-set.invalid/")));
         attempt("URL in List.contains", () -> List.of(new URL("http://javabyte-list.invalid/"))

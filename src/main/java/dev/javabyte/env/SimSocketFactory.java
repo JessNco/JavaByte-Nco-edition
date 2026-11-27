@@ -27,6 +27,6 @@ public final class SimSocketFactory extends SocketFactory {
     @Override public Socket createSocket() throws IOException { return new SimSocket(network); }
     @Override public Socket createSocket(String host, int port) throws IOException { return connected(host, port); }
     @Override public Socket createSocket(String host, int port, InetAddress local, int localPort) throws IOException { return connected(host, port); }
-    @Override public Socket createSocket(InetAddress host, int port) throws IOException { return connected(host.getHostName(), port); }
-    @Override public Socket createSocket(InetAddress host, int port, InetAddress local, int localPort) throws IOException { return connected(host.getHostName(), port); }
+    @Override public Socket createSocket(InetAddress host, int port) throws IOException { return connected(NetworkSimulator.nameOf(host), port); }
+    @Override public Socket createSocket(InetAddress host, int port, InetAddress local, int localPort) throws IOException { return connected(NetworkSimulator.nameOf(host), port); }
 }

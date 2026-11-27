@@ -13,21 +13,24 @@ import javax.net.ssl.X509TrustManager;
  * What {@code TrustManagerFactory.getInstance} gives the sample. The JDK's factory reads the
  * analysis machine's certificate store from disk when initialised, so it cannot run for real.
  * TLS connections are simulated and nothing is ever verified, so this one hands out a trust
- * manager that accepts every certificate and knows no issuers.
+ * manager that accepts every certificate and knows no issuers. No real connection can be made
+ * with it: every socket factory the sample can obtain is simulated too.
  *
  * <p>HTTP clients such as OkHttp build their TLS setup this way before the first request;
  * without it their requests never reached the simulation.
  */
 public final class SimTrustManagerFactory extends TrustManagerFactory {
 
-    public SimTrustManagerFactory(String algorithm) {
-        super(new Spi(), PROVIDER, algorithm);
+    /**
+     * @param provider what {@code getProvider()} answers: the guest's own copy of the JDK's TLS
+     *                 provider (a {@link SimProvider}), never a provider made here. A provider is
+     *                 a table of class names the JDK instantiates on request, so one the guest
+     *                 could write to would let it have any class on the tool's class path
+     *                 constructed by JDK code.
+     */
+    public SimTrustManagerFactory(String algorithm, Provider provider) {
+        super(new Spi(), provider, algorithm);
     }
-
-    /** Named like the JDK's own provider, which is what {@code getProvider()} shows there. */
-    private static final Provider PROVIDER = new Provider("SunJSSE", "21", "Sun JSSE provider") {
-        private static final long serialVersionUID = 1L;
-    };
 
     private static final class Spi extends TrustManagerFactorySpi {
         @Override protected void engineInit(KeyStore keyStore) {}

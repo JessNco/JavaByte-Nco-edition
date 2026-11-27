@@ -219,7 +219,7 @@ are in [docs/SELFTEST.md](docs/SELFTEST.md); the expectations are executable, se
   sockets, with or without TLS, are simulated.
 - **Invalid bytecode is detected late.** There is no verifier pass; code a JVM would refuse
   to load fails when it runs, as a `VerifyError` with a `gap.invalid-bytecode` event.
-- **It is tested, not proven.** A test attempts about eighty escapes and checks the real
+- **It is tested, not proven.** A test attempts about a hundred escapes and checks the real
   machine afterwards, but that is evidence, not a proof. Use `scripts/run-isolated.sh` or a
   container for live malware.
 - **Speed.** About 95 million bytecode instructions per second on the development machine,

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.javabyte.config.ConfigLoader;
 import dev.javabyte.config.EmulatorConfig;
+import dev.javabyte.guest.KeyStretcher;
 import dev.javabyte.guest.ModernClient;
 import dev.javabyte.report.Event;
 import dev.javabyte.report.Report;
@@ -114,6 +115,12 @@ class ModernJdkTest {
         assertEquals(HexFormat.of().formatHex("mac-key".getBytes(StandardCharsets.US_ASCII)), recorded.get("key"));
         assertEquals("signed", recorded.get("input"));
         assertEquals(HexFormat.of().formatHex(mac.doFinal("signed".getBytes(StandardCharsets.US_ASCII))), recorded.get("output"));
+
+        // The summary a person reads first names the keys too.
+        String summary = report.toText();
+        assertTrue(summary.contains("Keys derived from passwords (1)\n  PBKDF2WithHmacSHA1  password=hunter2  salt="), summary);
+        assertTrue(summary.contains("Cipher keys (2)\n  AES/CBC/PKCS5Padding  mode=encrypt  key=" + HexFormat.of().formatHex(key)), summary);
+        assertTrue(summary.contains("Cipher output (decrypted data appears here)"), summary);
     }
 
     private static String decryptedConfig(Report report) {
@@ -144,6 +151,53 @@ class ModernJdkTest {
         assertEquals(full, returnedConfig(report));
         assertEquals(full, decryptedConfig(report));
         assertTrue(full.endsWith("END=c2.test"));
+    }
+
+    /**
+     * A loop that hashes thousands of times gets a share of the category and no more, so the
+     * key it leads to is still in the report; the cut is marked once.
+     */
+    @Test
+    void endlessHashesLeaveRoomForTheKeyTheyLeadTo() throws Exception {
+        EmulatorConfig config = Fixtures.config(Fixtures.jar(temp, Map.of(), KeyStretcher.class));
+        config.limits.maxEventsPerCategory = 400;
+        Report report = runClient(config);
+
+        assertEquals(100, Fixtures.events(report, "crypto", "digest").size(), "a quarter of the category");
+        assertEquals(100, only(report, "crypto", "not-recorded").get("after"));
+        assertEquals(Map.of(), report.events().dropped(), "nothing was pushed out");
+
+        byte[] key = "seed".getBytes(StandardCharsets.US_ASCII);
+        for (int round = 0; round < 3000; round++) {
+            key = MessageDigest.getInstance("SHA-256").digest(key);
+        }
+        String stretched = HexFormat.of().formatHex(key);
+        List<Event> inits = Fixtures.events(report, "crypto", "cipher-init");
+        assertTrue(inits.stream().anyMatch(e -> stretched.equals(e.data().get("key"))), "the stretched key: " + inits);
+
+        // A password-based cipher shows the salt and iteration count that make the password a key.
+        Map<String, Object> passwordBased = inits.stream().map(Event::data)
+                .filter(data -> "PBEWithMD5AndDES".equals(data.get("algorithm"))).findFirst().orElseThrow();
+        assertEquals(HexFormat.of().formatHex("letmein".getBytes(StandardCharsets.US_ASCII)), passwordBased.get("key"));
+        assertEquals(HexFormat.of().formatHex("saltsalt".getBytes(StandardCharsets.US_ASCII)), passwordBased.get("salt"));
+        assertEquals(77, passwordBased.get("iterations"));
+        List<Map<String, Object>> derivations = Fixtures.events(report, "crypto", "key-derivation").stream().map(Event::data).toList();
+        assertEquals("letmein", derivations.get(0).get("password"));
+        assertEquals(null, derivations.get(0).get("passwordUtf16"), "plain text needs no second form");
+        // A password that is not valid text is also given exactly, as hex of its characters.
+        assertEquals("d800006103ae", derivations.get(1).get("passwordUtf16"));
+    }
+
+    /** Output of {@code Cipher.update} is shown too, marked as part of a longer stream. */
+    @Test
+    void blocksDecryptedOneAtATimeAreShown() throws Exception {
+        Report report = runClient(Fixtures.config(Fixtures.jar(temp, Map.of(), KeyStretcher.class)));
+
+        List<Map<String, Object>> outputs = Fixtures.events(report, "crypto", "cipher-output").stream().map(Event::data).toList();
+        Map<String, Object> first = outputs.stream().filter(data -> Boolean.TRUE.equals(data.get("partial"))).findFirst().orElseThrow();
+        assertTrue(String.valueOf(first.get("preview")).startsWith("first block here"), String.valueOf(first));
+        assertTrue(outputs.stream().anyMatch(data -> data.get("partial") == null
+                && String.valueOf(data.get("preview")).endsWith("the end")), "the final block: " + outputs);
     }
 
     @Test

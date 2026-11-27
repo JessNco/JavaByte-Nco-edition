@@ -116,6 +116,18 @@ public final class Main {
         return EXIT_USAGE;
     }
 
+    /**
+     * Prints one JSON document to standard output as UTF-8, whatever the platform's charset.
+     * Printed as text it would lose every character that charset lacks (all but ASCII where no
+     * locale is set, as under {@code run-isolated.sh}), and a report is full of text the sample
+     * chose. The bytes pass through {@code System.out} unchanged.
+     */
+    static void printJson(String json) {
+        byte[] bytes = (json + System.lineSeparator()).getBytes(StandardCharsets.UTF_8);
+        System.out.write(bytes, 0, bytes.length);
+        System.out.flush();
+    }
+
     /** Runs a sample and reports its behaviour. */
     @Command(name = "run", mixinStandardHelpOptions = true,
             description = "Emulate a sample and report what it did.")
@@ -202,7 +214,7 @@ public final class Main {
                 switch (loaded.output.console) {
                     case "json":
                         if (stream == null) {
-                            System.out.println(report.toJson());
+                            printJson(report.toJson());
                         }
                         break;
                     case "text":
@@ -275,7 +287,11 @@ public final class Main {
         @Override
         public Integer call() throws Exception {
             Inspection inspection = Inspection.of(Path.of(sample));
-            System.out.println(json ? ConfigLoader.json().writeValueAsString(inspection.toMap()) : inspection.toText());
+            if (json) {
+                printJson(ConfigLoader.json().writeValueAsString(inspection.toMap()));
+            } else {
+                System.out.println(inspection.toText());
+            }
             return EXIT_OK;
         }
     }
@@ -338,7 +354,7 @@ public final class Main {
                 java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
                 result.put("valid", problems.isEmpty());
                 result.put("problems", problems);
-                System.out.println(ConfigLoader.json().writeValueAsString(result));
+                printJson(ConfigLoader.json().writeValueAsString(result));
             } else if (problems.isEmpty()) {
                 System.out.println("The config is valid.");
             } else {
@@ -359,7 +375,7 @@ public final class Main {
         @Override
         public Integer call() throws Exception {
             if (json) {
-                System.out.println(ConfigLoader.json().writeValueAsString(dev.javabyte.config.ConfigSchema.toMap()));
+                printJson(ConfigLoader.json().writeValueAsString(dev.javabyte.config.ConfigSchema.toMap()));
                 return EXIT_OK;
             }
             for (dev.javabyte.config.ConfigSchema.Option option : dev.javabyte.config.ConfigSchema.options()) {
@@ -383,7 +399,11 @@ public final class Main {
         @Override
         public Integer call() throws Exception {
             EmulatorConfig defaults = new EmulatorConfig();
-            System.out.println(json ? ConfigLoader.json().writeValueAsString(defaults) : ConfigLoader.toYaml(defaults));
+            if (json) {
+                printJson(ConfigLoader.json().writeValueAsString(defaults));
+            } else {
+                System.out.println(ConfigLoader.toYaml(defaults));
+            }
             return EXIT_OK;
         }
     }
@@ -405,7 +425,7 @@ public final class Main {
             if (json) {
                 java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
                 out.put("rules", dev.javabyte.host.PolicyListing.read(text));
-                System.out.println(ConfigLoader.json().writeValueAsString(out));
+                printJson(ConfigLoader.json().writeValueAsString(out));
             } else {
                 System.out.print(text);
             }
